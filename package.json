@@ -1,0 +1,35 @@
+{
+  "name": "emberwalk",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "workers/*",
+    "packages/*",
+    "containers/*"
+  ],
+  "scripts": {
+    "test:container": "npm run test:container -w containers/media",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:files": "eslint --no-warn-ignored",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present -- --exclude '**/*.live.test.*' && npm run test:blender",
+    "test:blender": "cd blender && python3 -m unittest discover -s tests -t ."
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.13.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "4.1.12"
+  },
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.17.0"
+}

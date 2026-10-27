@@ -1,0 +1,22 @@
+{
+  "id": "resp_fixture_tool_call_malformed",
+  "object": "response",
+  "status": "completed",
+  "model": "muse-spark-1.3",
+  "output": [
+    {
+      "type": "function_call",
+      "id": "fc_fixture_2",
+      "call_id": "call_fixture_2",
+      "name": "judge_detection",
+      "arguments": "{\"concept\":\"wood_pile\",\"frame\":-4,\"keep\":\"yes\",\"plantState\":\"dead\",\"reason\":\"\"}",
+      "status": "completed"
+    }
+  ],
+  "usage": {
+    "input_tokens": 1840,
+    "input_tokens_details": { "cached_tokens": 0 },
+    "output_tokens": 80,
+    "total_tokens": 1920
+  }
+}

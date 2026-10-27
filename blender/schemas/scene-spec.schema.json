@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk scene spec: one side of one synthetic yard, every length in whole inches",
+  "description": "Axes: x along the wall from its right end as seen from the yard, y out from the wall face, z up from the ground.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "label", "side", "wall", "ground", "light", "hazards", "walk"],
+  "properties": {
+    "schema": {"const": "emberwalk.scene-spec/1"},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "label": {"const": "Synthetic sample house"},
+    "side": {"enum": ["front", "back", "left", "right"]},
+    "wall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["length_in", "height_in", "material", "roof_material"],
+      "properties": {
+        "length_in": {"type": "integer", "minimum": 120, "maximum": 2400},
+        "height_in": {"type": "integer", "minimum": 84, "maximum": 360},
+        "material": {"type": "string", "minLength": 1},
+        "roof_material": {"type": "string", "minLength": 1}
+      }
+    },
+    "ground": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depth_in", "material"],
+      "properties": {
+        "depth_in": {"type": "integer", "minimum": 120, "maximum": 2400},
+        "material": {"type": "string", "minLength": 1}
+      }
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hdri", "rotation_deg"],
+      "properties": {
+        "hdri": {"type": "string", "minLength": 1},
+        "rotation_deg": {"type": "number", "minimum": -360, "maximum": 360}
+      }
+    },
+    "hazards": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "concept", "asset", "distance_in", "along_in", "size_in", "label", "rule"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "concept": {"enum": [
+            "dry brush", "wood pile", "wooden fence", "roof debris", "foundation vent",
+            "tree branch over roof", "shrub", "tree", "dry grass", "propane tank", "shed",
+            "trash can", "patio furniture"
+          ]},
+          "asset": {"type": "string", "minLength": 1},
+          "distance_in": {"type": "integer"},
+          "along_in": {"type": "integer", "minimum": 0},
+          "size_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 1}},
+          "label": {"enum": ["required_now", "recommended"]},
+          "rule": {"type": "string", "minLength": 3}
+        }
+      }
+    },
+    "walk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "duration_s", "fps", "standoff_in", "start_along_in", "end_along_in", "height_in",
+        "tilt_deg", "focal_mm", "sensor_width_mm", "width_px", "height_px"
+      ],
+      "properties": {
+        "duration_s": {"type": "integer", "minimum": 1, "maximum": 300},
+        "fps": {"enum": [24, 25, 30, 60]},
+        "standoff_in": {"type": "integer", "minimum": 24, "maximum": 1200},
+        "start_along_in": {"type": "integer", "minimum": 0},
+        "end_along_in": {"type": "integer", "minimum": 0},
+        "height_in": {"type": "integer", "minimum": 24, "maximum": 84},
+        "tilt_deg": {"type": "number", "minimum": -10, "maximum": 60},
+        "focal_mm": {"type": "number", "minimum": 10, "maximum": 120},
+        "sensor_width_mm": {"type": "number", "minimum": 10, "maximum": 50},
+        "width_px": {"type": "integer", "minimum": 320, "maximum": 3840},
+        "height_px": {"type": "integer", "minimum": 240, "maximum": 2160}
+      }
+    }
+  }
+}

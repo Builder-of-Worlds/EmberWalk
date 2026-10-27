@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk ground truth for one side of a synthetic sample house",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "synthetic", "label", "scene", "side", "units", "axes", "visible_rule", "wall", "hazards"],
+  "properties": {
+    "schema": {"const": "emberwalk.truth/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "side": {"enum": ["front", "back", "left", "right"]},
+    "units": {"const": "inch"},
+    "axes": {"type": "string", "minLength": 10},
+    "visible_rule": {"type": "string", "minLength": 10},
+    "wall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["length_in", "height_in", "face_y_in"],
+      "properties": {
+        "length_in": {"type": "integer", "minimum": 1},
+        "height_in": {"type": "integer", "minimum": 1},
+        "face_y_in": {"const": 0}
+      }
+    },
+    "hazards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "concept", "side", "distance_in", "distance_ft", "distance_text", "band", "contact",
+          "label", "rule", "asset", "box_in", "visible_frames", "visible_s"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "concept": {"type": "string", "minLength": 1},
+          "side": {"enum": ["front", "back", "left", "right"]},
+          "distance_in": {"type": "integer", "minimum": 0, "maximum": 1200},
+          "distance_ft": {"type": "number", "minimum": 0, "maximum": 100},
+          "distance_text": {"type": "string", "pattern": "^[0-9]+ ft [0-9]+ in$"},
+          "band": {"enum": ["0_5", "5_30", "30_100"]},
+          "contact": {"type": "boolean"},
+          "label": {"enum": ["required_now", "recommended"]},
+          "rule": {"type": "string", "minLength": 3},
+          "asset": {"type": "string", "minLength": 1},
+          "box_in": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["min", "max"],
+            "properties": {
+              "min": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "max": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+            }
+          },
+          "visible_frames": {"type": "integer", "minimum": 0},
+          "visible_s": {
+            "description": "one [start, end] window in seconds per continuous run of visible frames, in time order; empty when never visible",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {"type": "number", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

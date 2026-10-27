@@ -1,0 +1,113 @@
+{
+  "schema": "emberwalk.truth/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "test-yard",
+  "side": "back",
+  "units": "inch",
+  "axes": "inches in scene axes: x along the wall from its right end as seen from the yard, y out from the wall face, z up from the ground",
+  "visible_rule": "a hazard is visible on a frame when the middle of its box face nearest the wall, at ground level, projects inside the image",
+  "wall": {
+    "length_in": 528,
+    "height_in": 108,
+    "face_y_in": 0
+  },
+  "hazards": [
+    {
+      "id": "wood-pile-1",
+      "concept": "wood pile",
+      "side": "back",
+      "distance_in": 0,
+      "distance_ft": 0.0,
+      "distance_text": "0 ft 0 in",
+      "band": "0_5",
+      "contact": true,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(3)",
+      "asset": "scripted:wood_pile",
+      "box_in": {
+        "min": [
+          96,
+          0,
+          0
+        ],
+        "max": [
+          168,
+          18,
+          48
+        ]
+      },
+      "visible_frames": 304,
+      "visible_s": [
+        [
+          0.0,
+          10.1
+        ]
+      ]
+    },
+    {
+      "id": "dry-brush-1",
+      "concept": "dry brush",
+      "side": "back",
+      "distance_in": 62,
+      "distance_ft": 5.17,
+      "distance_text": "5 ft 2 in",
+      "band": "5_30",
+      "contact": false,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(1)",
+      "asset": "polyhaven:dry_branches_medium_01",
+      "box_in": {
+        "min": [
+          252,
+          62,
+          0
+        ],
+        "max": [
+          306,
+          102,
+          30
+        ]
+      },
+      "visible_frames": 126,
+      "visible_s": [
+        [
+          9.266667,
+          13.433333
+        ]
+      ]
+    },
+    {
+      "id": "fence-joint-1",
+      "concept": "wooden fence",
+      "side": "back",
+      "distance_in": 0,
+      "distance_ft": 0.0,
+      "distance_text": "0 ft 0 in",
+      "band": "0_5",
+      "contact": true,
+      "label": "recommended",
+      "rule": "CAL FIRE Zone 0 guidance",
+      "asset": "scripted:wood_fence",
+      "box_in": {
+        "min": [
+          480,
+          0,
+          0
+        ],
+        "max": [
+          484,
+          288,
+          72
+        ]
+      },
+      "visible_frames": 153,
+      "visible_s": [
+        [
+          14.9,
+          19.966667
+        ]
+      ]
+    }
+  ]
+}
