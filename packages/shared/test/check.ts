@@ -6,6 +6,28 @@ export const FP = "ab".repeat(32);
 export const AT = "2026-10-26T17:00:00Z";
 export const LATER = "2026-10-26T18:00:00Z";
 
+export const TAPPED_FINDING = {
+  id: id(10),
+  walkId: id(1),
+  concept: "wood_pile",
+  trackIds: [],
+  band: "zone_0",
+  distanceFeet: { low: 0, high: 1 },
+  contact: "yes",
+  severity: 10,
+  rank: 1,
+  proofFrame: { clipId: id(3), frame: 4, still: "stills/w1/4.jpg" },
+  ruleIds: [],
+  label: "required_now",
+  instruction: "Move the wood pile away from the wall.",
+  plantState: null,
+  spacing: null,
+  voiceNote: null,
+  veto: null,
+  source: "tapped",
+  status: "needs_fixing",
+};
+
 export function roundTrips(schema: z.ZodType, value: unknown) {
   const result = schema.safeParse(JSON.parse(JSON.stringify(value)));
   expect(result.error?.issues).toBeUndefined();

@@ -17,9 +17,11 @@ export type AudioRequest = {
   end: number | null;
 };
 
+export type Region = [number, number, number, number];
+
 export type StillsRequest = {
   input: string;
-  stills: { time: number; output: string }[];
+  stills: { time: number; output: string; regions: Region[] }[];
 };
 
 export type ProbeRequest = { input: string };
@@ -112,6 +114,27 @@ export const parseAudio = (raw: unknown): AudioRequest => {
   return { input: url(body.input, "input"), output: url(body.output, "output"), ...range(body) };
 };
 
+const regionsOf = (value: unknown, field: string): Region[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw badRequest("invalid_region", `"${field}" must be a list of regions.`);
+  if (value.length > limits.maxBlurRegions) {
+    throw badRequest("too_many_regions", `At most ${limits.maxBlurRegions} regions per still.`);
+  }
+  return value.map((entry, i) => {
+    if (!Array.isArray(entry) || entry.length !== 4 || !entry.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      throw badRequest("invalid_region", `"${field}[${i}]" must be four numbers: x0, y0, x1, y1.`);
+    }
+    const [x0, y0, x1, y1] = entry as Region;
+    if (entry.some((n: number) => n < 0 || n > 1)) {
+      throw badRequest("region_out_of_range", `"${field}[${i}]" must stay within 0 to 1.`);
+    }
+    if (x0 >= x1 || y0 >= y1) {
+      throw badRequest("region_inverted", `"${field}[${i}]" must have x0 below x1 and y0 below y1.`);
+    }
+    return [x0, y0, x1, y1];
+  });
+};
+
 export const parseStills = (raw: unknown): StillsRequest => {
   const body = asBody(raw);
   allowKeys(body, ["input", "stills"]);
@@ -124,8 +147,12 @@ export const parseStills = (raw: unknown): StillsRequest => {
   }
   const stills = list.map((entry, i) => {
     const item = asBody(entry);
-    allowKeys(item, ["time", "output"]);
-    return { time: seconds(item.time, `stills[${i}].time`), output: url(item.output, `stills[${i}].output`) };
+    allowKeys(item, ["time", "output", "regions"]);
+    return {
+      time: seconds(item.time, `stills[${i}].time`),
+      output: url(item.output, `stills[${i}].output`),
+      regions: regionsOf(item.regions, `stills[${i}].regions`),
+    };
   });
   return { input: url(body.input, "input"), stills };
 };

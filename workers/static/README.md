@@ -7,6 +7,8 @@ The site at `emberwalk.app`: the landing page, the signup endpoint and the priva
 | Path | Holds |
 | --- | --- |
 | `public/` | The pages, style, script and the self hosted font with its `OFL.txt` |
+| `public/brand/` | The mark, tab icons, touch and app icons, lockups and the share card, all written by `scripts/brand.mjs` |
+| `scripts/brand.mjs` | Writes the brand SVGs from one set of geometry and renders the PNGs from them in headless Chromium (`EMBERWALK_CHROMIUM=<binary> node workers/static/scripts/brand.mjs`) |
 | `src/` | The Worker: `/api/config`, `/api/signup`, security headers, static assets |
 | `test/` | Worker tests against local D1 (`npm test -w workers/static`) |
 | `test/browser/` | Browser tests at 390 by 844 and 1440 by 900 (`npm run test:e2e -w workers/static`) |

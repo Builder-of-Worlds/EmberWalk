@@ -1,0 +1,23 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "test-yard-2",
+  "file": "test-yard-2/walk.mp4",
+  "size_bytes": 2434671,
+  "sha256": "b1b45c253af2648bc597b82b5767c6996fc2945495f0b8c448113a3e008225b8",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30.0,
+  "duration_s": 20.0,
+  "frame_count": 600,
+  "made_from": {
+    "file": "test-yard-2/walk.mp4",
+    "sha256": "0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0",
+    "size_bytes": 25809527
+  },
+  "made_with": "ffmpeg 9.0.2: -an -c:v libx264 -preset slow -crf 34 -maxrate 1800k -bufsize 3600k -pix_fmt yuv420p -r 30 -movflags +faststart",
+  "measured_with": "ffprobe -count_frames: 600 frames, 20.000000 s, 1920x1080, h264, yuv420p, 973868 bits a second (Tue Oct. 27th, 2026)"
+}

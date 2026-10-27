@@ -1,7 +1,13 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
 import { createUploadApi } from "./upload-api.ts";
+import type { PipelineStarter } from "./upload-api.ts";
 import { r2UploadStore } from "./upload-store.ts";
+import { handleCreateWalk } from "./walk-create.ts";
 import { d1WalkGate } from "./walk-gate.ts";
+import { handleWalkRead, READ_PATH } from "./walk-read.ts";
+import { handleAddTags } from "./walk-tags.ts";
+
+const TAGS_PATH = /^\/api\/walks\/([^/]+)\/tags$/;
 
 export type Env = {
   MEDIA: R2Bucket;
@@ -10,6 +16,7 @@ export type Env = {
   R2_BUCKET_NAME: string;
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
+  PIPELINE_SERVICE: PipelineStarter;
 };
 
 const errorResponse = (code: string, message: string, status: number): Response =>
@@ -22,6 +29,8 @@ const uploadApi = (env: Env) => {
     bucket: env.MEDIA,
     store: r2UploadStore(env.MEDIA),
     walks: d1WalkGate(env.DB),
+    pipeline: env.PIPELINE_SERVICE,
+    log: (line) => console.warn(line),
     limits: DEFAULT_LIMITS,
     signing: {
       host: R2_HOST,
@@ -37,6 +46,11 @@ export default {
   async fetch(request, env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/health") return Response.json({ status: "ok" });
+    if (pathname === "/api/walks") return handleCreateWalk(request, env.DB, () => crypto.randomUUID());
+    const tagsOf = TAGS_PATH.exec(pathname);
+    if (tagsOf !== null) return handleAddTags(request, env.DB, tagsOf[1] ?? "");
+    const readOf = READ_PATH.exec(pathname);
+    if (readOf !== null) return handleWalkRead(request, env, readOf);
     if (pathname.startsWith("/api/uploads")) {
       const api = uploadApi(env);
       if (api === null) return errorResponse("server_error", "Uploads are not set up on this server.", 500);

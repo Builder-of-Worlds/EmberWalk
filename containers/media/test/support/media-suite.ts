@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startFixtureServer } from "./fixture-server.ts";
 import type { FixtureServer } from "./fixture-server.ts";
-import { clipWithSound, clipWithoutSound, jpegSize, readWav } from "./fixtures.ts";
+import { clipWithoutPicture, clipWithSound, clipWithoutSound, grayPixels, jpegSize, readWav } from "./fixtures.ts";
 
 export type Target = {
   baseUrl: string;
@@ -334,6 +334,150 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
         expect(reply.status).toBe(200);
         expect(reply.json.stills).toHaveLength(60);
       }, 120_000);
+    });
+
+    describe("stills with regions to blur", () => {
+      const WIDTH = 640;
+      const HEIGHT = 360;
+      const MARGIN = 16;
+
+      const meanAbsDiff = (a: Buffer, b: Buffer, within: (x: number, y: number) => boolean): number => {
+        let total = 0;
+        let count = 0;
+        for (let y = 0; y < HEIGHT; y += 1) {
+          for (let x = 0; x < WIDTH; x += 1) {
+            if (!within(x, y)) continue;
+            total += Math.abs((a[y * WIDTH + x] as number) - (b[y * WIDTH + x] as number));
+            count += 1;
+          }
+        }
+        return total / count;
+      };
+
+      const sharpest = (pixels: Buffer, within: (x: number, y: number) => boolean): number => {
+        let top = 0;
+        for (let y = 0; y < HEIGHT; y += 1) {
+          for (let x = 1; x < WIDTH; x += 1) {
+            if (!within(x, y) || !within(x - 1, y)) continue;
+            top = Math.max(top, Math.abs((pixels[y * WIDTH + x] as number) - (pixels[y * WIDTH + x - 1] as number)));
+          }
+        }
+        return top;
+      };
+
+      const inside = (x0: number, y0: number, x1: number, y1: number, pad = 0) => (x: number, y: number) =>
+        x >= x0 - pad && x < x1 + pad && y >= y0 - pad && y < y1 + pad;
+
+      const stillsOf = async (regions: unknown[][] | undefined, extra: Record<string, unknown> = {}) => {
+        const reply = await call("/stills", {
+          input: url("/with-sound.mp4"),
+          stills: [
+            { time: 1, output: url("/out/plain.jpg") },
+            { time: 1, output: url("/out/blurred.jpg"), ...(regions === undefined ? {} : { regions }), ...extra },
+          ],
+        });
+        return {
+          reply,
+          plain: fixtures.puts.get("/out/plain.jpg") as Buffer,
+          blurred: fixtures.puts.get("/out/blurred.jpg") as Buffer,
+        };
+      };
+
+      it("blurs the named region so its detail is gone, and leaves the rest of the still as it was", async () => {
+        const { reply, plain, blurred } = await stillsOf([[0.25, 0.25, 0.5, 0.5]]);
+        expect(reply.status).toBe(200);
+        expect(jpegSize(blurred)).toEqual({ width: WIDTH, height: HEIGHT });
+        const region = inside(160, 90, 320, 180);
+        const a = grayPixels(plain);
+        const b = grayPixels(blurred);
+        expect(meanAbsDiff(a, b, region)).toBeGreaterThan(6);
+        const core = inside(163, 93, 317, 177);
+        expect(sharpest(a, core)).toBeGreaterThan(50);
+        expect(sharpest(b, core)).toBeLessThan(sharpest(a, core) / 3);
+        expect(meanAbsDiff(a, b, (x, y) => !inside(160, 90, 320, 180, MARGIN)(x, y))).toBeLessThan(1);
+      });
+
+      it("blurs every region it is given", async () => {
+        const { plain, blurred } = await stillsOf([[0.1, 0.1, 0.3, 0.3], [0.6, 0.6, 0.9, 0.9]]);
+        const a = grayPixels(plain);
+        const b = grayPixels(blurred);
+        expect(meanAbsDiff(a, b, inside(64, 36, 192, 108))).toBeGreaterThan(4);
+        expect(meanAbsDiff(a, b, inside(384, 216, 576, 324))).toBeGreaterThan(4);
+        expect(meanAbsDiff(a, b, inside(240, 130, 340, 200))).toBeLessThan(1);
+      });
+
+      it("blurs a region that reaches the edge of the frame", async () => {
+        const { reply, plain, blurred } = await stillsOf([[0.75, 0.75, 1, 1]]);
+        expect(reply.status).toBe(200);
+        expect(meanAbsDiff(grayPixels(plain), grayPixels(blurred), inside(480, 270, 640, 360))).toBeGreaterThan(4);
+      });
+
+      it("makes a still with no regions exactly as one without the field", async () => {
+        const { reply, plain, blurred } = await stillsOf([]);
+        expect(reply.status).toBe(200);
+        expect(blurred.equals(plain)).toBe(true);
+      });
+
+      it("accepts exactly 32 regions", async () => {
+        const regions = Array.from({ length: 32 }, (_, i) => [(i % 8) / 10, Math.floor(i / 8) / 10, (i % 8) / 10 + 0.05, Math.floor(i / 8) / 10 + 0.05]);
+        expect((await stillsOf(regions)).reply.status).toBe(200);
+      }, 120_000);
+
+      it("refuses a region that is not four numbers from 0 to 1 with the first corner above and left of the second", async () => {
+        const cases: [unknown, string][] = [
+          [[[0.1, 0.1, 0.5]], "invalid_region"],
+          [[[0.1, 0.1, 0.5, 0.5, 0.6]], "invalid_region"],
+          [[["a", 0.1, 0.5, 0.5]], "invalid_region"],
+          [[[0.1, 0.1, null, 0.5]], "invalid_region"],
+          [["x"], "invalid_region"],
+          [{ x0: 0 }, "invalid_region"],
+          [[[-0.1, 0.1, 0.5, 0.5]], "region_out_of_range"],
+          [[[0.1, 0.1, 1.01, 0.5]], "region_out_of_range"],
+          [[[0.1, 0.1, 0.5, Number.MAX_VALUE]], "region_out_of_range"],
+          [[[0.5, 0.1, 0.5, 0.5]], "region_inverted"],
+          [[[0.6, 0.1, 0.5, 0.5]], "region_inverted"],
+          [[[0.1, 0.5, 0.5, 0.2]], "region_inverted"],
+          [Array.from({ length: 33 }, () => [0.1, 0.1, 0.2, 0.2]), "too_many_regions"],
+        ];
+        for (const [regions, code] of cases) {
+          const reply = await call("/stills", { input: url("/with-sound.mp4"), stills: [{ time: 1, output: url("/out/bad-region.jpg"), regions }] });
+          expect([JSON.stringify(regions).slice(0, 60), reply.status, reply.json.error.code]).toEqual([JSON.stringify(regions).slice(0, 60), 400, code]);
+        }
+        expect(fixtures.puts.has("/out/bad-region.jpg")).toBe(false);
+      });
+
+      it("refuses an unknown field next to the regions", async () => {
+        const reply = await call("/stills", {
+          input: url("/with-sound.mp4"),
+          stills: [{ time: 1, output: url("/out/extra.jpg"), regions: [[0.1, 0.1, 0.2, 0.2]], radius: 4 }],
+        });
+        expect(reply.json.error.code).toBe("unknown_field");
+      });
+
+      it("refuses an input with no picture, and stores nothing", async () => {
+        serve("/sound-only.mp4", clipWithoutPicture(3));
+        const reply = await call("/stills", {
+          input: url("/sound-only.mp4"),
+          stills: [{ time: 1, output: url("/out/nopic.jpg"), regions: [[0.1, 0.1, 0.2, 0.2]] }],
+        });
+        expect(reply.status).toBe(422);
+        expect(reply.json.error.code).toBe("no_video");
+        expect(fixtures.puts.has("/out/nopic.jpg")).toBe(false);
+      });
+
+      it("refuses a time past the end when regions are named, and stores nothing", async () => {
+        const reply = await call("/stills", {
+          input: url("/with-sound.mp4"),
+          stills: [
+            { time: 1, output: url("/out/region-late-0.jpg"), regions: [[0.1, 0.1, 0.2, 0.2]] },
+            { time: 10.5, output: url("/out/region-late-1.jpg"), regions: [[0.1, 0.1, 0.2, 0.2]] },
+          ],
+        });
+        expect(reply.status).toBe(422);
+        expect(reply.json.error.code).toBe("time_out_of_range");
+        expect(fixtures.puts.has("/out/region-late-0.jpg")).toBe(false);
+        expect(fixtures.puts.has("/out/region-late-1.jpg")).toBe(false);
+      });
     });
 
     describe("load", () => {

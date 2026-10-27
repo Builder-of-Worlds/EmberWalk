@@ -1,0 +1,318 @@
+[
+  [
+    {
+      "hazard": "dry-brush-1",
+      "frame": 20,
+      "pointed": true,
+      "grid": {
+        "left": 138,
+        "top": 412,
+        "right": 460,
+        "bottom": 665
+      },
+      "pixels": {
+        "left": 264,
+        "top": 444,
+        "right": 884,
+        "bottom": 719
+      },
+      "sparkIou": 0.5708768194850588,
+      "window": 16,
+      "hits": 12,
+      "elsewhere": 5,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.012784,
+      "sparkFingerprint": "8225d184c99ae2738aea09875810908230a092a3fa281afad5511c809c5ef408",
+      "samFingerprint": "adcacb9208031891190bb395ecdcc351084cd229b7f46a6aac6575c513341460"
+    },
+    {
+      "hazard": "dry-brush-1",
+      "frame": 24,
+      "pointed": true,
+      "grid": {
+        "left": 575,
+        "top": 425,
+        "right": 916,
+        "bottom": 700
+      },
+      "pixels": {
+        "left": 1104,
+        "top": 459,
+        "right": 1759,
+        "bottom": 756
+      },
+      "sparkIou": 0.6201813526699143,
+      "window": 16,
+      "hits": 12,
+      "elsewhere": 5,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.012767,
+      "sparkFingerprint": "357d5e769c4d736c7811d423a1d72979db5c279310c4575f0a21eb09fa75ca5a",
+      "samFingerprint": "51f307d06347f8e394e6b6f5a9fbc3fc9c2afdf740a16671a02a2c99c70fe431"
+    },
+    {
+      "hazard": "dry-brush-1",
+      "frame": 28,
+      "pointed": true,
+      "grid": {
+        "left": 775,
+        "top": 470,
+        "right": 1000,
+        "bottom": 765
+      },
+      "pixels": {
+        "left": 1488,
+        "top": 507,
+        "right": 1920,
+        "bottom": 827
+      },
+      "sparkIou": 0.6994605734433291,
+      "window": 16,
+      "hits": 12,
+      "elsewhere": 6,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.0126735,
+      "sparkFingerprint": "64b461a48d9a2ea8379c35d2fca689660f477a0bb94558f860fe6fe4d67c2e73",
+      "samFingerprint": "5355d57a8f7e2bf1d81cb822a7b3812cf06a1b7aabbfbc2758fadd427ba0a73e"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 28,
+      "pointed": true,
+      "grid": {
+        "left": 0,
+        "top": 106,
+        "right": 155,
+        "bottom": 684
+      },
+      "pixels": {
+        "left": 0,
+        "top": 114,
+        "right": 298,
+        "bottom": 739
+      },
+      "sparkIou": 0.7546478519386987,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.0124445,
+      "sparkFingerprint": "862f359ff404674072c8860b1a0f0eb5aad068c54bf15ac852c4f9761efc3f97",
+      "samFingerprint": "1ac914ffbe6e185aa3ea55f6df7cf072b7c9857c3429ac93c18754705d3d4e4a"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 32,
+      "pointed": true,
+      "grid": {
+        "left": 12,
+        "top": 81,
+        "right": 315,
+        "bottom": 783
+      },
+      "pixels": {
+        "left": 23,
+        "top": 87,
+        "right": 605,
+        "bottom": 846
+      },
+      "sparkIou": 0.8753446327683616,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.0125465,
+      "sparkFingerprint": "0ab22fadbeeb77da04dbba1a43cf77bde38b75e28cd9aaedbc097bb22fc59501",
+      "samFingerprint": "f12c616df1b118960a5550fc7429cdf480f0883f1f93f158417cdd68cd44935c"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 36,
+      "pointed": true,
+      "grid": {
+        "left": 55,
+        "top": 120,
+        "right": 317,
+        "bottom": 840
+      },
+      "pixels": {
+        "left": 105,
+        "top": 129,
+        "right": 609,
+        "bottom": 908
+      },
+      "sparkIou": 0.9507207198170364,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.0122267,
+      "sparkFingerprint": "f1a87e1fbb6891c05047554d5854c137e54ac455c0bdf6c6fa02889ca10a04c2",
+      "samFingerprint": "384f630d8f8efccaf4aa5901b0ac7ba7bb1bf144d3eb6b1701087afd1c2ea0c8"
+    }
+  ],
+  [
+    {
+      "hazard": "dry-brush-1",
+      "frame": 20,
+      "pointed": true,
+      "grid": {
+        "left": 139,
+        "top": 373,
+        "right": 482,
+        "bottom": 665
+      },
+      "pixels": {
+        "left": 266,
+        "top": 402,
+        "right": 926,
+        "bottom": 719
+      },
+      "sparkIou": 0.522701065813154,
+      "window": 16,
+      "hits": 12,
+      "elsewhere": 5,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.011316,
+      "sparkFingerprint": "8225d184c99ae2738aea09875810908230a092a3fa281afad5511c809c5ef408",
+      "samFingerprint": "7018eed2e9bd0118b0bcca515c5ce9ee03e15aecb368e1de685d884572815e82"
+    },
+    {
+      "hazard": "dry-brush-1",
+      "frame": 24,
+      "pointed": true,
+      "grid": {
+        "left": 555,
+        "top": 425,
+        "right": 916,
+        "bottom": 790
+      },
+      "pixels": {
+        "left": 1065,
+        "top": 459,
+        "right": 1759,
+        "bottom": 854
+      },
+      "sparkIou": 0.7789624341207968,
+      "window": 16,
+      "hits": 12,
+      "elsewhere": 5,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.012914700000000001,
+      "sparkFingerprint": "357d5e769c4d736c7811d423a1d72979db5c279310c4575f0a21eb09fa75ca5a",
+      "samFingerprint": "2560a45162d55171c57a68b562d768b3841a4ba9a84712fa7386f190edeee789"
+    },
+    {
+      "hazard": "dry-brush-1",
+      "frame": 28,
+      "pointed": true,
+      "grid": {
+        "left": 795,
+        "top": 475,
+        "right": 1000,
+        "bottom": 768
+      },
+      "pixels": {
+        "left": 1526,
+        "top": 513,
+        "right": 1920,
+        "bottom": 830
+      },
+      "sparkIou": 0.712425864313612,
+      "window": 16,
+      "hits": 13,
+      "elsewhere": 4,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.011401,
+      "sparkFingerprint": "64b461a48d9a2ea8379c35d2fca689660f477a0bb94558f860fe6fe4d67c2e73",
+      "samFingerprint": "edbe96d3227c591a3860fbbe9d44918bb5a522a219d12eeb44af4e81dc3bfb7a"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 28,
+      "pointed": true,
+      "grid": {
+        "left": 0,
+        "top": 106,
+        "right": 156,
+        "bottom": 687
+      },
+      "pixels": {
+        "left": 0,
+        "top": 114,
+        "right": 300,
+        "bottom": 742
+      },
+      "sparkIou": 0.7462501164560107,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.012317,
+      "sparkFingerprint": "862f359ff404674072c8860b1a0f0eb5aad068c54bf15ac852c4f9761efc3f97",
+      "samFingerprint": "c67a0aca0947bb82f53e690d61bb056dc55cf04a6dd0157bcff11e5080bf7142"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 32,
+      "pointed": true,
+      "grid": {
+        "left": 12,
+        "top": 80,
+        "right": 315,
+        "bottom": 823
+      },
+      "pixels": {
+        "left": 23,
+        "top": 86,
+        "right": 605,
+        "bottom": 889
+      },
+      "sparkIou": 0.8501123136614254,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.011065750000000001,
+      "sparkFingerprint": "0ab22fadbeeb77da04dbba1a43cf77bde38b75e28cd9aaedbc097bb22fc59501",
+      "samFingerprint": "7b43c5f4a4436c1e52f8ad54f1e5c0bb64fab8fc289aa7a09dd30205bec69a27"
+    },
+    {
+      "hazard": "fence-joint-1",
+      "frame": 36,
+      "pointed": true,
+      "grid": {
+        "left": 55,
+        "top": 120,
+        "right": 315,
+        "bottom": 870
+      },
+      "pixels": {
+        "left": 105,
+        "top": 129,
+        "right": 605,
+        "bottom": 940
+      },
+      "sparkIou": 0.9067171736656314,
+      "window": 15,
+      "hits": 14,
+      "elsewhere": 2,
+      "found": true,
+      "refused": null,
+      "costUsd": 0.01224795,
+      "sparkFingerprint": "f1a87e1fbb6891c05047554d5854c137e54ac455c0bdf6c6fa02889ca10a04c2",
+      "samFingerprint": "8174811cc4ee0c2022ac60a626af2cf0a244bcf3f44e6a9007be075f9f813e8c"
+    }
+  ]
+]

@@ -120,10 +120,12 @@ export type SamAnswer = { frames: SamFrame[]; framesBilled: number };
 
 const SamBody = z.object({ status: z.literal("completed"), usage: Usage.optional() });
 
+const videoPart = (v: SamVideo) => ("fileId" in v ? { type: "input_video", file_id: v.fileId } : { type: "input_video", video_url: v.videoUrl });
+
 export function samVideoCall(r: SamVideoRequest): Call<SamAnswer> {
   const concept = SamConcept.parse(r.concept);
   if (!Number.isSafeInteger(r.frames) || r.frames < 1) throw new TypeError("frames must be a positive whole number");
-  const video = "fileId" in r.video ? { type: "input_video", file_id: r.video.fileId } : { type: "input_video", video_url: r.video.videoUrl };
+  const video = videoPart(r.video);
   const billed = (raw: unknown) => samVideoFramesBilled(SamBody.parse(raw).usage?.video_frames_processed ?? r.frames);
   return {
     model: SAM_MODEL,
@@ -139,6 +141,80 @@ export function samVideoCall(r: SamVideoRequest): Call<SamAnswer> {
         stream: false,
         input: [{ type: "message", role: "user", content: [{ type: "input_text", text: concept }, video] }],
         ...(r.includeConfidence === false ? {} : { metadata: { include_confidence: "true" } }),
+      },
+    },
+    estimateNano: samVideoFramesBilled(r.frames) * PRICE_NANO_USD.samVideoFrame,
+    cost: (raw): CostLine[] => [{ kind: "frames", count: billed(raw), unitPriceNano: PRICE_NANO_USD.samVideoFrame }],
+    read: (raw) => {
+      const body = SamBody.safeParse(raw);
+      if (!body.success) throw new MetaRefused("invalid_answer", "SAM answer is not a completed response");
+      return { frames: decodeSam(outputText(raw)), framesBilled: billed(raw) };
+    },
+  };
+}
+
+export const MAX_SAM_OBJECTS = 16;
+
+const BoxId = z.int().min(1).max(9999);
+
+export const SamBoxPrompts = z
+  .object({
+    frame: z.int().nonnegative(),
+    frameWidth: z.int().min(1),
+    frameHeight: z.int().min(1),
+    boxes: z
+      .array(z.object({ id: BoxId, left: z.int().nonnegative(), top: z.int().nonnegative(), right: z.int(), bottom: z.int() }))
+      .min(1)
+      .max(MAX_SAM_OBJECTS),
+  })
+  .superRefine((p, ctx) => {
+    if (new Set(p.boxes.map((b) => b.id)).size !== p.boxes.length) ctx.addIssue({ code: "custom", message: "each object id appears once per frame" });
+    for (const b of p.boxes) {
+      if (b.right <= b.left || b.bottom <= b.top) ctx.addIssue({ code: "custom", message: "a box needs a positive width and height" });
+      if (b.right > p.frameWidth || b.bottom > p.frameHeight) ctx.addIssue({ code: "custom", message: "a box must lie inside its frame" });
+    }
+  });
+
+export type SamBoxPrompts = z.infer<typeof SamBoxPrompts>;
+export type SamDirection = "both" | "forward" | "backward";
+
+export type SamBoxRequest = {
+  video: SamVideo;
+  prompts: SamBoxPrompts;
+  frames: number;
+  content: ContentKind;
+  direction?: SamDirection;
+  step?: Step;
+  walkId?: string | null;
+};
+
+export function samBoxText(p: SamBoxPrompts): string {
+  const tokens = p.boxes.map(
+    (b) => `${b.id}<|box;x1=${b.left};y1=${b.top};x2=${b.right - 1};y2=${b.bottom - 1};w=${p.frameWidth};h=${p.frameHeight}|>`,
+  );
+  return `<${p.frame}f>${tokens.join(",")}`;
+}
+
+export function samBoxVideoCall(r: SamBoxRequest): Call<SamAnswer> {
+  const prompts = SamBoxPrompts.parse(r.prompts);
+  if (!Number.isSafeInteger(r.frames) || r.frames < 1) throw new TypeError("frames must be a positive whole number");
+  if (prompts.frame >= r.frames) throw new TypeError("the prompt frame is past the end of the clip");
+  const video = videoPart(r.video);
+  const billed = (raw: unknown) => samVideoFramesBilled(SamBody.parse(raw).usage?.video_frames_processed ?? r.frames);
+  return {
+    model: SAM_MODEL,
+    content: r.content,
+    step: r.step ?? "segment",
+    walkId: r.walkId ?? null,
+    request: {
+      method: "POST",
+      path: "/responses",
+      json: {
+        model: SAM_MODEL,
+        store: false,
+        stream: false,
+        input: [{ type: "message", role: "user", content: [{ type: "input_text", text: samBoxText(prompts) }, video] }],
+        metadata: { include_confidence: "true", propagation_direction: r.direction ?? "both" },
       },
     },
     estimateNano: samVideoFramesBilled(r.frames) * PRICE_NANO_USD.samVideoFrame,

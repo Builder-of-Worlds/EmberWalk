@@ -1,0 +1,20 @@
+{
+  "name": "@emberwalk/explain",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@emberwalk/meta": "0.0.0",
+    "@emberwalk/rules": "0.0.0",
+    "@emberwalk/shared": "0.0.0",
+    "zod": "4.6.7"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

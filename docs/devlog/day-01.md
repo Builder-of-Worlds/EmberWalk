@@ -27,4 +27,4 @@ The first day laid the building blocks under the walk: the contracts, the upload
 
 ## Not built yet
 
-The phone app, the walk pipeline that ties these parts together, Muse Voice Transcribe and Muse Image. No live call to a Meta model has run yet.
+The phone app, the walk pipeline that ties these parts together, Muse Voice Transcribe and Muse Image. The first live test run of SAM 3.1 and Muse Spark came late on Day 1 (commit 27d6fa1, $0.111); the client was tested offline before that.

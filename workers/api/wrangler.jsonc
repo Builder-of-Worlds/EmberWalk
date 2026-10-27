@@ -12,6 +12,7 @@
       "migrations_dir": "../../migrations"
     }
   ],
+  "services": [{ "binding": "PIPELINE_SERVICE", "service": "emberwalk-pipeline", "entrypoint": "PipelineEntry" }],
   "vars": {
     "R2_HOST": "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com",
     "R2_BUCKET_NAME": "emberwalk-media"

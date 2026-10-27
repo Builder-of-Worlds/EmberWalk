@@ -1,0 +1,13 @@
+{
+  "run": "017",
+  "date": "2026-10-26",
+  "model": "sam-3.1",
+  "scene": "test-yard, synthetic, 2 frames per second",
+  "rule": "a window frame is a hit when a SAM box overlaps the truth box at IoU 0.5 or more; a hazard is found when half its window frames are hits",
+  "hazards": [
+    { "id": "wood-pile-1", "concept": "wood_pile", "window": 21, "hits": 21, "misses": 0, "falseAlarms": 1, "found": true },
+    { "id": "dry-brush-1", "concept": "dry_brush", "window": 8, "hits": 0, "misses": 8, "falseAlarms": 0, "found": false },
+    { "id": "fence-joint-1", "concept": "wooden_fence", "window": 10, "hits": 0, "misses": 10, "falseAlarms": 26, "found": false }
+  ],
+  "findings": { "hits": ["wood-pile-1"], "misses": ["dry-brush-1", "fence-joint-1"], "falseAlarms": [], "wrong": [] }
+}

@@ -8,6 +8,7 @@ export const limits = {
   maxFps: num("MEDIA_MAX_FPS", 4),
   defaultFps: 2,
   maxStills: num("MEDIA_MAX_STILLS", 60),
+  maxBlurRegions: num("MEDIA_MAX_BLUR_REGIONS", 32),
   maxSeconds: num("MEDIA_MAX_SECONDS", 420),
   maxInputBytes: num("MEDIA_MAX_INPUT_BYTES", 2 * 1024 ** 3),
   maxBodyBytes: num("MEDIA_MAX_BODY_BYTES", 64 * 1024),

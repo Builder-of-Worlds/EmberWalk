@@ -59,6 +59,59 @@ describe("pages and headers", () => {
   });
 });
 
+const BRAND_FILES: [string, string][] = [
+  ["icon.svg", "image/svg+xml"],
+  ["mark.svg", "image/svg+xml"],
+  ["mark-dark.svg", "image/svg+xml"],
+  ["icon-32.png", "image/png"],
+  ["apple-touch-icon.png", "image/png"],
+  ["icon-192.png", "image/png"],
+  ["icon-512.png", "image/png"],
+  ["icon-maskable-512.png", "image/png"],
+  ["lockup.png", "image/png"],
+  ["lockup-dark.png", "image/png"],
+  ["share-card.png", "image/png"],
+];
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+describe("brand files", () => {
+  it.each(BRAND_FILES)("serves /brand/%s as %s with the security headers", async (name, type) => {
+    const response = await get(`/brand/${name}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain(type);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (type === "image/png") expect([...bytes.slice(0, 8)]).toEqual(PNG_SIGNATURE);
+    else expect(new TextDecoder().decode(bytes)).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  });
+
+  it("draws the share card at 1200 by 630 and the square icons at their named sizes", async () => {
+    const sizes: [string, number, number][] = [
+      ["share-card.png", 1200, 630],
+      ["icon-32.png", 32, 32],
+      ["apple-touch-icon.png", 180, 180],
+      ["icon-192.png", 192, 192],
+      ["icon-512.png", 512, 512],
+      ["icon-maskable-512.png", 512, 512],
+    ];
+    for (const [name, width, height] of sizes) {
+      const view = new DataView(await (await get(`/brand/${name}`)).arrayBuffer());
+      expect([view.getUint32(16), view.getUint32(20)], name).toEqual([width, height]);
+    }
+  });
+
+  it.each(["/brand/favicon.ico", "/brand/icon-64.png", "/brand/"])("answers a missing brand file %s with 404", async (path) => {
+    expect((await get(path)).status).toBe(404);
+  });
+
+  it.each(["POST", "PUT", "DELETE"])("refuses %s to a brand file and sends no image", async (method) => {
+    const response = await get("/brand/share-card.png", method);
+    expect(response.status).toBe(405);
+    expect(response.headers.get("content-type") ?? "").not.toContain("image/");
+  });
+});
+
 function documented(name: string) {
   const block = new RegExp("```sql " + name + "\\n([\\s\\S]*?)```").exec(env.README_TEXT);
   expect(block, `README.md must hold a fenced sql ${name} block`).not.toBeNull();

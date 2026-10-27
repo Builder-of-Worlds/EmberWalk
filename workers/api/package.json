@@ -10,7 +10,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@emberwalk/shared": "*"
+    "@emberwalk/db": "*",
+    "@emberwalk/rules": "*",
+    "@emberwalk/shared": "*",
+    "@emberwalk/sigv4": "*"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.8",

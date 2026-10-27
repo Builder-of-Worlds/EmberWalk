@@ -1,0 +1,11 @@
+{
+  "name": "EmberWalk",
+  "short_name": "EmberWalk",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#efeae0",
+  "theme_color": "#5b6b4f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

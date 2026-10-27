@@ -1,0 +1,44 @@
+{
+  "standIn": "stand-in answer written by hand for tests, never a Muse Spark output",
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "verdict": "keep",
+      "reason": "The wood pile sits against the back wall.",
+      "plantState": null,
+      "spacing": null,
+      "bandCheck": "same",
+      "instruction": "Move the wood pile more than 30 feet from the house, or cover it completely.",
+      "ruleIds": [
+        "ca-wood-pile-nowhere-z0"
+      ],
+      "language": "en"
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "verdict": "keep",
+      "reason": "The frames show a metal fence, not a wooden one.",
+      "plantState": "dead",
+      "spacing": null,
+      "bandCheck": "closer",
+      "instruction": "Replace the wooden fence within 5 feet of the house with metal.",
+      "ruleIds": [
+        "ca-wooden-fence-zone-0-calfire-z0"
+      ],
+      "language": "en"
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000999",
+      "verdict": "keep",
+      "reason": "The brush is brown and dry.",
+      "plantState": "dead",
+      "spacing": null,
+      "bandCheck": "same",
+      "instruction": "Remove the dead brush within 30 feet of the house.",
+      "ruleIds": [
+        "ca-dry-brush-ccr-z1"
+      ],
+      "language": "en"
+    }
+  ]
+}

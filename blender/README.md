@@ -9,6 +9,9 @@ Every house built here is a "Synthetic sample house".
 - Unit tests (no Blender needed except the re-measure test): `python3 -m unittest discover blender/tests`
 - Build a scene: `blender --background --factory-startup --python-exit-code 1 --python blender/build_scene.py -- <spec.json> [--out DIR]`
 
+- Render the walk: `blender --background --factory-startup --python-exit-code 1 <scene.blend> --python blender/render_walk.py -- --out <walk.mp4>`
+- Tight truth boxes: `blender --background --factory-startup --python-exit-code 1 <scene.blend> --python blender/render_masks.py -- --out <boxes.json>` renders a flat colour pass of every frame and writes the tightest box round each hazard's pixels. `python3 blender/write_files.py <spec.json> --out DIR --mask-pass <boxes.json>` then writes them into `truth.json` as `frame_boxes`, and sets each hazard's visible windows from the pass. A pass with a missing frame, a wrong hazard list or a box outside the image is refused (exit 3).
+
 Output goes to `$EMBERWALK_RENDERS/<scene id>/` (default `~/emberwalk-renders/`), never into git.
 
 ## Specs and files
