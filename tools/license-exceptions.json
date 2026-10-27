@@ -1,0 +1,24 @@
+{
+  "exceptions": [
+    {
+      "name": "@img/sharp-libvips-darwin-arm64",
+      "license": "LGPL-3.0-or-later",
+      "why": "Image library binary pulled in by miniflare (Workers test pool and wrangler) for local runs only; never bundled into a Worker or the app."
+    },
+    {
+      "name": "lightningcss",
+      "license": "MPL-2.0",
+      "why": "CSS tool pulled in by vite (under vitest) at build and test time; its code is not shipped, only its output."
+    },
+    {
+      "name": "lightningcss-darwin-arm64",
+      "license": "MPL-2.0",
+      "why": "Platform binary of lightningcss, same use."
+    },
+    {
+      "name": "minimatch",
+      "license": "BlueOak-1.0.0",
+      "why": "Glob matcher pulled in by eslint; a permissive license not on the list, used only by the linter."
+    }
+  ]
+}

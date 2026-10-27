@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk record of one rendered walk video kept outside git",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "synthetic", "label", "scene", "file", "size_bytes", "sha256", "codec", "pix_fmt",
+    "width", "height", "fps", "duration_s", "frame_count", "settings"
+  ],
+  "properties": {
+    "schema": {"const": "emberwalk.render/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "file": {"type": "string", "pattern": "^[a-z0-9-]+/[a-z0-9-]+\\.mp4$"},
+    "size_bytes": {"type": "integer", "minimum": 1},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "codec": {"const": "h264"},
+    "pix_fmt": {"type": "string", "minLength": 3},
+    "width": {"type": "integer", "minimum": 1},
+    "height": {"type": "integer", "minimum": 1},
+    "fps": {"type": "number", "exclusiveMinimum": 0},
+    "duration_s": {"type": "number", "exclusiveMinimum": 0},
+    "frame_count": {"type": "integer", "minimum": 1},
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "samples", "render_seconds", "blender", "machine"],
+      "properties": {
+        "engine": {"type": "string", "minLength": 1},
+        "samples": {"type": "integer", "minimum": 1},
+        "render_seconds": {"type": "number", "minimum": 0},
+        "blender": {"type": "string", "minLength": 1},
+        "machine": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

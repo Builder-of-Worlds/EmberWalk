@@ -1,0 +1,19 @@
+{
+  "name": "@emberwalk/static",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "dev": "wrangler dev --local"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.8",
+    "@cloudflare/workers-types": "5.20261026.1",
+    "@playwright/test": "1.64.1",
+    "vitest": "4.1.12",
+    "wrangler": "4.153.0"
+  }
+}

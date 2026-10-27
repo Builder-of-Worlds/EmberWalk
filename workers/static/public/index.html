@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EmberWalk | Get your home ready for wildfire season</title>
+  <meta name="description" content="EmberWalk launches Nov. 4th, 2026. Take one walk around your house with your phone and see what could catch, what to fix first, and what California requires.">
+  <link rel="icon" href="data:,">
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/boot.js"></script>
+  <script type="module" src="/site.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="/">EmberWalk</a>
+  </header>
+
+  <main>
+    <section class="block hero">
+      <div class="column">
+        <h1 class="focus-in">When the next wildfire comes, will your home be ready?</h1>
+        <p class="focus-in">According to CAL FIRE, up to 90 percent of homes that catch fire in a wildfire are set alight by embers. Embers ride the wind and land in the dry leaves, the wood pile by the wall, the fence that touches the siding. The small things around your home can decide what happens to it, and most people have no idea which ones matter.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="column">
+        <h2 class="focus-in">EmberWalk does.</h2>
+        <p class="focus-in">Take one walk around your house with your phone. EmberWalk shows you exactly what could catch, what to fix first, and what California actually requires, so you're not left guessing.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="column">
+        <h2 class="focus-in">Then it takes the hard part off your plate.</h2>
+        <p class="focus-in">No calling around. No chasing quotes. EmberWalk finds licensed crews near you, sends them exactly what needs doing, and keeps following up until the work gets done. Nothing goes out without your okay.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="column">
+        <p class="statement focus-in"><strong>When the work's done, EmberWalk requests your fire department inspection for you,</strong> with every fix documented and ready to show. Your local fire agency comes out and gives the official sign-off.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="column">
+        <h2 class="focus-in">Own rentals or manage properties?</h2>
+        <p class="focus-in">See every home in one place, know which ones are ready, and keep the dated record your insurance renewal asks for.</p>
+      </div>
+    </section>
+
+    <section class="block closing" id="early-access">
+      <div class="column">
+        <h2 class="focus-in">Fire season doesn't wait. Get ready before it starts.</h2>
+        <p class="lead focus-in">EmberWalk launches Nov. 4th, 2026. Be first in line.</p>
+
+        <form id="signup" class="signup focus-in" novalidate>
+          <input class="control" type="email" name="email" placeholder="Email" aria-label="Email" autocomplete="email" inputmode="email" maxlength="254" required>
+          <select class="control" name="role" aria-label="I'm a:" required>
+            <option value="" selected disabled>I'm a:</option>
+            <option value="homeowner">Homeowner</option>
+            <option value="landlord">Landlord or property manager</option>
+            <option value="other">Other</option>
+          </select>
+          <div id="turnstile-box" class="turnstile-box"></div>
+          <button class="button" type="submit">Get Early Access</button>
+          <p id="signup-status" class="status" role="status" aria-live="polite" hidden></p>
+        </form>
+
+        <p class="small focus-in">We'll email you about EmberWalk's launch and updates. <a href="/privacy">Privacy</a></p>
+        <p class="small focus-in">Questions: <a href="mailto:hello@emberwalk.app">hello@emberwalk.app</a></p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

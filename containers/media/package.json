@@ -1,0 +1,12 @@
+{
+  "name": "@emberwalk/media",
+  "private": true,
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "vitest run",
+    "test:container": "vitest run --config vitest.image.config.ts"
+  }
+}
