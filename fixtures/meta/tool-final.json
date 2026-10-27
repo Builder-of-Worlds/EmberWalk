@@ -1,19 +1,126 @@
 {
-  "id": "resp_fixture_tool_final",
-  "object": "response",
-  "status": "completed",
+  "top_logprobs": 0,
+  "temperature": 1,
+  "top_p": 1,
+  "service_tier": "auto",
   "model": "muse-spark-1.3",
-  "output": [
+  "reasoning": {
+    "effort": "high"
+  },
+  "background": false,
+  "tools": [
     {
-      "type": "message",
-      "role": "assistant",
-      "content": [{ "type": "output_text", "text": "Recorded: the dry brush on frame 312 is kept as a hazard." }]
+      "type": "function",
+      "name": "judge_detection",
+      "description": "Record whether one detected object is really the named hazard on the given frame, and for plants whether they are dead or alive.",
+      "parameters": {
+        "required": [
+          "concept",
+          "frame",
+          "keep",
+          "plantState",
+          "reason"
+        ],
+        "properties": {
+          "concept": {
+            "enum": [
+              "dry_brush",
+              "wood_pile",
+              "wooden_fence",
+              "roof_debris",
+              "foundation_vent",
+              "house_wall",
+              "tree_branch_over_roof",
+              "chimney",
+              "shrub",
+              "tree",
+              "dry_grass",
+              "propane_tank",
+              "shed",
+              "trash_can",
+              "patio_furniture"
+            ],
+            "type": "string"
+          },
+          "frame": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "keep": {
+            "type": "boolean"
+          },
+          "plantState": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dead",
+                  "alive",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "additionalProperties": false
+      }
     }
   ],
+  "tool_choice": "auto",
+  "truncation": "disabled",
+  "id": "resp_6ae00db77318dc5b04234bd7",
+  "object": "response",
+  "status": "completed",
+  "created_at": 1793068471,
+  "completed_at": 1793068471,
+  "error": null,
+  "incomplete_details": null,
+  "output": [
+    {
+      "type": "reasoning",
+      "id": "rs_6ae00db77318dc5b04234bd7:rs_a07aa8fd-e20c-4386-8d56-19ff42e4401c",
+      "encrypted_content": "Q-PaDgFSwSblQJ1PowchTxbTdGbBMR4OizJK_uTickVMjz_quFnQWxIQ04gbaOuQzugr4gPVQKBe1C9ZqvuRpLInNYm8DE_ECcn2_52JeUSz5xeWFtghCNEHIEGM4m6jYdPowL0J5ueA2a8TnSHJAFjAsPbewBaCIpwuSIsJxcr7dKrpyETUmGk9AdkiW-X9teuTWnBMIp3Uyj47L6KFMU4ywtLPPqliVL9DbhgFVijejJNvUEw2P11LhNl44Q2tLTh_kJ_X7QB3VvIEBR4NgsMyYm0Xt5HKlM3agHw6qxb0m1gZGI9FPQn_9zbZmp5zTHxwr6dvGI1rdeMTa4SU7W-TopeZkufO6pPN6Rs5o5cXM0vg1Oetv0pLLRkHKagsscXbLcrAsnFYzBViKHvhqncV2vkzrLdGcnu9uxNdFKBHxIQ4iZi1SIJ6MwXAtRuy9UacqoZ-EbmWGG6GifTcY3CM0YrvuMmGWqVWpaafxHEiOJJHsF5MnY6Rz8NRQtx9h8JUiqaa1tQ_WgK5f0_y2aOqd3dbQzM4rT2jQWoAbkk7aIysB9u_8InuEwBCp4X8pbfVSTFKmVnjWlnEtr9J2eLr4z8M9nNAtnN9UVjDtnULTYfQGwgAa0elMddYBUdLoE59ecCviWUQEOPknC4xLkAWUOPPPBp0eY79J4voE0YhS2hbaK-h5O5ryDlETMgqo1K-yOc3phlAStFNjnotDqwxKB1yZYeEMhWYN_N6EQby5lx2wxerJuIfeF3zPdrKG-lwHsdqmC-L8xHsx6Di-A_YtpZ0E5ez7eboUUA6gumeBv6HtNckXvea-RW_3YqcMCJFmZ_bqekx3CUgbcbtNz7rDmtHVilAWyoACuEtklW5NqQhtA9Tkrl9BtcutDVivDDI4aisR9Nceq3hRj8iDbprK6Oo331CptDp62EBbe1iE0kKTdZCeA6UQCs_GmmNA2PIhZLgdnhl3WjaVKR0KrRopj8wwAtYashx35-tMTLIX8KZahIJeEgMQOVEVYqblVTlegB1G6kbOW7MgwZU31jWwL55TRGVHaxr5lYT6Pgu7V4ms40aqVIAsMeljU7ur5m39WIWyKp17QCMcKH-uobW-ksS24WcqcHWB8W8nPIbYxITu_6ZyEIQDCVk8NjHm9gklVO5y2sqbZERb8lIcEUJa9cooZoa0LLimC6zEpvLk2hluPoKHqyns9mHgrqzaums-epiGfjACtNAzeEoeupgj_531yTGqs5pEvwn_4W8XxeVXEehccJrbQcsp2pKgrdISBZBCE5cE22QAJwLU-KQcc63MtVKs1NC7YnGxw2sDMdwmFEO0Wrr9T_4eNEUQOJoi3e64V8KYkiIzjLF5O9GNpvRSMBLD3TVfNqKZlt0Uqi9bRfjqwJJKaa2XWRq59ll01y_XW8WarC1ZSZuCIdUBi7S1CC9tZegfbXV4w7xkfAN6sV0ArH7Yb-2pCsfTeliynrZ256aDG8cmuXDRzgCRUoukLA0-3koAUV39OB5CP7cuTHqgnq7Ia2Z1_gGPPm0Co67zVpOPghfPLuq5e6TkaVsY_ftLxofi1SKTqI9nojQV37j1ipNRamDo7qLERJzHtOTSpg8J-juMgb9eJx1gF5GVwN7Dc2UQX9JErCxGRLhfWiyuqoQSgVT-9L9CYHoMbeqVIojHASTFIlMUibLPYnHX2qpgq5gWcugz062IG8uDXKndwaUu6TTJLBNsB49aIXrpM8QZv2xyMMA3rIzitXVJujMFbKWd3npjIIs41p5gxyqO877o0DVOCBejQ0UbjpF1Jwk5_mTGjbU4BZQ49PQvZrBbaI5sCOv4AHSSsvJ4MQRjXR-LM8bB-K3z8Bt5izOsRlTxMUO9_J--j5oXSSE9dGth373yULRjEsOO57Oipb6FGx7rsBlXF7hhqM2wvUYNWTFMYFHaRfnZc3pfpfDxcz45skufWRb0EzD-ZuOu2F_8hfjPPRi3CqgbZ9Ib6mCFu756MRtfOaYxrg-v_ykvF8IkBCXbyxyUr7BbuIJvRWRNo5px-rsdxw7X3_n7GkTxdcSYOY048ObuRe59JeCgoTgdknOhXDMA505OxNrbP3Efah5EuDtIJYw8rbLiQ_ksjKq1PUXYJtxJmU1nEg_BgHtJPxzvodqgTp3KWUz4HAfaCMtOQ5Q3GvqBHHC8uC1f1iiubUw3cVq-ybewNMYiUKDDF-NMbp0KCGBrjL-SB8D40Pk3zRKFmDnm_UOdcHwwBdb6N5FPGob9qpdLd-vjYMUw7NhL3EPV_jg8S9nSSndX_r5lponAAxDNv7SkxCbHwOcgMKXI9qdGLKuzspUSeovmBou8Vnv0w8bpCkxdj0C5WSw63AcjdpAXrl_jDzaOTwAqPlPH20_dys4JFC3GvTxA-p57qBd6Qq8_DMtaUFjgfqQt5ZGO3psXcR_odWUe6oOvp0KuehVQE6G5FlEUTNMI8Om1jjpr9hI2ao-k6wDwd77po4dqAetReqyO0Sd3ZIxmUAOnBaCGXnWSRxPJ6SOOU4QCgUPATbyxKbM1yEWTfyjHlk0K43o0Db-fRhqkXmTkfOTq0yfDVLDuKgPgJxhyMUVDdgg_PX_WQyODq9lwbWQA5i0dnibjZJJCac9yGkClRuV6g3OMFQ0OvCdLjyBwWm_l1AZ6fB-FpIXifo87ESmtrJF7o0zWizfdmuJaFHxTv4tR4rxBT9fAFmehrInHDExuU3haEWTpfhaxf-8x6V9HXsNN64K3E0_4nWEUoy86-gIhKh3Y_eoi1gQPy3BKAZKq78",
+      "summary": [],
+      "status": "completed"
+    },
+    {
+      "type": "message",
+      "id": "msg_9aaa7a8c-d10c-41d5-9fd1-a5d6294bcf2f",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Judged dry brush on frame 20 as keep (dead).",
+          "annotations": [],
+          "logprobs": []
+        }
+      ],
+      "status": "completed"
+    }
+  ],
+  "instructions": "You check wildfire hazards found in a yard video. Always answer by calling judge_detection exactly once.",
   "usage": {
-    "input_tokens": 2010,
-    "input_tokens_details": { "cached_tokens": 1792 },
-    "output_tokens": 24,
-    "total_tokens": 2034
-  }
+    "input_tokens": 947,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens": 197,
+    "output_tokens_details": {
+      "reasoning_tokens": 175
+    },
+    "total_tokens": 1144
+  },
+  "parallel_tool_calls": true,
+  "store": false,
+  "max_output_tokens": 2000
 }

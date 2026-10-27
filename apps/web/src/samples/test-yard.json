@@ -1,0 +1,60 @@
+{
+  "id": "sample-test-yard",
+  "walkedOn": "2026-10-26",
+  "synthetic": true,
+  "gaps": [
+    {
+      "side": "front",
+      "kind": "missing"
+    },
+    {
+      "side": "right",
+      "kind": "missing"
+    },
+    {
+      "side": "left",
+      "kind": "missing"
+    }
+  ],
+  "findings": [
+    {
+      "id": "wood-pile-1",
+      "concept": "wood_pile",
+      "band": "zone_0",
+      "distanceFeet": {
+        "low": 0,
+        "high": 0
+      },
+      "label": "required_now",
+      "instruction": "Move the wood pile more than 30 feet from the house, or cover it completely with fire resistant material.",
+      "sources": [
+        {
+          "citation": "14 CCR 1299.03(a)(3)",
+          "words": "Relocate exposed firewood piles outside of Zone 1 unless they are completely covered in a fire resistant material.",
+          "status": "in_force",
+          "url": "https://govt.westlaw.com/calregs/Document/I47E4A92E5B4D11EC976B000D3A7C4BC3",
+          "retrievedOn": "2026-10-25"
+        },
+        {
+          "citation": "CAL FIRE Zone 0 guidance",
+          "words": "Move firewood and lumber to Zone 2 for safety",
+          "status": "recommended",
+          "url": "https://readyforwildfire.org/prepare-for-wildfire/defensible-space/",
+          "retrievedOn": "2026-10-24"
+        }
+      ],
+      "confidence": 1,
+      "proof": {
+        "still": "wood-pile-1.jpg",
+        "frame": 1,
+        "seconds": 0.5,
+        "marker": [
+          0,
+          0.1426,
+          0.3776,
+          0.6148
+        ]
+      }
+    }
+  ]
+}

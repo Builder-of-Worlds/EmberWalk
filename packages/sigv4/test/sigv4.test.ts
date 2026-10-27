@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { presign } from "../src/sigv4.ts";
-import type { Presign } from "../src/sigv4.ts";
+import { describe, expect, it, vi } from "vitest";
+import { presign } from "../src/index.ts";
+import type { Presign } from "../src/index.ts";
 
 const exampleKeyId = ["AKIA", "IOSFODNN7EXAMPLE"].join("");
 
@@ -56,6 +56,17 @@ describe("presign", () => {
     expect(url.searchParams.get("X-Amz-SignedHeaders")).toBe("content-length;host");
     const same = await presign({ ...awsExample, signedHeaders: { "content-length": "5" } });
     expect(signatureOf(same)).toBe(url.searchParams.get("X-Amz-Signature"));
+  });
+
+  it("imports every signing key as one that cannot be exported and can only sign", async () => {
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+    try {
+      await presign(awsExample);
+      expect(importKey).toHaveBeenCalledTimes(5);
+      for (const call of importKey.mock.calls) expect([call[3], call[4]]).toEqual([false, ["sign"]]);
+    } finally {
+      importKey.mockRestore();
+    }
   });
 
   it("encodes keys and query values the way S3 expects", async () => {

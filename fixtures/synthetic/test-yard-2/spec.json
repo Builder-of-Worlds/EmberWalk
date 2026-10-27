@@ -1,0 +1,59 @@
+{
+  "schema": "emberwalk.scene-spec/1",
+  "id": "test-yard-2",
+  "label": "Synthetic sample house",
+  "side": "back",
+  "wall": {
+    "length_in": 528,
+    "height_in": 108,
+    "material": "polyhaven:weathered_plank_siding",
+    "roof_material": "polyhaven:grey_roof_01"
+  },
+  "ground": {"depth_in": 1320, "material": "polyhaven:withered_grass"},
+  "light": {"hdri": "polyhaven:goegap", "rotation_deg": 180},
+  "hazards": [
+    {
+      "id": "wood-pile-1",
+      "concept": "wood pile",
+      "asset": "scripted:wood_pile",
+      "distance_in": 0,
+      "along_in": 96,
+      "size_in": [72, 18, 48],
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(3)"
+    },
+    {
+      "id": "dry-brush-1",
+      "concept": "dry brush",
+      "asset": "polyhaven:dry_branches_medium_01",
+      "distance_in": 62,
+      "along_in": 252,
+      "size_in": [54, 40, 30],
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(1)"
+    },
+    {
+      "id": "fence-joint-1",
+      "concept": "wooden fence",
+      "asset": "scripted:wood_picket_fence",
+      "distance_in": 0,
+      "along_in": 452,
+      "size_in": [5, 102, 54],
+      "label": "recommended",
+      "rule": "CAL FIRE Zone 0 guidance"
+    }
+  ],
+  "walk": {
+    "duration_s": 20,
+    "fps": 30,
+    "standoff_in": 192,
+    "start_along_in": 72,
+    "end_along_in": 408,
+    "height_in": 54,
+    "tilt_deg": 17,
+    "focal_mm": 26,
+    "sensor_width_mm": 36,
+    "width_px": 1920,
+    "height_px": 1080
+  }
+}

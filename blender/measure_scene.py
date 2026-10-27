@@ -15,6 +15,14 @@ def inches(values):
     return [round(m_to_in(v), 3) for v in values]
 
 
+def material_record(mat):
+    nodes = mat.node_tree.nodes
+    return {
+        "images": {n.image.name: n.image.colorspace_settings.name for n in nodes if n.type == "TEX_IMAGE"},
+        "tints": [[round(v, 3) for v in n.inputs[7].default_value[:3]] for n in nodes if n.type == "MIX"],
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(prog="measure_scene.py", description="Measure an opened scene from its geometry.")
     parser.add_argument("--out", required=True)
@@ -46,6 +54,8 @@ def main():
     r = scene.render
     record = {
         "objects": sorted("%s:%s" % (o.type, o.name) for o in bpy.data.objects),
+        "hazard_materials": {i: sorted({m.name for o in objs for m in o.data.materials}) for i, objs in sorted(groups.items())},
+        "materials": {m.name: material_record(m) for m in bpy.data.materials if m.node_tree},
         "wall_face_y_in": inches(blendscene.world_bounds([wall])[1])[1],
         "hazards": hazards,
         "camera": poses,

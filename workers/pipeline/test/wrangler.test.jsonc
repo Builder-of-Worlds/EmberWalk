@@ -1,0 +1,22 @@
+{
+  "name": "emberwalk-pipeline-tests",
+  "main": "./entry.ts",
+  "compatibility_date": "2026-08-15",
+  "account_id": "755646338ba02dbe2d3409c5a557fa15",
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "emberwalk-media" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emberwalk-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../../migrations"
+    }
+  ],
+  "workflows": [{ "name": "walk-pipeline", "binding": "PIPELINE", "class_name": "WalkPipeline" }],
+  "vars": {
+    "R2_HOST": "test-account.r2.cloudflarestorage.com",
+    "R2_BUCKET_NAME": "emberwalk-media",
+    "META_BASE_URL": "https://meta.test/v1",
+    "META_BILLING": "free_credits"
+  }
+}

@@ -13,6 +13,7 @@
     "units": {"const": "inch"},
     "axes": {"type": "string", "minLength": 10},
     "visible_rule": {"type": "string", "minLength": 10},
+    "box_source": {"type": "string", "minLength": 10},
     "wall": {
       "type": "object",
       "additionalProperties": false,
@@ -52,6 +53,21 @@
             "properties": {
               "min": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
               "max": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+            }
+          },
+          "frame_boxes": {
+            "description": "one tight box in image pixels (left, top, right, bottom) per frame the hazard shows in the render's mask pass; no entry on a frame where it does not",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["frame", "t", "box_px", "area_px"],
+              "properties": {
+                "frame": {"type": "integer", "minimum": 1},
+                "t": {"type": "number", "minimum": 0},
+                "box_px": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}},
+                "area_px": {"type": "integer", "minimum": 1}
+              }
             }
           },
           "visible_frames": {"type": "integer", "minimum": 0},

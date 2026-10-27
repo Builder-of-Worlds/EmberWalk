@@ -1,27 +1,68 @@
 import { z } from "zod";
-import { Id, Language, Point, Text, Timestamp } from "./common.ts";
-import { Finding, MapPin, Preview, ViewPreference } from "./finding.ts";
+import { Fingerprint, Id, Language, Point, Text, Timestamp, Unit } from "./common.ts";
+import { Finding, Preview, Rule } from "./finding.ts";
 import { UPLOAD_REFUSALS } from "./upload.ts";
-import { Concept, Device, Jurisdiction, Walk, WalkState } from "./walk.ts";
+import { Box, Concept, Device, Jurisdiction, Walk, WalkState } from "./walk.ts";
+
+export const VISITOR_HEADER = "x-emberwalk-visitor";
 
 export const StartWalkRequest = z.strictObject({
   language: Language,
   jurisdiction: Jurisdiction,
   device: Device,
   synthetic: z.boolean(),
+  visitorId: Fingerprint,
 });
 
 export const StartWalkResponse = z.strictObject({ walkId: Id, state: WalkState });
 
-export const WalkStatusResponse = z.strictObject({ walkId: Id, state: WalkState, updatedAt: Timestamp });
+export const WalkFailure = z.strictObject({ code: Text(60), message: Text(300) });
 
-export const WalkResultsResponse = z.strictObject({
-  walk: Walk,
-  findings: z.array(Finding).max(500),
-  pins: z.array(MapPin).max(500),
-  notChecked: z.array(Concept).max(15),
-  view: ViewPreference,
+export const WalkStatusResponse = z.strictObject({ walkId: Id, state: WalkState, failure: WalkFailure.nullable() });
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+export const stillPath = (walkId: string, findingId: string): string => `/api/walks/${walkId}/stills/${findingId}`;
+
+export const ResultSource = z.strictObject({
+  citation: Rule.shape.citation,
+  words: Rule.shape.requirement,
+  status: Rule.shape.status,
+  url: Rule.shape.sourceUrl,
+  retrievedOn: Rule.shape.retrievedOn,
 });
+
+export const ResultFinding = z.strictObject({
+  id: Id,
+  concept: Concept,
+  band: Finding.shape.band,
+  distanceFeet: Finding.shape.distanceFeet,
+  label: Finding.shape.label,
+  instruction: Finding.shape.instruction,
+  sources: z.array(ResultSource).min(1).max(20),
+  confidence: Unit,
+  proof: z.strictObject({
+    still: z.string().regex(new RegExp(`^/api/walks/${UUID}/stills/${UUID}$`)),
+    frame: z.int().nonnegative(),
+    seconds: z.number().nonnegative(),
+    marker: Box,
+  }),
+});
+
+export const WalkResultsResponse = z
+  .strictObject({
+    walkId: Id,
+    walkedOn: z.iso.date(),
+    synthetic: z.boolean(),
+    coverage: z.literal("not_checked"),
+    gaps: z.tuple([]),
+    findings: z.array(ResultFinding).max(500),
+    notChecked: z.array(Concept).max(15),
+  })
+  .refine((r) => r.findings.every((f) => f.proof.still === stillPath(r.walkId, f.id)), {
+    message: "each still is the finding's own, under its walk",
+    path: ["findings"],
+  });
 
 export const TapRequest = z.strictObject({ walkId: Id, clipId: Id, frame: z.int().nonnegative(), at: Point });
 
@@ -82,7 +123,10 @@ export const ErrorBody = z.strictObject({ error: z.strictObject({ code: ErrorCod
 
 export type StartWalkRequest = z.infer<typeof StartWalkRequest>;
 export type StartWalkResponse = z.infer<typeof StartWalkResponse>;
+export type WalkFailure = z.infer<typeof WalkFailure>;
 export type WalkStatusResponse = z.infer<typeof WalkStatusResponse>;
+export type ResultSource = z.infer<typeof ResultSource>;
+export type ResultFinding = z.infer<typeof ResultFinding>;
 export type WalkResultsResponse = z.infer<typeof WalkResultsResponse>;
 export type TapRequest = z.infer<typeof TapRequest>;
 export type TapResponse = z.infer<typeof TapResponse>;

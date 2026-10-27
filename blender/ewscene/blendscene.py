@@ -5,7 +5,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-from . import geom, placement
+from . import fence, geom, placement
 from .units import in_to_m
 
 HOUSE_DEPTH_IN = 360
@@ -38,7 +38,7 @@ def _box(bm, lo, hi):
     bmesh.ops.create_cube(bm, size=1.0, matrix=m)
 
 
-def pbr_material(name, manifest):
+def pbr_material(name, manifest, tint=None):
     mat = bpy.data.materials.new(name)
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bsdf = nodes.get("Principled BSDF")
@@ -57,7 +57,16 @@ def pbr_material(name, manifest):
         links.new(mapping.outputs["Vector"], tex.inputs["Vector"])
         return tex
 
-    links.new(image("Diffuse", True).outputs["Color"], bsdf.inputs["Base Color"])
+    colour = image("Diffuse", True).outputs["Color"]
+    if tint:
+        mix = nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs[0].default_value = 1.0
+        mix.inputs[7].default_value = (tint[0], tint[1], tint[2], 1.0)
+        links.new(colour, mix.inputs[6])
+        colour = mix.outputs[2]
+    links.new(colour, bsdf.inputs["Base Color"])
     links.new(image("Rough", False).outputs["Color"], bsdf.inputs["Roughness"])
     normal = nodes.new("ShaderNodeNormalMap")
     links.new(image("nor_gl", False).outputs["Color"], normal.inputs["Color"])
@@ -150,7 +159,14 @@ def _wood_fence(size, rng):
     return bm
 
 
-SCRIPTED = {"scripted:wood_pile": _wood_pile, "scripted:wood_fence": _wood_fence}
+def _picket_fence(size, rng):
+    bm = bmesh.new()
+    for _, lo, hi in fence.picket_boxes(size, rng):
+        _box(bm, lo, hi)
+    return bm
+
+
+SCRIPTED = {"scripted:wood_pile": _wood_pile, "scripted:wood_fence": _wood_fence, "scripted:wood_picket_fence": _picket_fence}
 
 
 def _append_model(path):
@@ -191,13 +207,20 @@ def _fit(root, objs, box_in):
     bpy.context.view_layer.update()
 
 
+def _scripted_material(entry, materials, manifests):
+    if "tint" not in entry:
+        return materials[entry["material"]]
+    name = entry["material"].split(":", 1)[1] + " tinted"
+    return bpy.data.materials.get(name) or pbr_material(name, manifests[entry["material"]], entry["tint"])
+
+
 def hazards(spec, catalog, materials, manifests):
     for h in spec["hazards"]:
         rng = random.Random(h["id"])
         entry = catalog[h["asset"]]
         if entry["kind"] == "scripted":
             obj = _mesh_object(h["id"], SCRIPTED[h["asset"]](h["size_in"], rng))
-            obj.data.materials.append(materials[entry["material"]])
+            obj.data.materials.append(_scripted_material(entry, materials, manifests))
             objs = [obj]
         else:
             objs = _append_model(manifests[h["asset"]]["files"]["blend"])

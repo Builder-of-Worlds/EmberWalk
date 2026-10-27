@@ -7,5 +7,6 @@
   "polyhaven:dry_branches_medium_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dry_branches_medium_01", "resolution": "1k", "concepts": ["dry brush"], "cluster": 6},
   "polyhaven:goegap": {"kind": "hdri", "license": "CC0-1.0", "source": "https://polyhaven.com/a/goegap", "resolution": "2k"},
   "scripted:wood_pile": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wood pile"], "material": "polyhaven:bark_brown_02"},
-  "scripted:wood_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks"}
+  "scripted:wood_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks"},
+  "scripted:wood_picket_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks", "tint": [3.4, 3.2, 2.9]}
 }

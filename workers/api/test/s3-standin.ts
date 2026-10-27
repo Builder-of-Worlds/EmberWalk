@@ -1,4 +1,4 @@
-import { presign } from "../src/sigv4.ts";
+import { presign } from "@emberwalk/sigv4";
 
 export type StandIn = {
   bucket: R2Bucket;

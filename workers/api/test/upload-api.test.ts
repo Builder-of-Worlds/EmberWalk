@@ -3,7 +3,7 @@ import { PartLinkResponse, StartUploadResponse, limitsWith } from "@emberwalk/sh
 import type { Limits } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createUploadApi } from "../src/upload-api.ts";
-import type { WalkGate } from "../src/upload-api.ts";
+import type { PipelineStarter, WalkGate } from "../src/upload-api.ts";
 import { r2UploadStore } from "../src/upload-store.ts";
 import { s3StandIn } from "./s3-standin.ts";
 
@@ -56,8 +56,11 @@ const walks: WalkGate = {
   state: async (walkId) => walkStates.get(walkId) ?? null,
   markUploaded: async (walkId) => {
     uploadedWalks.push(walkId);
+    walkStates.set(walkId, "queued");
   },
 };
+
+const pipeline: PipelineStarter = { start: async () => ({ started: true }) };
 
 const standIn = () => ({ bucket: env.MEDIA, ...signing, now: () => new Date(now) });
 
@@ -119,6 +122,8 @@ beforeEach(async () => {
     bucket: env.MEDIA,
     store: r2UploadStore(env.MEDIA),
     walks,
+    pipeline,
+    log: () => {},
     limits,
     signing,
     now: () => now,
@@ -421,6 +426,8 @@ describe("routing", () => {
       bucket: env.MEDIA,
       store: { get: async () => { throw new Error("store is down"); }, put: async () => {}, openFor: async () => null },
       walks,
+      pipeline,
+      log: () => {},
       limits,
       signing,
       now: () => now,

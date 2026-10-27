@@ -1,6 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { PartLinkResponse, StartUploadResponse } from "@emberwalk/shared";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index.ts";
 import { MiB, PART_BYTES, call, complete, emptyBucket, link, start, uploadAll } from "./route.ts";
 import { clearWalks, seedWalk, walkState } from "./seed.ts";
@@ -38,6 +38,7 @@ describe("the Worker routes", () => {
   });
 
   it("runs a whole upload through the routes and queues the walk", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await seedWalk(WALK, "uploading");
     const total = 2 * PART_BYTES + MiB;
     const started = await start(WALK, total);
@@ -58,6 +59,8 @@ describe("the Worker routes", () => {
     expect(bytes.length).toBe(total);
     expect([bytes[100], bytes[PART_BYTES + 100], bytes[2 * PART_BYTES + 100]]).toEqual([1, 2, 3]);
     expect(await walkState(WALK)).toBe("queued");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(`${WALK}: test_stand_in`);
   });
 
   it("starts nothing for a walk that is not in the database", async () => {

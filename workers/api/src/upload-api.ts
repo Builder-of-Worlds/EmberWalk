@@ -7,7 +7,7 @@ import {
   StartUploadResponse,
 } from "@emberwalk/shared";
 import type { Limits } from "@emberwalk/shared";
-import { presign } from "./sigv4.ts";
+import { presign } from "@emberwalk/sigv4";
 import { checkOpen, checkParts, nextTry, planUpload } from "./upload-rules.ts";
 import { uploadLimits } from "./upload-limits.ts";
 import type { Refusal, Result, UploadRecord } from "./upload-rules.ts";
@@ -16,6 +16,10 @@ import type { UploadStore } from "./upload-store.ts";
 export type WalkGate = {
   state(walkId: string): Promise<string | null>;
   markUploaded(walkId: string): Promise<void>;
+};
+
+export type PipelineStarter = {
+  start(walkId: string): Promise<{ started: boolean; reason?: string }>;
 };
 
 export type Signing = {
@@ -29,6 +33,8 @@ export type UploadDeps = {
   bucket: R2Bucket;
   store: UploadStore;
   walks: WalkGate;
+  pipeline: PipelineStarter;
+  log: (line: string) => void;
   limits: Limits;
   signing: Signing;
   now: () => number;
@@ -222,9 +228,27 @@ export const createUploadApi = (deps: UploadDeps) => {
     return String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
   };
 
+  const startPipeline = async (walkId: string): Promise<void> => {
+    try {
+      const answer = await deps.pipeline.start(walkId);
+      if (!answer.started) deps.log(`pipeline did not start walk ${walkId}: ${answer.reason ?? "no reason given"}`);
+    } catch (error) {
+      deps.log(`pipeline start failed for walk ${walkId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const queue = async (walkId: string, bytes: number): Promise<Response> => {
+    await walks.markUploaded(walkId);
+    await startPipeline(walkId);
+    return Response.json({ walkId, bytes });
+  };
+
   const complete = async (request: Request): Promise<Response> => {
     const body = await readBody(request, CompleteUploadRequest);
     const record = await load(body.uploadId);
+    if (record.status === "completed" && (await walks.state(record.walkId)) === "uploading") {
+      return queue(record.walkId, record.totalBytes);
+    }
     orRefuse(checkOpen(record, deps.now()));
     const checked = checkParts(record, body.parts);
     if (checked.refusal !== undefined) throw new Refused("parts_invalid");
@@ -242,8 +266,7 @@ export const createUploadApi = (deps: UploadDeps) => {
       throw new Refused("not_mp4");
     }
     await store.put({ ...record, status: "completed" });
-    await walks.markUploaded(record.walkId);
-    return Response.json({ walkId: record.walkId, bytes: stored.size });
+    return queue(record.walkId, stored.size);
   };
 
   const abort = async (request: Request): Promise<Response> => {

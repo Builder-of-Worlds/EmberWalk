@@ -1,0 +1,23 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "test-yard-2",
+  "file": "test-yard-2/walk.mp4",
+  "size_bytes": 25809527,
+  "sha256": "0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30.0,
+  "duration_s": 20.0,
+  "frame_count": 600,
+  "settings": {
+    "engine": "BLENDER_EEVEE",
+    "samples": 16,
+    "render_seconds": 183.8,
+    "blender": "5.2.2 LTS",
+    "machine": "macOS-26.6.2-arm64-arm-64bit-Mach-O"
+  }
+}

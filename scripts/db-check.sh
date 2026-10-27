@@ -35,4 +35,11 @@ SECOND=$(apply) || red "the second apply failed"
 echo "$SECOND"
 echo "$SECOND" | command grep -q "No migrations to apply" || red "the second apply was not empty"
 npx wrangler d1 execute "$BINDING" --local --persist-to "$STATE" --config "$CONFIG" --file "$SEED" || red "the seed did not load"
-echo "DB CHECK green: every migration applied once, the second apply was empty, the seed loaded"
+READ=$(npx wrangler d1 execute "$BINDING" --local --persist-to "$STATE" --config "$CONFIG" --json \
+  --command "SELECT COUNT(*) AS walks, COALESCE(SUM(synthetic = 0), 0) AS real FROM walks") || red "the seed could not be read back"
+COUNTS=$(echo "$READ" | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { const r = JSON.parse(s)[0].results[0]; console.log(`${r.walks} ${r.real}`); });') ||
+  red "the seed could not be read back"
+set -- $COUNTS
+[ "${1:-0}" -gt 0 ] || red "the seed holds no walk"
+[ "${2:-1}" -eq 0 ] || red "the seed holds a walk not marked synthetic"
+echo "DB CHECK green: every migration applied once, the second apply was empty, the synthetic seed loaded"

@@ -1,0 +1,285 @@
+import { describe, expect, it } from "vitest";
+import type { Clip, Tag, Track } from "@emberwalk/shared";
+import { bandFor, CONTACT_MARGIN, contactOf, MAX_TRACKS, MIN_CONFIDENCE, observe } from "../src/index.ts";
+import { HAZARDS, hazardTrack, inside, LOOP_CLIP, LOOP_TAG, trackId, wallTrack, yardTracks } from "./yard.ts";
+
+const yard = (tracks: Track[], extra: { clips?: Clip[]; tags?: Tag[]; startByClip?: Record<string, number> } = {}) =>
+  observe({
+    clips: [LOOP_CLIP, ...(extra.clips ?? [])],
+    tracks,
+    tags: [LOOP_TAG, ...(extra.tags ?? [])],
+    startByClip: { [LOOP_CLIP.id]: 0, ...extra.startByClip },
+  });
+
+const UNMEASURED = "no wall, no tilt or only the horizon on its frames, so its distance is unknown";
+
+const TRUTH_CONTACT = { "wood-pile-1": "yes", "dry-brush-1": "not_checked", "fence-joint-1": "yes" } as const;
+
+describe("observe on test yard 2", () => {
+  const { kept, dropped } = yard(yardTracks());
+
+  it("gives one observation per hazard with its truth band", () => {
+    expect(kept.map((k) => k.observation.concept).sort()).toEqual(HAZARDS.map((h) => h.concept).sort());
+    for (const hazard of HAZARDS) {
+      const found = kept.find((k) => k.observation.concept === hazard.concept)!;
+      expect(bandFor(found.observation.distanceFeet), hazard.id).toBe(hazard.truthBand);
+      expect(found.trackIds).toEqual([hazardTrack(hazard, HAZARDS.indexOf(hazard) + 1).id]);
+      expect(found.observation.plantState).toBeNull();
+      expect(found.observation.spacing).toBeNull();
+      expect(found.observation.flags).toEqual([]);
+    }
+  });
+
+  it("finds the wood pile and the fence touching the wall, and leaves the dry brush in front of it not checked", () => {
+    for (const hazard of HAZARDS) {
+      const found = kept.find((k) => k.observation.concept === hazard.concept)!;
+      expect(found.observation.contact, hazard.id).toBe(TRUTH_CONTACT[hazard.id as keyof typeof TRUTH_CONTACT]);
+    }
+    const fence = kept.find((k) => k.observation.concept === "wooden_fence")!;
+    expect(fence.observation.distanceFeet.low).toBe(0);
+    expect(fence.observation.distanceFeet.high).toBeGreaterThan(5);
+  });
+
+  it("keeps the dry brush at its measured distance, not pulled to the wall", () => {
+    const brush = kept.find((k) => k.observation.concept === "dry_brush")!;
+    expect(brush.observation.distanceFeet.low).toBeGreaterThan(5);
+    expect(brush.observation.distanceFeet.high).toBeLessThan(30);
+  });
+
+  it("picks a proof frame inside the picture, and its share of the picture", () => {
+    for (const { proof, observation, notes } of kept) {
+      expect(proof.inside).toBe(true);
+      expect(inside(proof.box)).toBe(true);
+      expect(proof.clipId).toBe(LOOP_CLIP.id);
+      const [x0, y0, x1, y1] = proof.box;
+      expect(observation.frameShare).toBeCloseTo((x1 - x0) * (y1 - y0), 10);
+      expect(observation.confidence).toBe(0.9);
+      expect(notes).toEqual([]);
+    }
+  });
+
+  it("drops the wall with its reason", () => {
+    expect(dropped).toEqual([{ trackIds: [trackId(99)], reason: "a house_wall places other objects and is never a finding" }]);
+  });
+});
+
+const W: [number, number, number, number] = [0, 0.3, 1, 0.5];
+const walls = (frames: number[]) => new Map(frames.map((f) => [f, W]));
+const at = (frames: number[], box: [number, number, number, number]) => frames.map((frame) => ({ frame, box, confidence: 0.9 }));
+
+describe("contactOf", () => {
+  it("is yes when the bottom sits on the wall's base on two frames", () => {
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.49 + CONTACT_MARGIN]), walls([1, 2]))).toBe("yes");
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.51 - CONTACT_MARGIN]), walls([1, 2]))).toBe("yes");
+  });
+
+  it("is yes for a fence spanning the base, and not checked for a tall plant doing the same", () => {
+    expect(contactOf("wooden_fence", at([1, 2], [0, 0.1, 0.3, 0.9]), walls([1, 2]))).toBe("yes");
+    expect(contactOf("shrub", at([1, 2], [0, 0.1, 0.3, 0.9]), walls([1, 2]))).toBe("not_checked");
+  });
+
+  it("is no for a box clear of the base", () => {
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.6, 0.4, 0.9]), walls([1, 2]))).toBe("no");
+    expect(contactOf("wooden_fence", at([1, 2], [0.2, 0.51, 0.4, 0.5 + CONTACT_MARGIN + 0.01]), walls([1, 2]))).toBe("no");
+  });
+
+  it("is not checked without a wall beside it on two frames", () => {
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.5]), walls([1]))).toBe("not_checked");
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.5]), new Map())).toBe("not_checked");
+    const narrow = new Map([1, 2].map((f) => [f, [0.6, 0.3, 0.9, 0.5] as [number, number, number, number]]));
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.5]), narrow)).toBe("not_checked");
+  });
+
+  it("needs two touching frames, not one", () => {
+    const frames = [...at([1], [0.2, 0.2, 0.4, 0.5]), ...at([2], [0.2, 0.6, 0.4, 0.9])];
+    expect(contactOf("wood_pile", frames, walls([1, 2]))).toBe("no");
+  });
+});
+
+describe("observe drops what it cannot use", () => {
+  const pile = HAZARDS.find((h) => h.concept === "wood_pile")!;
+
+  it("drops a track seen on one frame, or below the confidence floor", () => {
+    const one = hazardTrack(pile, 1);
+    one.frames = one.frames.slice(100, 101);
+    const faint = hazardTrack(pile, 2, MIN_CONFIDENCE - 0.01);
+    const { kept, dropped } = yard([one, faint, wallTrack(99)]);
+    expect(kept).toEqual([]);
+    const reason = "seen on fewer than 2 frames at confidence 0.5 or more";
+    expect(dropped).toContainEqual({ trackIds: [trackId(1)], reason });
+    expect(dropped).toContainEqual({ trackIds: [trackId(2)], reason });
+  });
+
+  it("keeps a track at the confidence floor", () => {
+    expect(yard([hazardTrack(pile, 1, MIN_CONFIDENCE), wallTrack(99)]).kept).toHaveLength(1);
+  });
+
+  it("drops a wall or a chimney alone, and an object with no wall to measure from", () => {
+    const chimney: Track = { ...wallTrack(3), concept: "chimney" };
+    const { kept, dropped } = yard([chimney, hazardTrack(pile, 1)]);
+    expect(kept).toEqual([]);
+    expect(dropped).toEqual([
+      { trackIds: [trackId(3)], reason: "a chimney places other objects and is never a finding" },
+      { trackIds: [trackId(1)], reason: UNMEASURED },
+    ]);
+  });
+
+  it("drops an object with no motion sample near its frames, never guessing a tilt", () => {
+    const tracks = [hazardTrack(pile, 1), wallTrack(99)];
+    expect(yard(tracks).kept).toHaveLength(1);
+    const { kept, dropped } = observe({ clips: [LOOP_CLIP], tracks, tags: [{ ...LOOP_TAG, samples: [] }], startByClip: { [LOOP_CLIP.id]: 0 } });
+    expect(kept).toEqual([]);
+    expect(dropped).toContainEqual({ trackIds: [trackId(1)], reason: UNMEASURED });
+  });
+});
+
+describe("observe refuses what is malformed", () => {
+  const pile = HAZARDS.find((h) => h.concept === "wood_pile")!;
+
+  it("throws on a track from a clip not given", () => {
+    const stray = { ...hazardTrack(pile, 1), clipId: "00000000-0000-4000-8000-0000000000c9" };
+    expect(() => yard([stray])).toThrow(/clip not given/);
+  });
+
+  it("throws on a clip with no start in the walk", () => {
+    expect(() => observe({ clips: [LOOP_CLIP], tracks: [hazardTrack(pile, 1)], tags: [LOOP_TAG], startByClip: {} })).toThrow(/no start/);
+  });
+
+  it("throws on a repeated track id", () => {
+    expect(() => yard([hazardTrack(pile, 1), hazardTrack(pile, 1)])).toThrow(/its own id/);
+  });
+
+  it(`throws on a ${MAX_TRACKS + 1}th merged track, and keeps ${MAX_TRACKS}`, () => {
+    const loops = (count: number) => Array.from({ length: count }, (_, i) => flatTrack(i + 1, "loop", "shed", OUT));
+    expect(flat({ tracks: [...loops(MAX_TRACKS - 1), wall(), flatTrack(50, "pan", "shed", OUT)], panTilt: 60 }).kept[0]!.trackIds).toHaveLength(MAX_TRACKS);
+    expect(() => flat({ tracks: [...loops(MAX_TRACKS), wall(), flatTrack(50, "pan", "shed", OUT)], panTilt: 60 })).toThrow(/at most 16 tracks: 17/);
+  });
+});
+
+type Box = [number, number, number, number];
+const FRAMES = [0, 1, 2, 3];
+const FAR_WALL: Box = [0, 0.1, 1, 0.35];
+const OUT: Box = [0.3, 0.4, 0.5, 0.5];
+const pan: Clip = { ...LOOP_CLIP, id: "00000000-0000-4000-8000-0000000000c2", kind: "pan", file: "clips/test/pan.mp4" };
+const loop: Clip = { ...LOOP_CLIP, id: "00000000-0000-4000-8000-0000000000c3", file: "clips/test/loop.mp4" };
+const samples = (from: number, tiltDegrees: number, headingDegrees: number) =>
+  Array.from({ length: 20 }, (_, i) => ({ t: from + i / 10, tiltDegrees, headingDegrees }));
+const flatTrack = (n: number, kind: "loop" | "pan", concept: Track["concept"], box: Box, frames = FRAMES): Track => ({
+  id: trackId(n),
+  clipId: kind === "loop" ? loop.id : pan.id,
+  concept,
+  samObjectId: n,
+  frames: frames.map((frame) => ({ frame, box, mask: null, confidence: 0.8 })),
+});
+const wall = (box: Box = FAR_WALL) => flatTrack(99, "loop", "house_wall", box);
+const flat = (o: { tracks: Track[]; loopTilt?: number; panTilt?: number; panHeading?: number; line?: number | null }) =>
+  observe({
+    clips: [loop, pan],
+    tracks: o.tracks,
+    tags: [
+      { ...LOOP_TAG, startSeconds: 0, endSeconds: 2, samples: samples(0, o.loopTilt ?? 10, 180) },
+      {
+        ...LOOP_TAG,
+        id: "00000000-0000-4000-8000-0000000000a2",
+        kind: "pan",
+        startSeconds: 10,
+        endSeconds: 12,
+        samples: samples(10, o.panTilt ?? 10, o.panHeading ?? 0),
+        propertyLine: o.line === undefined || o.line === null ? null : { t: 10.5, at: { x: 0.5, y: o.line } },
+      },
+    ],
+    startByClip: { [loop.id]: 0, [pan.id]: 10 },
+  });
+
+describe("observe merges a loop and a pan sighting", () => {
+  it("joins the same concept with overlapping distances, the pan looking back the other way", () => {
+    const { kept } = flat({ tracks: [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)], panTilt: 60 });
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.trackIds).toEqual([trackId(2), trackId(1)]);
+    expect(kept[0]!.notes).toEqual(["no property line was tapped, so everything in the pan is kept"]);
+  });
+
+  it("keeps them apart when the headings disagree, the concepts differ or the distances do not overlap", () => {
+    expect(flat({ tracks: [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)], panTilt: 60, panHeading: 90 }).kept).toHaveLength(2);
+    expect(flat({ tracks: [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "tree", OUT)], panTilt: 60 }).kept).toHaveLength(2);
+    const between: Box = [0.3, 0.7, 0.5, 0.8];
+    const apart = [flatTrack(1, "loop", "shed", between), wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", [0.3, 0.6, 0.5, 0.9])];
+    expect(flat({ tracks: apart, panTilt: 10 }).kept).toHaveLength(2);
+  });
+
+  it("joins two pan sightings through one loop sighting, and two loop sightings through one pan", () => {
+    const { kept } = flat({ tracks: [flatTrack(1, "loop", "shed", OUT), flatTrack(3, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)], panTilt: 60 });
+    expect(kept).toHaveLength(1);
+    expect([...kept[0]!.trackIds].sort()).toEqual([trackId(1), trackId(2), trackId(3)]);
+  });
+});
+
+describe("observe places pan objects from the loop's wall", () => {
+  it("drops a pan object when the loop saw no wall", () => {
+    const { kept, dropped } = flat({ tracks: [flatTrack(2, "pan", "shed", OUT)] });
+    expect(kept).toEqual([]);
+    expect(dropped).toEqual([{ trackIds: [trackId(2)], reason: "no wall in the loop, so a pan object cannot be placed" }]);
+  });
+
+  it("drops an object more than 100 feet out", () => {
+    const edge: Box = [0.3, 0.2, 0.5, 0.31];
+    const { kept, dropped } = flat({ tracks: [wall([0, 0.1, 1, 0.31]), flatTrack(2, "pan", "shed", edge)] });
+    expect(kept).toEqual([]);
+    expect(dropped).toContainEqual({ trackIds: [trackId(2)], reason: "more than 100 feet from the house" });
+  });
+
+  it("drops a pan object past the tapped property line, and keeps one before it", () => {
+    const near: Box = [0.3, 0.6, 0.5, 0.9];
+    const tracks = [wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", OUT)];
+    expect(flat({ tracks, line: 0.95 }).dropped).toContainEqual({ trackIds: [trackId(2)], reason: "past the property line" });
+    const kept = flat({ tracks, line: 0.35 }).kept;
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.notes).toEqual([]);
+    expect(flat({ tracks: [wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", near)], line: 0.95 }).kept).toHaveLength(1);
+  });
+
+  it("puts a pan object farther out than the wall's distance from the camera", () => {
+    const { kept } = flat({ tracks: [wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", OUT)] });
+    const home = kept[0]!.observation.distanceFeet;
+    expect(home.low).toBeGreaterThan(25);
+    expect(kept[0]!.observation.contact).toBe("not_checked");
+  });
+});
+
+describe("observe flags and proof frames", () => {
+  const branch = (box: Box) => flatTrack(1, "loop", "tree_branch_over_roof", box);
+  const chimney = (box: Box) => flatTrack(5, "loop", "chimney", box);
+  const WALL: Box = [0, 0.1, 1, 0.6];
+
+  it("flags a branch within 10 feet of a chimney on two frames", () => {
+    const { kept } = flat({ tracks: [wall(WALL), branch([0.1, 0.45, 0.3, 0.55]), chimney([0.5, 0.1, 0.6, 0.3])] });
+    expect(kept[0]!.observation.flags).toEqual(["near_chimney"]);
+    expect(flat({ tracks: [wall(WALL), branch([0.1, 0.45, 0.3, 0.55]), chimney([0.25, 0.1, 0.6, 0.3])] }).kept[0]!.observation.flags).toEqual(["near_chimney"]);
+  });
+
+  it("does not flag a branch far from the chimney, on one frame only, or a shrub beside it", () => {
+    expect(flat({ tracks: [wall(WALL), branch([0.05, 0.45, 0.1, 0.55]), chimney([0.8, 0.1, 0.9, 0.3])] }).kept[0]!.observation.flags).toEqual([]);
+    const once = flatTrack(5, "loop", "chimney", [0.5, 0.1, 0.6, 0.3], [0]);
+    expect(flat({ tracks: [wall(WALL), branch([0.1, 0.45, 0.3, 0.55]), once] }).kept[0]!.observation.flags).toEqual([]);
+    const shrub = flatTrack(1, "loop", "shrub", [0.1, 0.45, 0.3, 0.55]);
+    expect(flat({ tracks: [wall(WALL), shrub, chimney([0.5, 0.1, 0.6, 0.3])] }).kept[0]!.observation.flags).toEqual([]);
+  });
+
+  it("picks the most confident frame inside the picture, ties to the larger box", () => {
+    const track = flatTrack(1, "loop", "shed", OUT);
+    track.frames[1] = { ...track.frames[1]!, confidence: 0.95, box: [0, 0.4, 0.2, 0.5] };
+    track.frames[2] = { ...track.frames[2]!, confidence: 0.9 };
+    track.frames[3] = { ...track.frames[3]!, confidence: 0.9, box: [0.3, 0.38, 0.5, 0.5] };
+    const { proof, observation } = flat({ tracks: [wall(), track] }).kept[0]!;
+    expect(proof).toEqual({ clipId: loop.id, frame: 3, box: [0.3, 0.38, 0.5, 0.5], confidence: 0.9, inside: true });
+    expect(observation.confidence).toBe(0.9);
+  });
+
+  it("falls back to the most confident frame, noted, when every box touches the edge", () => {
+    const track = flatTrack(1, "loop", "shed", [0, 0.4, 0.2, 0.5]);
+    track.frames[2] = { ...track.frames[2]!, confidence: 0.95 };
+    const { proof, notes } = flat({ tracks: [wall(), track] }).kept[0]!;
+    expect(proof).toMatchObject({ frame: 2, inside: false });
+    expect(notes).toEqual(["placed on frames cut off by the picture's edge", "the proof frame touches the picture's edge"]);
+  });
+});

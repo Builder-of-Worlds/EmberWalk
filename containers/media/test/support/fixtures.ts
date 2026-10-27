@@ -28,6 +28,18 @@ export const clipWithoutSound = (seconds: number): Buffer =>
     "-c:v", "libx264", "-pix_fmt", "yuv420p",
   ]);
 
+export const clipWithoutPicture = (seconds: number): Buffer =>
+  make(["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=44100:duration=${seconds}`, "-c:a", "aac"]);
+
+export const grayPixels = (jpeg: Buffer): Buffer => {
+  const run = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], {
+    input: jpeg,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (run.status !== 0) throw new Error(`ffmpeg could not decode the still: ${run.stderr?.toString()}`);
+  return run.stdout;
+};
+
 export type WavInfo = { format: number; channels: number; sampleRate: number; bits: number; seconds: number };
 
 export const readWav = (wav: Buffer): WavInfo => {

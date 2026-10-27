@@ -6,7 +6,7 @@ import { countFrames, ffmpeg, probe } from "./ffmpeg.ts";
 import type { Probe } from "./ffmpeg.ts";
 import { limits } from "./limits.ts";
 import { download, upload } from "./transfer.ts";
-import type { AudioRequest, ClipRequest, ProbeRequest, StillsRequest } from "./validate.ts";
+import type { AudioRequest, ClipRequest, ProbeRequest, Region, StillsRequest } from "./validate.ts";
 
 const withDir = async <T>(work: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "media-"));
@@ -94,6 +94,34 @@ export const audioOp = (req: AudioRequest) =>
     };
   });
 
+const BLUR_RADIUS_DIVISOR = 5;
+const BLUR_PASSES = 3;
+const MIN_REGION_PIXELS = 8;
+
+const edge = (size: string, fraction: number): string => `trunc(${size}*${fraction})`;
+
+const blurGraph = (regions: Region[]): { graph: string; last: string } => {
+  const copies = ["[base]", ...regions.map((_, i) => `[c${i}]`)].join("");
+  const parts = [`[0:v]split=${regions.length + 1}${copies}`];
+  let source = "base";
+  regions.forEach(([x0, y0, x1, y1], i) => {
+    const crop =
+      `crop=w='max(${MIN_REGION_PIXELS},${edge("iw", x1)}-${edge("iw", x0)})':h='max(${MIN_REGION_PIXELS},${edge("ih", y1)}-${edge("ih", y0)})'` +
+      `:x='min(${edge("iw", x0)},iw-ow)':y='min(${edge("ih", y0)},ih-oh)'`;
+    const blur = `boxblur=lr='max(1,min(w,h)/${BLUR_RADIUS_DIVISOR})':lp=${BLUR_PASSES}`;
+    const place = `overlay=x='min(${edge("main_w", x0)},main_w-overlay_w)':y='min(${edge("main_h", y0)},main_h-overlay_h)'`;
+    parts.push(`[c${i}]${crop},${blur}[b${i}]`, `[${source}][b${i}]${place}[o${i}]`);
+    source = `o${i}`;
+  });
+  return { graph: parts.join(";"), last: `[${source}]` };
+};
+
+const stillArgs = (time: number, input: string, regions: Region[], out: string): string[] => {
+  if (regions.length === 0) return ["-ss", String(time), "-i", input, "-frames:v", "1", "-q:v", "2", out];
+  const { graph, last } = blurGraph(regions);
+  return ["-ss", String(time), "-i", input, "-filter_complex", graph, "-map", last, "-frames:v", "1", "-q:v", "2", out];
+};
+
 export const stillsOp = (req: StillsRequest) =>
   withDir(async (dir) => {
     const { path, info } = await fetchInput(req.input, dir);
@@ -106,7 +134,7 @@ export const stillsOp = (req: StillsRequest) =>
     const results: { time: number; bytes: number; width: number; height: number }[] = [];
     for (const [i, still] of req.stills.entries()) {
       const out = join(dir, `still-${i}.jpg`);
-      await ffmpeg(["-ss", String(still.time), "-i", path, "-frames:v", "1", "-q:v", "2", out]);
+      await ffmpeg(stillArgs(still.time, path, still.regions, out));
       const made = await probe(out);
       const bytes = await upload(still.output, out, "image/jpeg");
       results.push({ time: still.time, bytes, width: made.video?.width ?? 0, height: made.video?.height ?? 0 });

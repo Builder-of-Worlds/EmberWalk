@@ -10,10 +10,14 @@ const TOOLS = [judgeDetection] as Tool<unknown>[];
 const INPUT = [{ type: "message", role: "user", content: [{ type: "input_text", text: "Judge the dry brush on frame 312." }] }];
 const base = { instructions: "Call judge_detection once.", input: INPUT, content: "synthetic" as const, inputTokenEstimate: 2000, maxOutputTokens: 400, step: "score" as const };
 const reason = (e: unknown) => (e as MetaRefused).reason;
+const CALL_ID = "call_d8073574-fb2e-41da-946b-7567edbd9084";
+
+type Item = { type: string; arguments?: string; name?: string; call_id?: string };
+const callItem = (f: unknown): Item => (f as { output: Item[] }).output.find((i) => i.type === "function_call")!;
 
 const withArgs = (args: string) => {
-  const f = fixture("tool-call.json") as { output: { arguments: string }[] };
-  f.output[0]!.arguments = args;
+  const f = fixture("tool-call.json");
+  callItem(f).arguments = args;
   return f;
 };
 
@@ -23,9 +27,9 @@ describe("sparkToolCall", () => {
     const turn = await client.call(sparkToolCall(base, TOOLS));
     expect(turn.value.uses).toEqual([
       {
-        callId: "call_fixture_1",
+        callId: CALL_ID,
         name: "judge_detection",
-        args: { concept: "dry_brush", frame: 312, keep: true, plantState: "dead", reason: "Brown, leafless branches piled on bare soil about five feet from the wall." },
+        args: { concept: "dry_brush", frame: 20, keep: true, plantState: "dead", reason: "Brown leafless branches on bare soil about five feet from wall matches dry brush, dead vegetation." },
         rawArguments: expect.any(String),
       },
     ]);
@@ -34,7 +38,7 @@ describe("sparkToolCall", () => {
     expect(sent.json.store).toBe(false);
     expect(sent.json.tools[0]).toMatchObject({ type: "function", name: "judge_detection" });
     expect(sent.json.tools[0]!.parameters.required.sort()).toEqual(["concept", "frame", "keep", "plantState", "reason"]);
-    expect(turn.costUsd).toBe((1840 * 1250 + 96 * 4250) / 1e9);
+    expect(turn.costUsd).toBe((41 * 1250 + 753 * 150 + 865 * 4250) / 1e9);
   });
 
   it("refuses the malformed fixture and records what it cost", async () => {
@@ -57,11 +61,11 @@ describe("sparkToolCall", () => {
   });
 
   it("refuses a call to a tool it was not offered and a malformed call item", async () => {
-    const unknown = fixture("tool-call.json") as { output: { name: string }[] };
-    unknown.output[0]!.name = "send_email";
+    const unknown = fixture("tool-call.json");
+    callItem(unknown).name = "send_email";
     expect(await setup({ answer: () => ok(unknown) }).client.call(sparkToolCall(base, TOOLS)).catch(reason)).toBe("invalid_tool_arguments");
-    const broken = fixture("tool-call.json") as { output: { call_id?: string }[] };
-    delete broken.output[0]!.call_id;
+    const broken = fixture("tool-call.json");
+    delete callItem(broken).call_id;
     expect(await setup({ answer: () => ok(broken) }).client.call(sparkToolCall(base, TOOLS)).catch(reason)).toBe("invalid_answer");
   });
 
@@ -69,14 +73,14 @@ describe("sparkToolCall", () => {
     const answers = [fixture("tool-call.json"), fixture("tool-final.json")];
     const { client, transport } = setup({ answer: () => ok(answers.shift()) });
     const turn = await client.call(sparkToolCall(base, TOOLS));
-    const input = withToolResults(INPUT, turn.value, { call_fixture_1: { saved: true } });
+    const input = withToolResults(INPUT, turn.value, { [CALL_ID]: { saved: true } });
     const final = await client.call(sparkToolCall({ ...base, input }, TOOLS));
     expect(final.value.uses).toEqual([]);
-    expect(final.value.text).toBe("Recorded: the dry brush on frame 312 is kept as a hazard.");
+    expect(final.value.text).toBe("Judged dry brush on frame 20 as keep (dead).");
     const second = transport.requests[1] as unknown as { json: { input: { type: string; call_id?: string; output?: string }[] } };
     expect(second.json.input.map((i) => i.type)).toEqual(["message", "function_call", "function_call_output"]);
-    expect(second.json.input[2]).toEqual({ type: "function_call_output", call_id: "call_fixture_1", output: '{"saved":true}' });
-    expect(() => withToolResults(INPUT, turn.value, {})).toThrow(/call_fixture_1/);
+    expect(second.json.input[2]).toEqual({ type: "function_call_output", call_id: CALL_ID, output: '{"saved":true}' });
+    expect(() => withToolResults(INPUT, turn.value, {})).toThrow(new RegExp(CALL_ID));
   });
 
   it("refuses bad tool definitions before any call", () => {
