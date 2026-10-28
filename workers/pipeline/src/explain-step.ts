@@ -1,9 +1,11 @@
 import { applyWording, clipsForWalk, detectionsForClip, findingsForWalk, getWalk, tagsForWalk } from "@emberwalk/db";
-import { explain, type ExplainFinding, MAX_FRAMES } from "@emberwalk/explain";
+import { explain, type ExplainFinding, MAX_FRAMES, MAX_TURNS } from "@emberwalk/explain";
 import { CaJurisdiction, evaluate, observe, rank } from "@emberwalk/rules";
 import { Language, type Track } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
 import { clipStart } from "./prepare.ts";
+import { readTurns } from "./transcribe.ts";
+import { cutAtWord } from "./voice-notes.ts";
 
 export type Explained = { explained: number; saved: number; refused: string | null };
 
@@ -29,16 +31,21 @@ export const explainWalk = async (deps: Deps, walkId: string): Promise<Explained
   });
   if (findings.length === 0) return { explained: 0, saved: 0, refused: null };
 
-  const stills = [...new Set(saved.filter((f) => findings.some((e) => e.findingId === f.id)).map((f) => f.proofFrame.still))];
-  const frames = await Promise.all(stills.slice(0, MAX_FRAMES).map((key) => deps.signer.get(key)));
+  const explained = saved.filter((f) => findings.some((e) => e.findingId === f.id));
+  const stills = [...new Set(explained.map((f) => f.proofFrame.still))];
+  const links = new Map(await Promise.all(stills.slice(0, MAX_FRAMES).map(async (key) => [key, await deps.signer.get(key)] as const)));
+  const stillOf = new Map(explained.map((f) => [f.id, f.proofFrame.still]));
   const answer = await explain(deps.meta(), {
     walkId,
     jurisdiction,
     language: Language.parse(walk.language),
     content: walk.synthetic ? "synthetic" : "real",
-    findings,
-    turns: [],
-    frames,
+    findings: findings.map((f) => {
+      const proofFrame = links.get(stillOf.get(f.findingId)!);
+      return proofFrame === undefined ? f : { ...f, proofFrame };
+    }),
+    turns: (await readTurns(deps.bucket, walkId)).slice(0, MAX_TURNS).map((t) => ({ t: t.start, text: cutAtWord(t.text) })),
+    frames: [...links.values()],
   });
   const wording = answer.results.map((r) => ({
     findingId: r.findingId,

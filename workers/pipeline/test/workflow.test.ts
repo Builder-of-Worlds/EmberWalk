@@ -4,7 +4,9 @@ import { env, introspectWorkflowInstance } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PRIVACY_PHRASES, type PrivacyRecord, privacyKey } from "../src/privacy.ts";
 import { orderProblems, STEP } from "../src/steps.ts";
+import { coverageKey } from "@emberwalk/rules";
 import { clipKey, detectionsKey, originalKey } from "../src/storage.ts";
+import { CLEAN_PHRASE } from "../src/voice-notes.ts";
 import { freshWalkId, resetAll, seedOriginal, seedTag, seedWalk, spentNano } from "./fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, harness, idFor, type Sighting } from "./harness.ts";
 
@@ -264,5 +266,103 @@ describe("privacy, blur and explain", () => {
     expect(findings.length).toBeGreaterThan(0);
     for (const f of findings) expect(f.instruction.length).toBeGreaterThan(0);
     expect(harness.steps.indexOf(STEP.complete)).toBeGreaterThan(harness.steps.indexOf(STEP.explain));
+  });
+});
+
+describe("coverage", () => {
+  it("runs after blur, before explain and before the video is deleted, and its record outlives the video", async () => {
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const at = (name: string) => harness.steps.indexOf(name);
+    expect(at(STEP.coverage)).toBeGreaterThan(at(STEP.blur));
+    expect(at(STEP.coverage)).toBeLessThan(at(STEP.enterExplain));
+    expect(at(STEP.coverage)).toBeLessThan(at(STEP.deleteVideo));
+    expect(await env.MEDIA.head(coverageKey(walkId))).not.toBeNull();
+    expect(await videoLeft(walkId)).toEqual([]);
+  });
+
+  it("ends done with the look recorded as not checked when Muse Spark gives no usable answer", async () => {
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const record = (await (await env.MEDIA.get(coverageKey(walkId)))!.json()) as { look: unknown; coverage: string };
+    expect(record.look).toEqual({ notChecked: expect.any(String) });
+    expect(record.coverage).toBe("not_checked");
+  });
+});
+
+describe("voice notes", () => {
+  const originalsLeft = async (walkId: string) => (await env.MEDIA.list({ prefix: `originals/${walkId}/` })).objects.map((o) => o.key);
+  const sparkBodies = () => harness.requests.flatMap((r) => (r.path === "/responses" && "json" in r ? [JSON.stringify(r.json)] : []));
+  const explainBody = () => sparkBodies().find((b) => !b.includes(CLEAN_PHRASE) && b.includes("woodpile"));
+  const CLEANED = "This woodpile is right up against the garage wall, and the juniper by the porch has a lot of dead branches inside.";
+
+  it("with the flag on, puts the cleaned words on the finding, gives the raw turns to the explainer and leaves nothing under originals/", async () => {
+    harness.voiceNotes = true;
+    harness.answers[CLEAN_PHRASE] = [{ text: JSON.stringify({ notes: [{ id: "1", text: CLEANED }] }) }];
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(orderProblems(harness.steps, ["loop"])).toEqual([]);
+    const notes = (await findingsForWalk(env.DB, walkId)).map((f) => f.voiceNote).filter((n) => n !== null);
+    expect(notes).toEqual([CLEANED]);
+    expect(explainBody()).toContain("The juniper by the porch has a lot of dead branches inside.");
+    expect(await originalsLeft(walkId)).toEqual([]);
+    expect(await videoLeft(walkId)).toEqual([]);
+  });
+
+  it("stores the raw joined words when cleaning gives no usable answer", async () => {
+    harness.voiceNotes = true;
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const notes = (await findingsForWalk(env.DB, walkId)).map((f) => f.voiceNote).filter((n) => n !== null);
+    expect(notes).toEqual(["This woodpile is right up against the garage wall."]);
+  });
+
+  it("with the flag off, runs both steps with no audio or Meta call and stores no note", async () => {
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(orderProblems(harness.steps, ["loop"])).toEqual([]);
+    expect(harness.audioed).toHaveLength(0);
+    expect(harness.requests.filter((r) => r.path === "/asr/transcribe")).toHaveLength(0);
+    expect(sparkBodies().filter((b) => b.includes(CLEAN_PHRASE))).toHaveLength(0);
+    expect((await findingsForWalk(env.DB, walkId)).every((f) => f.voiceNote === null)).toBe(true);
+  });
+
+  it("ends done with no note for a walk recorded with sound off", async () => {
+    harness.voiceNotes = true;
+    harness.audio = { refuse: { code: "media_no_audio", message: "The input has no sound." } };
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(harness.requests.filter((r) => r.path === "/asr/transcribe")).toHaveLength(0);
+    expect((await findingsForWalk(env.DB, walkId)).every((f) => f.voiceNote === null)).toBe(true);
+    expect(await originalsLeft(walkId)).toEqual([]);
+  });
+
+  it("ends done with no note when the Transcribe answer is off its shape", async () => {
+    harness.voiceNotes = true;
+    harness.transcribed = { words: "no turns here" };
+    const walkId = await foundWalk(["loop"]);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect((await findingsForWalk(env.DB, walkId)).every((f) => f.voiceNote === null)).toBe(true);
   });
 });

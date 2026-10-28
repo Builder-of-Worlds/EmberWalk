@@ -4,6 +4,7 @@ export type RefusalReason =
   | "non_standard_model"
   | "missing_upload_expiry"
   | "invalid_answer"
+  | "invalid_audio"
   | "invalid_tool_arguments";
 
 export class MetaRefused extends Error {

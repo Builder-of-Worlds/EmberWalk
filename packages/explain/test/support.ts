@@ -24,6 +24,9 @@ export const observation = (n: number, concept: Observation["concept"], low: num
 export const findings = (obs: Observation[]): ExplainFinding[] =>
   rank(evaluate(obs, "ca")).map((f, i) => ({ ...f, findingId: id(100 + i), observation: obs.find((o) => o.id === f.observationId)! }));
 
+export const withProofFrame = (list: ExplainFinding[], findingId: string, proofFrame: string): ExplainFinding[] =>
+  list.map((f) => (f.findingId === findingId ? { ...f, proofFrame } : f));
+
 export const YARD = [observation(1, "wood_pile", 1), observation(2, "dry_brush", 10), observation(3, "wooden_fence", 2)];
 
 export const input = (o: Partial<ExplainInput> = {}): ExplainInput => ({
@@ -37,7 +40,7 @@ export const input = (o: Partial<ExplainInput> = {}): ExplainInput => ({
   ...o,
 });
 
-type Hazard = { concept: string; distance_ft: number; contact: boolean; band: string; label: string };
+type Hazard = { concept: string; distance_ft: number; contact: boolean; band: string; label: string; visible_s: [number, number][] };
 export type Truth = { synthetic: boolean; label: string; hazards: Hazard[] };
 
 export const TRUTH_BANDS = { "0_5": "zone_0", "5_30": "zone_1", "30_100": "zone_2" } as const;
@@ -53,7 +56,14 @@ export const yardTwoObservations = (truth: Truth = yardTwo()): Observation[] =>
     }),
   );
 
-export const yardTwoInput = (o: Partial<ExplainInput> = {}): ExplainInput =>
+export const yardTwoProofFrames = (list: ExplainFinding[], seconds: number[], frames: string[], truth: Truth = yardTwo()): ExplainFinding[] =>
+  list.map((f) => {
+    const hazard = truth.hazards.find((_, i) => id(i + 1) === f.observationId)!;
+    const at = seconds.findIndex((s) => hazard.visible_s.some(([from, to]) => s >= from && s <= to));
+    return at < 0 ? f : { ...f, proofFrame: frames[at]! };
+  });
+
+export const yardTwoInput =(o: Partial<ExplainInput> = {}): ExplainInput =>
   input({ walkId: id(2), findings: findings(yardTwoObservations()), turns: [], frames: [], ...o });
 
 export const completed =(text: string, tokens = 1) => ({

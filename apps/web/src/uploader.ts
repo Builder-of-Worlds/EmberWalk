@@ -65,10 +65,7 @@ export const sendTake = async (deps: UploaderDeps, take: Take, walkId: string): 
   const { api, takes } = deps;
   let { upload } = await takes.get(take.id);
 
-  const sent = async (): Promise<SendResult> => {
-    await takes.remove(take.id).catch(() => undefined);
-    return { walkId: upload?.walkId ?? walkId };
-  };
+  const sent = async (): Promise<SendResult> => ({ walkId: upload?.walkId ?? walkId });
   const refused = async (code: Failure): Promise<SendResult> => {
     if (code === "upload_completed") return sent();
     const uploadId = upload?.uploadId ?? null;

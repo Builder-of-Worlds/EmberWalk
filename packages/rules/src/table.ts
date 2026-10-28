@@ -93,10 +93,13 @@ const DEAD: PlantState[] = ["dead", "unsure"];
 const NOT_ALIVE: (PlantState | null)[] = [...DEAD, null];
 const NEAR = [0, 1] as ZoneNumber[];
 const KEEP_CLEAR: Words = {
-  en: "Keep the first 5 feet around the house free of things that burn.",
-  es: "Mantenga los primeros 5 pies alrededor de la casa libres de cosas que se quemen.",
+  en: "Keep the strip 5 feet out from the walls clear of things that burn; gravel, stone or pavers work well there.",
+  es: "Mantenga la franja de 5 pies junto a las paredes libre de cosas que se quemen; la grava, la piedra o los adoquines sirven bien ahí.",
 };
-const CHIMNEY: Words = { en: "Cut branches back to 10 feet from the chimney.", es: "Corte las ramas a 10 pies de la chimenea." };
+const CHIMNEY: Words = {
+  en: "Trim back any branch that reaches within 10 feet of the chimney, using a pole saw from the ground.",
+  es: "Recorte toda rama que llegue a menos de 10 pies de la chimenea, con una sierra de pértiga desde el suelo.",
+};
 
 const zone0 = (concept: Concept, cite: Cite, plain: Words = KEEP_CLEAR, unsure?: string, when?: When): Spec => ({
   key: `${concept.replaceAll("_", "-")}-zone-0`,
@@ -117,7 +120,10 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrA1],
     when: { plant: NOT_ALIVE },
     condition: "Dry brush within 30 feet of the house",
-    plain: { en: "Remove dry brush within 30 feet of the house.", es: "Quite la maleza seca a menos de 30 pies de la casa." },
+    plain: {
+      en: "Cut the dry brush and haul it off, or bag it for the green waste bin.",
+      es: "Corte la maleza seca y llévesela, o échela en el bote de desechos verdes.",
+    },
   },
   {
     key: "dry-brush-on-house",
@@ -126,8 +132,11 @@ const SPECS: Spec[] = [
     cites: [CITES.prcA3, CITES.govA3],
     when: { contact: ["yes"], plant: NOT_ALIVE },
     condition: "Dry brush touching the house",
-    plain: { en: "Keep plants against the house free of dead wood.", es: "Mantenga las plantas junto a la casa libres de madera muerta." },
-    unsure: "This brush against the house may be dead. If it is, clear it away from the house.",
+    plain: {
+      en: "Snip the dead wood out of the plants against the wall, so only green growth touches the house.",
+      es: "Recorte la madera muerta de las plantas pegadas a la pared, para que solo lo verde toque la casa.",
+    },
+    unsure: "Bend a twig on the brush against the house; if it snaps dry, it could be dead, so cut it back to green growth.",
   },
   {
     key: "dry-brush-far",
@@ -136,17 +145,20 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrB2A],
     when: { plant: NOT_ALIVE },
     condition: "Dry brush 30 to 100 feet from the house",
-    plain: { en: "Remove dead brush 30 to 100 feet from the house.", es: "Quite la maleza muerta entre 30 y 100 pies de la casa." },
-    unsure: "This brush 30 to 100 feet from the house may be dead. If it is, remove it.",
+    plain: {
+      en: "A rented brush cutter clears a big patch of dead brush; rake it up and haul it away.",
+      es: "Una desbrozadora alquilada despeja un área grande de maleza muerta; rastríllela y llévesela.",
+    },
+    unsure: "Some brush out here might be dead: where stems crack and leaves are brown, cut it and haul it off.",
   },
   zone0(
     "dry_brush",
     CITES.zone0Dead,
     {
-      en: "Clear dead plants from the first 5 feet around the house.",
-      es: "Quite las plantas muertas de los primeros 5 pies alrededor de la casa.",
+      en: "Pull the dead plants from the strip along the wall and spread gravel or stone in their place.",
+      es: "Arranque las plantas muertas de la franja junto a la pared y ponga grava o piedra en su lugar.",
     },
-    "This brush within 5 feet of the house may be dead. If it is, clear it away.",
+    "Check the plants in the strip by the wall: brown, brittle stems may be dead; pull those and lay gravel in their place.",
     { plant: NOT_ALIVE },
   ),
   {
@@ -157,8 +169,8 @@ const SPECS: Spec[] = [
     when: { unless: ["covered"] },
     condition: "An uncovered wood pile within 30 feet of the house",
     plain: {
-      en: "Move the wood pile more than 30 feet from the house, or cover it completely with fire resistant material.",
-      es: "Aleje la leña a más de 30 pies de la casa, o cúbrala por completo con material resistente al fuego.",
+      en: "Stack the firewood at least 30 feet from the house, or keep it completely covered with sheet metal.",
+      es: "Apile la leña por lo menos a 30 pies de la casa, o manténgala tapada por completo con lámina de metal.",
     },
   },
   {
@@ -168,15 +180,18 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrB2C],
     when: { unless: ["cleared"] },
     condition: "A wood pile 30 to 100 feet from the house without 10 feet of bare soil around it",
-    plain: { en: "Clear 10 feet of bare soil around the wood pile.", es: "Deje 10 pies de tierra desnuda alrededor de la leña." },
+    plain: {
+      en: "Scrape the ground bare for 10 feet around the woodpile, with no grass or plants in that ring.",
+      es: "Raspe el suelo hasta la tierra en 10 pies alrededor de la leña, sin pasto ni plantas en ese círculo.",
+    },
   },
   zone0("wood_pile", CITES.zone0Wood, {
-    en: "Move firewood at least 30 feet from the house.",
-    es: "Aleje la leña por lo menos 30 pies de la casa.",
+    en: "Carry firewood and lumber out to the far side of the yard, 30 feet or more from the walls.",
+    es: "Lleve la leña y la madera al otro lado del patio, a 30 pies o más de las paredes.",
   }),
   zone0("wooden_fence", CITES.zone0Fence, {
-    en: "Replace the wooden fence near the house with fire resistant material.",
-    es: "Cambie la cerca de madera cerca de la casa por material resistente al fuego.",
+    en: "Swap the first 5 feet of wooden fence next to the house for metal, brick or another material that will not burn.",
+    es: "Cambie los primeros 5 pies de cerca de madera junto a la casa por metal, ladrillo u otro material que no se queme.",
   }),
   {
     key: "roof-debris",
@@ -184,11 +199,14 @@ const SPECS: Spec[] = [
     zones: NEAR,
     cites: [CITES.prcA4, CITES.govA4, CITES.ccrA1],
     condition: "Leaves, needles or other plant matter on the roof or in the gutters",
-    plain: { en: "Clear leaves and needles off the roof and gutters.", es: "Quite las hojas y agujas del techo y las canaletas." },
+    plain: {
+      en: "Sweep the leaves and needles off the roof and clean out the gutters with a scoop or a leaf blower.",
+      es: "Barra las hojas y agujas del techo y limpie las canaletas con una pala pequeña o un soplador.",
+    },
   },
   zone0("roof_debris", CITES.zone0Dead, {
-    en: "Check the roof and gutters for dead leaves and debris.",
-    es: "Revise el techo y las canaletas por hojas muertas y basura.",
+    en: "Look over the roof and gutters for dead leaves, and clear any you find by hand or with a blower.",
+    es: "Revise el techo y las canaletas por hojas muertas, y quite las que encuentre a mano o con un soplador.",
   }),
   {
     key: "vent-screen",
@@ -197,8 +215,8 @@ const SPECS: Spec[] = [
     cites: [CITES.vents],
     condition: "A foundation vent on the house",
     plain: {
-      en: "Check that the vent has a fine metal screen that stops embers.",
-      es: "Revise que la rejilla tenga una malla metálica fina que detenga las brasas.",
+      en: "Look closely at the vent: it needs metal mesh with holes 1/16 to 1/8 inch wide, sold at any hardware store.",
+      es: "Mire bien la rejilla: necesita malla metálica con huecos de 1/16 a 1/8 de pulgada, que venden en cualquier ferretería.",
     },
   },
   {
@@ -208,7 +226,10 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrA1],
     when: { flags: ["debris"] },
     condition: "Dead plants or debris against a foundation vent",
-    plain: { en: "Clear dead plants and debris away from the vent.", es: "Quite las plantas muertas y la basura de la rejilla." },
+    plain: {
+      en: "Clear the dead leaves and plants away from the vent by hand, leaving bare ground in front of it.",
+      es: "Quite a mano las hojas y plantas muertas de la rejilla, dejando la tierra limpia frente a ella.",
+    },
   },
   zone0("foundation_vent", CITES.zone0),
   {
@@ -218,8 +239,11 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrA2Dead, CITES.prcA3, CITES.govA3],
     when: { plant: DEAD },
     condition: "A dead branch over the roof, a window or a wall",
-    plain: { en: "Cut off the dead branch over the house.", es: "Corte la rama muerta sobre la casa." },
-    unsure: "This branch over the house may be dead. If it is, cut it off.",
+    plain: {
+      en: "Saw off the dead branch hanging over the house; for a high branch, call a tree service.",
+      es: "Quite la rama muerta que cuelga sobre la casa; para una rama alta, contrate a un podador.",
+    },
+    unsure: "That branch over the roof might be dead if it holds no leaves or its bark peels; a tree service can take it off.",
   },
   {
     key: "branch-chimney",
@@ -237,7 +261,10 @@ const SPECS: Spec[] = [
     cites: [CITES.zone1Branches],
     when: { plant: ["alive"] },
     condition: "A live branch over the roof",
-    plain: { en: "Trim the branch back from the roof.", es: "Recorte la rama para alejarla del techo." },
+    plain: {
+      en: "Shorten this branch so it no longer hangs over the roof; loppers or a pole saw will do it.",
+      es: "Acorte esta rama para que ya no cuelgue sobre el techo; unas tijeras de podar o una sierra de pértiga sirven.",
+    },
   },
   zone0("tree_branch_over_roof", CITES.zone0),
   {
@@ -247,8 +274,11 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrA1],
     when: { plant: DEAD },
     condition: "A dead or dying tree within 30 feet of the house",
-    plain: { en: "Remove the dead tree within 30 feet of the house.", es: "Quite el árbol muerto a menos de 30 pies de la casa." },
-    unsure: "This tree within 30 feet of the house may be dead. If it is, remove it.",
+    plain: {
+      en: "Have the dead tree taken down and hauled away by a tree service.",
+      es: "Pida a un servicio de árboles que tumbe y se lleve el árbol muerto.",
+    },
+    unsure: "Look for buds or leaves on this tree; bare in spring or summer, it could be dead, and an arborist can check and remove it.",
   },
   {
     key: "tree-chimney",
@@ -266,7 +296,10 @@ const SPECS: Spec[] = [
     cites: [CITES.zone1Trees],
     when: { spacing: ["too_close"] },
     condition: "Trees too close together within 30 feet of the house",
-    plain: { en: "Keep a 10 foot gap between trees near the house.", es: "Deje 10 pies de espacio entre los árboles cerca de la casa." },
+    plain: {
+      en: "Thin these trees so their branches stay 10 feet apart, taking out the smallest ones first.",
+      es: "Aclare estos árboles para que sus ramas queden a 10 pies unas de otras, quitando primero los más chicos.",
+    },
   },
   {
     key: "tree-spacing-far",
@@ -276,8 +309,8 @@ const SPECS: Spec[] = [
     when: { spacing: ["too_close"] },
     condition: "Trees too close together 30 to 100 feet from the house",
     plain: {
-      en: "Thin the trees so fire cannot jump from one to the next.",
-      es: "Aclare los árboles para que el fuego no salte de uno a otro.",
+      en: "Space out the trees by taking a few out or trimming lower branches, so fire cannot jump between them.",
+      es: "Separe los árboles quitando algunos o podando las ramas bajas, para que el fuego no pase de uno a otro.",
     },
   },
   {
@@ -287,8 +320,11 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrB2A],
     when: { plant: DEAD },
     condition: "A dead or dying tree 30 to 100 feet from the house",
-    plain: { en: "Remove the dead tree 30 to 100 feet from the house.", es: "Quite el árbol muerto entre 30 y 100 pies de la casa." },
-    unsure: "This tree 30 to 100 feet from the house may be dead. If it is, remove it.",
+    plain: {
+      en: "Take down the dead tree and haul the wood away, or hire a crew for a big one.",
+      es: "Tumbe el árbol muerto y llévese la madera, o contrate una cuadrilla si es grande.",
+    },
+    unsure: "Scratch the bark of a twig on this tree: green beneath means alive; brown and dry means it may be dead and should come down.",
   },
   zone0("tree", CITES.zone0),
   {
@@ -298,8 +334,11 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrA1],
     when: { plant: DEAD },
     condition: "A dead or dying shrub within 30 feet of the house",
-    plain: { en: "Remove the dead shrub within 30 feet of the house.", es: "Quite el arbusto muerto a menos de 30 pies de la casa." },
-    unsure: "This shrub within 30 feet of the house may be dead. If it is, remove it.",
+    plain: {
+      en: "Dig out the dead shrub, roots and all, and put it out with the green waste.",
+      es: "Saque el arbusto muerto con todo y raíces, y póngalo con los desechos verdes.",
+    },
+    unsure: "Snap a stem on this shrub; one that breaks clean and dry may be dead, and the shrub can be dug out with its roots.",
   },
   {
     key: "shrub-window",
@@ -308,7 +347,10 @@ const SPECS: Spec[] = [
     cites: [CITES.zone1Windows],
     when: { plant: ["alive"], flags: ["near_window"] },
     condition: "A live shrub near a window",
-    plain: { en: "Prune the shrub back from the window.", es: "Pode el arbusto para alejarlo de la ventana." },
+    plain: {
+      en: "Prune the shrub so its branches stay clear of the window; hedge shears do the job.",
+      es: "Pode el arbusto para que sus ramas no toquen la ventana; unas tijeras de jardín bastan.",
+    },
   },
   {
     key: "shrub-spacing-far",
@@ -318,8 +360,8 @@ const SPECS: Spec[] = [
     when: { spacing: ["too_close"] },
     condition: "Shrubs too close together 30 to 100 feet from the house",
     plain: {
-      en: "Thin the shrubs so fire cannot jump from one to the next.",
-      es: "Aclare los arbustos para que el fuego no salte de uno a otro.",
+      en: "Thin the shrubs by removing some or cutting them lower, so there are gaps fire cannot cross.",
+      es: "Aclare los arbustos quitando algunos o cortándolos más bajos, para dejar huecos que el fuego no cruce.",
     },
   },
   {
@@ -329,8 +371,11 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrB2A],
     when: { plant: DEAD },
     condition: "A dead or dying shrub 30 to 100 feet from the house",
-    plain: { en: "Remove the dead shrub 30 to 100 feet from the house.", es: "Quite el arbusto muerto entre 30 y 100 pies de la casa." },
-    unsure: "This shrub 30 to 100 feet from the house may be dead. If it is, remove it.",
+    plain: {
+      en: "Uproot the dead shrub with a shovel and haul it away.",
+      es: "Arranque el arbusto muerto con una pala y llévelo.",
+    },
+    unsure: "If this shrub stays bare or brown through spring, it might be dead; a shovel will get it out by the roots.",
   },
   zone0("shrub", CITES.zone0),
   {
@@ -341,10 +386,10 @@ const SPECS: Spec[] = [
     when: { plant: NOT_ALIVE },
     condition: "Dead grass within 30 feet of the house",
     plain: {
-      en: "Cut and remove dead grass within 30 feet of the house.",
-      es: "Corte y quite el pasto seco a menos de 30 pies de la casa.",
+      en: "Mow the dead grass short and rake up the clippings.",
+      es: "Corte bajo el pasto seco y rastrille los recortes.",
     },
-    unsure: "This grass within 30 feet of the house may be dead. If it is, cut and remove it.",
+    unsure: "Grass that stays brown after watering may be dead; mow it short and rake it up.",
   },
   {
     key: "dry-grass-far",
@@ -353,16 +398,19 @@ const SPECS: Spec[] = [
     cites: [CITES.ccrB2B],
     when: { unless: ["cut_short"] },
     condition: "Grass taller than 4 inches 30 to 100 feet from the house, judged by eye",
-    plain: { en: "Cut the grass down to 4 inches or shorter.", es: "Corte el pasto a 4 pulgadas o menos." },
+    plain: {
+      en: "Mow or string trim the tall grass down to 4 inches or less.",
+      es: "Corte o desbroce el pasto alto hasta 4 pulgadas o menos.",
+    },
   },
   zone0(
     "dry_grass",
     CITES.zone0Dead,
     {
-      en: "Clear dead grass from the first 5 feet around the house.",
-      es: "Quite el pasto seco de los primeros 5 pies alrededor de la casa.",
+      en: "Replace the dead grass along the wall with gravel or stone, which stays clear year round.",
+      es: "Cambie el pasto seco junto a la pared por grava o piedra, que se mantiene limpia todo el año.",
     },
-    "This grass within 5 feet of the house may be dead. If it is, clear it away.",
+    "Tug a tuft of grass by the wall; if it lifts out dry and loose, it may be dead; gravel can replace it.",
     { plant: NOT_ALIVE },
   ),
   {
@@ -373,8 +421,8 @@ const SPECS: Spec[] = [
     when: { unless: ["cleared"] },
     condition: "A propane tank without 10 feet of bare soil around it",
     plain: {
-      en: "Clear 10 feet of bare soil around the propane tank, and keep plants back 10 feet more.",
-      es: "Deje 10 pies de tierra desnuda alrededor del tanque de propano, y sin plantas 10 pies más.",
+      en: "Rake a 10 foot ring of bare dirt around the propane tank, and keep plants back another 10 feet beyond it.",
+      es: "Rastrille un círculo de 10 pies de tierra pelada alrededor del tanque de propano, y mantenga las plantas otros 10 pies más allá.",
     },
   },
   zone0("propane_tank", CITES.zone0),
@@ -386,14 +434,14 @@ const SPECS: Spec[] = [
     when: { unless: ["cleared"] },
     condition: "A shed without 10 feet of bare soil around it",
     plain: {
-      en: "Clear 10 feet of bare soil around the shed, and keep plants back 10 feet more.",
-      es: "Deje 10 pies de tierra desnuda alrededor del cobertizo, y sin plantas 10 pies más.",
+      en: "Strip the ground to bare dirt in a 10 foot circle around the shed, with no plants for 10 feet past that.",
+      es: "Limpie la tierra hasta dejarla pelada en 10 pies alrededor del cobertizo, sin plantas por otros 10 pies.",
     },
   },
   zone0("shed", CITES.zone0),
   zone0("trash_can", CITES.zone0Trash, {
-    en: "Move the trash and recycling bins out of the first 5 feet around the house.",
-    es: "Saque los botes de basura y reciclaje de los primeros 5 pies alrededor de la casa.",
+    en: "Roll the trash and recycling bins at least 5 feet from the wall, beside the driveway for example.",
+    es: "Ruede los botes de basura y reciclaje por lo menos a 5 pies de la pared, por ejemplo junto a la entrada de autos.",
   }),
   {
     key: "furniture-deck",
@@ -403,13 +451,13 @@ const SPECS: Spec[] = [
     when: { flags: ["under_deck"] },
     condition: "Furniture or other things that burn under or next to a deck, balcony or stairs",
     plain: {
-      en: "Move things that can burn away from under and beside the deck and stairs.",
-      es: "Quite las cosas que se queman de debajo y al lado de la terraza y las escaleras.",
+      en: "Clear cushions, boxes and lumber out from under the deck and stairs, and store them in the garage or shed.",
+      es: "Saque cojines, cajas y madera de debajo de la terraza y las escaleras, y guárdelos en el garaje o el cobertizo.",
     },
   },
   zone0("patio_furniture", CITES.zone0Furniture, {
-    en: "Keep furniture that can burn out of the first 5 feet around the house.",
-    es: "Mantenga los muebles que se queman fuera de los primeros 5 pies alrededor de la casa.",
+    en: "Set wooden or wicker furniture at least 5 feet away from the walls, or use metal pieces close to the house.",
+    es: "Aparte los muebles de madera o mimbre 5 pies de las paredes, o use muebles de metal junto a la casa.",
   }),
 ];
 

@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T08:27:48.826Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "spoken turns only",
+    "language": "en",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "That is our firewood pile. I cover it with a tarp every night, but it sits right against the wall."
+      },
+      {
+        "t": 11,
+        "text": "The brush is what I cut last weekend. I have not hauled it away yet, it is still green."
+      },
+      {
+        "t": 16,
+        "text": "This fence is old cedar. It was here when we bought the place."
+      }
+    ],
+    "frameSeconds": []
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.026107,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0184825,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0076245,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the firewood pile at least 30 feet from the house, or cover it fully with sheet metal.",
+      "verdict": "keep",
+      "reason": "The homeowner says the firewood pile sits against the wall and is covered with a tarp at night."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the 5 feet of cedar fence touching the house with metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "The homeowner says the fence is old cedar that was there when they bought the place."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Haul the cut brush off the yard or bag it for the green waste bin.",
+      "verdict": "keep",
+      "reason": "The homeowner says the brush was cut last weekend and has not been hauled away yet."
+    }
+  ]
+}

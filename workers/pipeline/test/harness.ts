@@ -2,9 +2,11 @@ import { d1Ledger } from "@emberwalk/db";
 import { type FindingAnswer, ruleTable } from "@emberwalk/explain";
 import { type Billing, type HttpRequest, type HttpResponse, MetaClient, type Transport } from "@emberwalk/meta";
 import { limitsWith } from "@emberwalk/shared";
+import catalogYard from "../../../fixtures/catalog/yard-objects/answers.json";
+import transcribeAnswer from "../../../fixtures/meta/transcribe.json";
 import { type Deps, r2Cache } from "../src/deps.ts";
 import type { Env } from "../src/env.ts";
-import type { ClipRequest, Media, StillsRequest } from "../src/media.ts";
+import type { AudioRequest, ClipRequest, Media, StillsRequest } from "../src/media.ts";
 import { type Outcome, pass, refuse } from "../src/outcome.ts";
 import { r2Signer } from "../src/storage.ts";
 
@@ -15,7 +17,13 @@ const MASK = "!!!!M!0c[0o91w?q1!pIH4pPRVp2B3'7`e.ioeAf6-k/#Xd8%dX9x(";
 
 export type Failure = { code: string; message: string };
 
-export type Sighting = { frame: number; id: number; box: [number, number, number, number]; confidence?: number };
+export type Sighting = {
+  frame: number;
+  id: number;
+  box: [number, number, number, number];
+  confidence?: number;
+  frameSize?: [number, number];
+};
 
 export type Reply = { found: Sighting[] } | { text: string } | { status: number; retryAfter?: string };
 
@@ -26,9 +34,14 @@ export type Harness = {
   probeFailures: number;
   hideDetections: boolean;
   failDeletes: number;
+  failPointDeletes: number;
   probed: string[];
   clipped: ClipRequest[];
   stilled: StillsRequest[];
+  audio: { seconds: number } | { refuse: Failure } | { throws: string };
+  audioed: AudioRequest[];
+  transcribed: unknown;
+  voiceNotes: boolean;
   answers: Record<string, Reply[]>;
   requests: HttpRequest[];
   asked: string[];
@@ -47,9 +60,14 @@ export const freshHarness = (): Harness => ({
   probeFailures: 0,
   hideDetections: false,
   failDeletes: 0,
+  failPointDeletes: 0,
   probed: [],
   clipped: [],
   stilled: [],
+  audio: { seconds: 20 },
+  audioed: [],
+  transcribed: transcribeAnswer,
+  voiceNotes: false,
   answers: {},
   requests: [],
   asked: [],
@@ -71,12 +89,23 @@ export const stageExplain = (findings: FindingAnswer[]): void => {
   harness.answers[ruleTable("ca")] = [{ text: JSON.stringify({ findings }) }];
 };
 
+export const SAME_PLACE_PHRASE = "Photo one, then photo two.";
+
+export const stageSamePlace = (answer: { same: boolean; confidence: number } | string): void => {
+  harness.answers[SAME_PLACE_PHRASE] = [{ text: typeof answer === "string" ? answer : JSON.stringify(answer) }];
+};
+
+export const stageCatalogYard =(h: Harness): void => {
+  for (const [phrase, sightings] of Object.entries(catalogYard.sam)) h.answers[phrase] = [{ found: sightings as Sighting[] }];
+};
+
 export const idFor = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 const record = (s: Sighting): string => {
   const [x1, y1, x2, y2] = s.box;
   const c = s.confidence === undefined ? "" : `;c=${s.confidence}`;
-  return `${s.id}<|box;x1=${x1};y1=${y1};x2=${x2};y2=${y2};w=${FRAME_WIDTH};h=${FRAME_HEIGHT}${c}|><|mask;x=0;y=0;data=27,60,~${MASK}|>`;
+  const [w, h] = s.frameSize ?? [FRAME_WIDTH, FRAME_HEIGHT];
+  return `${s.id}<|box;x1=${x1};y1=${y1};x2=${x2};y2=${y2};w=${w};h=${h}${c}|><|mask;x=0;y=0;data=27,60,~${MASK}|>`;
 };
 
 export const samText = (sightings: Sighting[]): string => {
@@ -110,6 +139,7 @@ const phraseOf = (body: unknown): string => {
 };
 
 const POINT_STILL = /\/point\/(\d+)\.jpg/;
+const LOOK_STILL = /\/look\/\d+\.jpg/;
 const NOTHING_POINTED = '{"found": false, "box": null}';
 
 const placeholderJpeg = (key: string): Uint8Array => new Uint8Array([0xff, 0xd8, ...new TextEncoder().encode(key), 0xff, 0xd9]);
@@ -127,6 +157,7 @@ export const fakeTransport =
     h.requests.push(req);
     if (req.method === "POST" && req.path === "/files") return json(200, { id: `file-${++h.uploads}` });
     if (req.method === "DELETE") return json(200, {});
+    if (req.method === "POST" && req.path === "/asr/transcribe") return json(200, h.transcribed);
     if (req.method === "POST" && req.path === "/responses" && "json" in req) {
       const phrase = phraseOf(req.json);
       h.asked.push(phrase);
@@ -176,7 +207,36 @@ export const fakeMedia = (env: Pick<Env, "MEDIA" | "R2_BUCKET_NAME">, h: Harness
       }
       return pass({ stills: made });
     },
+    async audio(request) {
+      h.audioed.push(request);
+      if ("throws" in h.audio) throw new Error(h.audio.throws);
+      if ("refuse" in h.audio) return refuse(h.audio.refuse.code, h.audio.refuse.message);
+      const bytes = monoWav(h.audio.seconds);
+      await env.MEDIA.put(keyOf(request.output), bytes);
+      return pass({ bytes: bytes.length, sampleRate: 16000, channels: 1, durationSeconds: h.audio.seconds });
+    },
   };
+};
+
+export const monoWav = (seconds: number, rate = 16000): Uint8Array => {
+  const data = Math.round(seconds * rate) * 2;
+  const out = new Uint8Array(44 + data);
+  const v = new DataView(out.buffer);
+  const tag = (at: number, t: string) => [...t].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  tag(0, "RIFF");
+  v.setUint32(4, 36 + data, true);
+  tag(8, "WAVE");
+  tag(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  tag(36, "data");
+  v.setUint32(40, data, true);
+  return out;
 };
 
 const FIXED_NOW = new Date("2026-10-26T18:00:00.000Z");
@@ -193,7 +253,12 @@ const failingDeletes = (bucket: R2Bucket, h: Harness): R2Bucket =>
     get: (key: string) => bucket.get(key),
     put: (...args: Parameters<R2Bucket["put"]>) => bucket.put(...args),
     delete: async (keys: string | string[]) => {
-      if (h.failDeletes > 0 && ![keys].flat().every((key) => POINT_STILL.test(key))) {
+      const pointOnly = [keys].flat().every((key) => POINT_STILL.test(key) || LOOK_STILL.test(key));
+      if (pointOnly && h.failPointDeletes > 0) {
+        h.failPointDeletes--;
+        throw new Error("R2 answered 503");
+      }
+      if (!pointOnly && h.failDeletes > 0) {
         h.failDeletes--;
         throw new Error("R2 answered 503");
       }
@@ -203,7 +268,7 @@ const failingDeletes = (bucket: R2Bucket, h: Harness): R2Bucket =>
 
 export const testDeps = (env: Env, h: Harness): Deps => ({
   db: env.DB,
-  bucket: h.failDeletes > 0 ? failingDeletes(env.MEDIA, h) : h.hideDetections ? withoutDetections(env.MEDIA) : env.MEDIA,
+  bucket: h.failDeletes > 0 || h.failPointDeletes > 0 ? failingDeletes(env.MEDIA, h) : h.hideDetections ? withoutDetections(env.MEDIA) : env.MEDIA,
   media: fakeMedia(env, h),
   signer: r2Signer(env, () => FIXED_NOW),
   meta: () =>
@@ -219,4 +284,5 @@ export const testDeps = (env: Env, h: Harness): Deps => ({
     h.sleeps.push(ms);
   },
   newId: () => idFor(++h.ids),
+  voiceNotes: h.voiceNotes,
 });

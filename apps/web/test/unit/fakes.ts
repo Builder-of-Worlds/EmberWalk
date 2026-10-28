@@ -5,6 +5,7 @@ import { once } from "../../src/deps.ts";
 import { storageFindingMarks } from "../../src/finding-marks.ts";
 import { storagePrefs } from "../../src/prefs.ts";
 import type { Deps } from "../../src/deps.ts";
+import type { Locate } from "../../src/location.ts";
 import type { Bearing, MotionEnv } from "../../src/motion.ts";
 import type { Clock, MediaEnv } from "../../src/recorder.ts";
 import { openTakeStore } from "../../src/take-store.ts";
@@ -137,6 +138,14 @@ export const refusingStorage = (): Storage => {
 
 export const memoryMarks = (storage = memoryStorage()) => storageFindingMarks(() => storage);
 
+type Located = Awaited<ReturnType<Locate>>;
+
+export const heldLocate = () => {
+  const waiting: ((answer: Located) => void)[] = [];
+  const locate: Locate = () => new Promise((resolve) => waiting.push(resolve));
+  return { locate, asked: () => waiting.length, answer: (answer: Located) => waiting.forEach((resolve) => resolve(answer)) };
+};
+
 export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
   const idb = new IDBFactory();
   return {
@@ -149,6 +158,9 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
     motion: null,
     locate: async () => ({ refusal: "unsupported" }),
     results: async () => null,
+    walkStatus: () => new Promise(() => {}),
+    reportFault: async () => ({ code: "offline" }),
+    build: "dev",
     stills: async () => null,
     marks: memoryMarks(),
     ...overrides,

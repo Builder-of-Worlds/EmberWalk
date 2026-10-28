@@ -90,7 +90,6 @@ const OneFinding = ({ results, finding }: Found) => {
 
   return (
     <main className="screen one-finding" data-finding={finding.id} data-removed={removed}>
-      {results.synthetic ? <p className="sample">{copy.results.sample}</p> : null}
       <Photo proof={finding.proof} />
       <p className={`label ${finding.label}`}>{copy.results.label[finding.label]}</p>
       <p className="sentence">{finding.instruction}</p>
@@ -119,6 +118,12 @@ const OneFinding = ({ results, finding }: Found) => {
               </li>
             ))}
           </ul>
+          {finding.voiceNote?.trim() ? (
+            <>
+              <h2>{copy.finding.said}</h2>
+              <p className="said">{finding.voiceNote}</p>
+            </>
+          ) : null}
           {removed ? null : (
             <button className="button" type="button" onClick={remove}>
               {copy.finding.notRight}

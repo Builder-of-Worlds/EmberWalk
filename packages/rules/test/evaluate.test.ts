@@ -124,7 +124,7 @@ describe("the instruction", () => {
       const f = evaluate([seen({ id: "p", ...CASES[row.key], concept: row.concept, plantState: "unsure" }, MIDDLE[row.zone])], "ca")[0];
       if (!f) continue;
       checked++;
-      expect(f.instruction.replaceAll("may be dead", ""), row.id).not.toMatch(/\bdead\b/i);
+      expect(f.instruction.replace(/\b(?:may|might|could) be dead\b/, ""), row.id).not.toMatch(/\bdead\b/i);
     }
     expect(checked).toBeGreaterThan(plants.length / 2);
   });
@@ -149,19 +149,19 @@ describe("the instruction", () => {
       expect(f.instruction, f.observationId).toBe(first.plain.en);
     }
     expect(one({ concept: "tree", plantState: "alive", flags: ["near_chimney"] }, 3).instruction).toBe(
-      "Cut branches back to 10 feet from the chimney.",
+      "Trim back any branch that reaches within 10 feet of the chimney, using a pole saw from the ground.",
     );
   });
 });
 
 describe("a dry brush or dry grass judged alive", () => {
   const ASKED = [
-    { concept: "dry_brush", feet: 65, contact: "no", dead: "Remove dead brush 30 to 100 feet from the house.", maybe: "This brush 30 to 100 feet from the house may be dead. If it is, remove it." },
-    { concept: "dry_brush", feet: 17, contact: "no", dead: "Remove dry brush within 30 feet of the house.", maybe: null },
-    { concept: "dry_brush", feet: 2.5, contact: "no", dead: "Remove dry brush within 30 feet of the house.", maybe: null },
-    { concept: "dry_brush", feet: 2.5, contact: "yes", dead: "Remove dry brush within 30 feet of the house.", maybe: null },
-    { concept: "dry_grass", feet: 2.5, contact: "no", dead: "Cut and remove dead grass within 30 feet of the house.", maybe: "This grass within 30 feet of the house may be dead. If it is, cut and remove it." },
-    { concept: "dry_grass", feet: 17, contact: "no", dead: "Cut and remove dead grass within 30 feet of the house.", maybe: "This grass within 30 feet of the house may be dead. If it is, cut and remove it." },
+    { concept: "dry_brush", feet: 65, contact: "no", dead: "A rented brush cutter clears a big patch of dead brush; rake it up and haul it away.", maybe: "Some brush out here might be dead: where stems crack and leaves are brown, cut it and haul it off." },
+    { concept: "dry_brush", feet: 17, contact: "no", dead: "Cut the dry brush and haul it off, or bag it for the green waste bin.", maybe: null },
+    { concept: "dry_brush", feet: 2.5, contact: "no", dead: "Cut the dry brush and haul it off, or bag it for the green waste bin.", maybe: null },
+    { concept: "dry_brush", feet: 2.5, contact: "yes", dead: "Cut the dry brush and haul it off, or bag it for the green waste bin.", maybe: null },
+    { concept: "dry_grass", feet: 2.5, contact: "no", dead: "Mow the dead grass short and rake up the clippings.", maybe: "Grass that stays brown after watering may be dead; mow it short and rake it up." },
+    { concept: "dry_grass", feet: 17, contact: "no", dead: "Mow the dead grass short and rake up the clippings.", maybe: "Grass that stays brown after watering may be dead; mow it short and rake it up." },
   ] as const;
   const walk = (concept: "dry_brush" | "dry_grass", feet: number, contact: "yes" | "no", plantState: Observation["plantState"]) =>
     evaluate([seen({ id: "p", concept, contact, plantState }, feet)], "ca");
@@ -195,7 +195,7 @@ describe("a dry brush or dry grass judged alive", () => {
 
   it("keeps the 4 inch grass rule for tall grass judged alive, since that rule is about height, not dead fuel", () => {
     const [found] = walk("dry_grass", 65, "no", "alive");
-    expect(found?.instruction).toBe("Cut the grass down to 4 inches or shorter.");
+    expect(found?.instruction).toBe("Mow or string trim the tall grass down to 4 inches or less.");
     expect(found?.citations).toEqual(["14 CCR 1299.03(b)(2)(B)"]);
   });
 

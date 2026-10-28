@@ -13,3 +13,5 @@ footage/
 renders/
 *.blend1
 __pycache__/
+test-results/
+playwright-report/

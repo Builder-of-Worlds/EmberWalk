@@ -21,6 +21,7 @@ export default defineConfig(async () => {
     ],
     test: {
       include: ["test/**/*.test.ts"],
+      maxWorkers: 4,
       setupFiles: ["./test/apply-migrations.ts"],
     },
   };

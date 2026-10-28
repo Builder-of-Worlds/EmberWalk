@@ -1,4 +1,4 @@
-import { Id, PipelineStep, Text, Walk } from "@emberwalk/shared";
+import { Id, PipelineStep, Text, Walk, WalkPart } from "@emberwalk/shared";
 import { z } from "zod";
 import { DbRefused } from "./errors.ts";
 
@@ -48,17 +48,30 @@ export const getWalk = async (db: D1Database, walkId: string): Promise<WalkRecor
   return row === null ? null : toRecord(row);
 };
 
-export const NewWalk = Walk.pick({ id: true, visitorId: true, language: true, jurisdiction: true, device: true, synthetic: true });
+export const NewWalk = Walk.pick({ id: true, visitorId: true, language: true, jurisdiction: true, device: true, synthetic: true }).extend({
+  partOf: WalkPart.nullable().default(null),
+});
 
-export type NewWalk = z.infer<typeof NewWalk>;
+export type NewWalk = z.input<typeof NewWalk>;
 
 export const createWalk = async (db: D1Database, input: NewWalk): Promise<WalkRecord> => {
   const walk = NewWalk.parse(input);
   const result = await db
     .prepare(
-      "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic) VALUES (?, ?, 'uploading', ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
+      "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic, part_of, part_side) VALUES (?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
     )
-    .bind(walk.id, walk.visitorId, walk.language, walk.jurisdiction, walk.device.camera, walk.device.width, walk.device.height, walk.synthetic ? 1 : 0)
+    .bind(
+      walk.id,
+      walk.visitorId,
+      walk.language,
+      walk.jurisdiction,
+      walk.device.camera,
+      walk.device.width,
+      walk.device.height,
+      walk.synthetic ? 1 : 0,
+      walk.partOf?.walkId ?? null,
+      walk.partOf?.side ?? null,
+    )
     .run();
   requireOne(result.meta.changes, walk.id, "new");
   const created = await getWalk(db, walk.id);

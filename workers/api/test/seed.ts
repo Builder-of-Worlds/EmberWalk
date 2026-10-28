@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
-import { addTag, saveClip, saveFindings, storeDetections } from "@emberwalk/db";
-import type { Clip, Finding, Tag, Track } from "@emberwalk/shared";
+import { addGap, addTag, saveClip, saveFindings, storeDetections } from "@emberwalk/db";
+import { coverageKey } from "@emberwalk/rules";
+import type { Clip, Finding, Gap, Side, Tag, Track } from "@emberwalk/shared";
 
 const VISITOR = "a".repeat(64);
 
@@ -128,4 +129,19 @@ export const seedDoneWalk = async (walkId: string, n = 1): Promise<DoneWalk> => 
     await env.MEDIA.put(f.proofFrame.still, bytes);
   }
   return { walkId, loop, pan, brush, fence, vetoed, stills };
+};
+
+export const seedCoverage = (walkId: string, over: Record<string, unknown> = {}): Promise<unknown> =>
+  env.MEDIA.put(
+    coverageKey(walkId),
+    JSON.stringify({ walkId, checkedAt: "2026-10-27T18:00:00.000Z", coverage: "not_checked", loop: "closed", gaps: [], look: { same: true, confidence: 0.9 }, ...over }),
+  );
+
+export const seedGap =(walkId: string, side: Side, kind: Gap["kind"] = "not_checked", hint: Gap["hint"] = "again"): Promise<void> =>
+  addGap(env.DB, walkId, { side, kind, hint });
+
+export const seedDonePart = async (parentId: string, walkId: string, side: Side, n: number): Promise<DoneWalk> => {
+  const part = await seedDoneWalk(walkId, n);
+  await env.DB.prepare("UPDATE walks SET part_of = ?, part_side = ? WHERE id = ?").bind(parentId, side, walkId).run();
+  return part;
 };

@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   Clip,
   Concept,
+  Gap,
+  GAP_HINTS,
+  GAP_KINDS,
+  HINTS_FOR,
   LOOP_CONCEPTS,
   MotionSample,
   PAN_CONCEPTS,
+  Side,
+  SIDES,
   Tag,
   Track,
   TrackFrame,
@@ -128,5 +134,22 @@ describe("walk records", () => {
     }
     roundTrips(TrackFrame, { ...frame, box: [0, 0, 1, 1], confidence: 1 });
     refuses(TrackFrame, { ...frame, confidence: 1.01 });
+  });
+
+  it("names the four sides in walking order and each gap with a hint that suits its kind", () => {
+    expect(SIDES).toEqual(["front", "right", "back", "left"]);
+    for (const side of SIDES) roundTrips(Side, side);
+    for (const side of ["roof", "Front", "", null]) refuses(Side, side);
+    for (const kind of GAP_KINDS) {
+      for (const hint of GAP_HINTS) {
+        const gap = { side: "back", kind, hint };
+        if (HINTS_FOR[kind].includes(hint)) roundTrips(Gap, gap);
+        else refuses(Gap, gap);
+      }
+    }
+    expect(GAP_HINTS.filter((hint) => GAP_KINDS.some((kind) => HINTS_FOR[kind].includes(hint)))).toEqual([...GAP_HINTS]);
+    const gap = { side: "front", kind: "missing", hint: "walk_side" };
+    refusesMissingAndExtra(Gap, gap);
+    refusesEach(Gap, gap, [{ side: "roof" }, { kind: "smoke" }, { hint: "dance" }, { hint: "again" }]);
   });
 });

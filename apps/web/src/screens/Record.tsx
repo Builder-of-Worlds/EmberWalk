@@ -1,8 +1,10 @@
+import type { WalkPart } from "@emberwalk/shared";
 import { useEffect, useRef, useState } from "react";
 import { copy } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import { askMotion, CORNERS, cornersFor, turnBetween } from "../motion.ts";
 import type { Motion } from "../motion.ts";
+import { isJurisdiction, locateRules } from "../location.ts";
 import { cameraDevice, openCamera, startRecording } from "../recorder.ts";
 import type { CameraRefusal, Recording } from "../recorder.ts";
 import { ROUTES } from "../router.ts";
@@ -72,13 +74,14 @@ const Toggle = ({ label, on, disabled, onPress }: { label: string; on: boolean; 
   </button>
 );
 
-export const Record = () => {
+export const Record = ({ part = null }: { part?: WalkPart | null }) => {
   const deps = useDeps();
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const recording = useRef<Recording | null>(null);
   const [sound, setSound] = useState(true);
   const [soundOff, setSoundOff] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [rules, setRules] = useState<keyof typeof copy.record.location>("finding");
 
   useEffect(() => {
     let live = true;
@@ -96,6 +99,13 @@ export const Record = () => {
 
   const start = async () => {
     setPhase({ kind: "opening" });
+    setRules("finding");
+    const located = locateRules(deps.locate).then((answer) => {
+      setRules(isJurisdiction(answer) ? "found" : answer);
+      if (!isJurisdiction(answer)) return null;
+      deps.prefs.setJurisdiction(answer);
+      return answer;
+    });
     const [motion, camera] = await Promise.all([askMotion(deps.motion), openCamera(deps.media, sound)]);
     if ("refusal" in camera) return setPhase({ kind: "refused", refusal: camera.refusal });
     const takes = await deps.takes();
@@ -103,7 +113,11 @@ export const Record = () => {
       jurisdiction: deps.prefs.jurisdiction(),
       sound,
       device: cameraDevice(camera.stream),
+      partOf: part,
     });
+    void located.then((key) =>
+      key === null || key === take.jurisdiction ? undefined : takes.setJurisdiction(take.id, key).catch(() => undefined),
+    );
     const sink = {
       chunk: (data: Blob) => takes.append(take.id, data),
       mark: (change: Parameters<typeof takes.mark>[1]) => takes.mark(take.id, change),
@@ -145,7 +159,7 @@ export const Record = () => {
       ) : null}
       {phase.kind === "idle" ? (
         <>
-          <p>{copy.record.ready}</p>
+          <p>{part === null ? copy.record.ready : copy.record.oneSide(part.side)}</p>
           <p>{copy.record.limit}</p>
           <Toggle label={copy.record.soundOff} on={!sound} onPress={() => setSound(!sound)} />
           <button className="button primary" type="button" onClick={() => void start()}>
@@ -157,7 +171,8 @@ export const Record = () => {
       {phase.kind === "recording" ? (
         <>
           <Preview stream={phase.stream} />
-          {phase.motion === null ? null : <Outline motion={phase.motion} />}
+          <p role="status">{copy.record.location[rules]}</p>
+          {part !== null ? <p>{copy.record.oneSide(part.side)}</p> : phase.motion === null ? null : <Outline motion={phase.motion} />}
           {recording.current === null ? null : <TimeLeft recording={recording.current} />}
           <div className="controls">
             <Toggle label={copy.record.pause} on={paused} onPress={() => togglePause()} />

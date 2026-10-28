@@ -16,7 +16,7 @@ export const findingId = (n: number): string => uuid("aa000000", n);
 export const crewId = (n: number): string => uuid("cc000000", n);
 
 export const resetDb = async (): Promise<void> => {
-  const tables = ["agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walks"];
+  const tables = ["follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walks"];
   await env.DB.batch(tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 };
 
@@ -127,7 +127,8 @@ export const agentDeps = (o: { answers: unknown[]; crews: Crew[]; billing?: Bill
     newId: () => uuid("ee000000", ++ids),
   });
   const dir = directory(o.crews);
-  const deps: AgentDeps = { enabled: o.enabled ?? true, client, db: env.DB, directory: dir, now: () => NOW, newId: () => uuid("dd000000", ++ids) };
+  const photos = { has: async (key: string) => (await env.DB.prepare("SELECT 1 AS x FROM findings WHERE proof_still = ?").bind(key).first()) !== null };
+  const deps: AgentDeps = { enabled: o.enabled ?? true, client, db: env.DB, directory: dir, photos, now: () => NOW, newId: () => uuid("dd000000", ++ids) };
   return { deps, requests, directory: dir };
 };
 

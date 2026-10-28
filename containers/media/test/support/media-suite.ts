@@ -483,14 +483,19 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
     describe("load", () => {
       it("refuses a second job while one is running, then recovers", async () => {
         fixtures.delays.set("/with-sound.mp4", 1500);
+        const fetching = fixtures.requested("/with-sound.mp4");
         const first = call("/probe", { input: url("/with-sound.mp4") });
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        const second = await call("/probe", { input: url("/silent.mp4") });
-        expect(second.status).toBe(503);
-        expect(second.json.error.code).toBe("busy");
-        expect(second.headers.get("retry-after")).toBe("5");
-        expect((await first).status).toBe(200);
-        fixtures.delays.delete("/with-sound.mp4");
+        try {
+          await fetching;
+          const second = await call("/probe", { input: url("/silent.mp4") });
+          expect(second.status).toBe(503);
+          expect(second.json.error.code).toBe("busy");
+          expect(second.headers.get("retry-after")).toBe("5");
+          expect((await first).status).toBe(200);
+        } finally {
+          await first.catch(() => undefined);
+          fixtures.delays.delete("/with-sound.mp4");
+        }
         expect((await call("/probe", { input: url("/silent.mp4") })).status).toBe(200);
       });
     });

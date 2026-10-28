@@ -9,6 +9,8 @@ export const PRIVACY_PHRASES = ["person", "face", "license plate", "house number
 
 export const BOX_PADDING = 0.02;
 
+export const HOUSE_NUMBER_MARGIN_PX = 3;
+
 export type Region = [number, number, number, number];
 
 export type PhraseCheck = { phrase: string; status: "checked" } | { phrase: string; status: "not_checked"; reason: string };
@@ -19,12 +21,19 @@ export const privacyKey = (walkId: string, clipId: string): string => `privacy/$
 
 const clamp = (n: number): number => Math.min(1, Math.max(0, n));
 
-const grown = (box: { left: number; top: number; right: number; bottom: number; frameWidth: number; frameHeight: number }): Region => [
-  clamp(box.left / box.frameWidth - BOX_PADDING),
-  clamp(box.top / box.frameHeight - BOX_PADDING),
-  clamp(box.right / box.frameWidth + BOX_PADDING),
-  clamp(box.bottom / box.frameHeight + BOX_PADDING),
-];
+type Box = { left: number; top: number; right: number; bottom: number; frameWidth: number; frameHeight: number };
+
+const grown = (box: Box, phrase: string): Region => {
+  const tight = phrase === "house number";
+  const padX = tight ? HOUSE_NUMBER_MARGIN_PX / box.frameWidth : BOX_PADDING;
+  const padY = tight ? HOUSE_NUMBER_MARGIN_PX / box.frameHeight : BOX_PADDING;
+  return [
+    clamp(box.left / box.frameWidth - padX),
+    clamp(box.top / box.frameHeight - padY),
+    clamp(box.right / box.frameWidth + padX),
+    clamp(box.bottom / box.frameHeight + padY),
+  ];
+};
 
 export const findPrivacy = async (
   deps: Deps,
@@ -48,7 +57,7 @@ export const findPrivacy = async (
     const answer = answers[i];
     if (answer === undefined || answer.failure !== null) return { phrase, status: "not_checked", reason: answer?.failure ?? "no answer" };
     for (const { frame, objects } of answer.frames) {
-      byFrame.set(frame, [...(byFrame.get(frame) ?? []), ...objects.map((o) => grown(o.box))]);
+      byFrame.set(frame, [...(byFrame.get(frame) ?? []), ...objects.map((o) => grown(o.box, phrase))]);
     }
     return { phrase, status: "checked" };
   });

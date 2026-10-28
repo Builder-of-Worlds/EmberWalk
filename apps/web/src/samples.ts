@@ -15,7 +15,7 @@ const withStills = (results: WalkResults): WalkResults => ({
 
 export const syntheticOnly = (samples: WalkResults[]): WalkResults[] => {
   for (const sample of samples)
-    if (sample.synthetic !== true) throw new Error(`sample ${sample.id} is not marked synthetic, so it would show without its label`);
+    if (sample.synthetic !== true) throw new Error(`sample ${sample.id} is not marked synthetic`);
   return samples;
 };
 

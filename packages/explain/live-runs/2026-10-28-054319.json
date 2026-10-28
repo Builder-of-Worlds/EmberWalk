@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-28T05:43:19.628Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames, and a remark the frames contradict",
+    "language": "en",
+    "turns": [
+      {
+        "t": 11,
+        "text": "There is no brush near the house. That is only mulch for the garden."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0312215,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02324,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0079815,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the stacked logs to more than 30 feet from the house, or cover them fully with sheet metal.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered stack of cut logs piled against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the fence part within 5 feet of the house with metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "The frame shows a wooden fence meeting the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Clear the dead branches you use as mulch within 30 feet of the house and bag them for yard pickup.",
+      "verdict": "keep",
+      "reason": "The frame shows dead branches piled on the ground by the house, which you called garden mulch."
+    }
+  ]
+}

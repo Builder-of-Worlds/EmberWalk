@@ -1,5 +1,5 @@
 import { defineTool, type Tool } from "@emberwalk/meta";
-import { Id, OutgoingMessage, Trade, Zip } from "@emberwalk/shared";
+import { FollowUp, Id, OutgoingMessage, Trade, Zip } from "@emberwalk/shared";
 import { z } from "zod";
 
 export const FindCrewsArgs = z.strictObject({ trade: Trade, zip: Zip });
@@ -25,3 +25,14 @@ export const draftRequest = defineTool(
 );
 
 export const AGENT_TOOLS = [findCrews, draftRequest] as Tool<unknown>[];
+
+export const ScheduleFollowUpArgs = z.strictObject({ messageId: Id, note: FollowUp.shape.note, subject, body });
+export type ScheduleFollowUpArgs = z.infer<typeof ScheduleFollowUpArgs>;
+
+export const scheduleFollowUp = defineTool(
+  "schedule_follow_up",
+  "Write one short reminder to the crew of one waiting message, on the same channel, and set a follow up for it. The note says in one line why, for the homeowner. It is stored as a draft for the homeowner to read; nothing is sent.",
+  ScheduleFollowUpArgs,
+);
+
+export const FOLLOW_UP_TOOLS = [scheduleFollowUp] as Tool<unknown>[];

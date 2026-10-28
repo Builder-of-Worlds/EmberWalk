@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-28T08:28:13.037Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames, and a remark the frames contradict",
+    "language": "en",
+    "turns": [
+      {
+        "t": 11,
+        "text": "There is no brush near the house. That is only mulch for the garden."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0286295,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02289625,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00573325,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Carry the stacked logs at least 30 feet from the walls to open ground.",
+      "verdict": "keep",
+      "reason": "The first frame shows an uncovered stack of logs piled directly against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Swap the 5 feet of fence next to the house for metal, brick or stone.",
+      "verdict": "keep",
+      "reason": "The third frame shows a wooden fence running right up to the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Even for the garden, haul that dry mulch to the green waste bin.",
+      "verdict": "keep",
+      "reason": "The second frame shows tangled dead branches on the ground by the house, though you called it garden mulch."
+    }
+  ]
+}

@@ -2,11 +2,14 @@ import { z } from "zod";
 import { Fingerprint, Id, Language, Point, Text, Timestamp, Unit } from "./common.ts";
 import { Finding, Preview, Rule } from "./finding.ts";
 import { UPLOAD_REFUSALS } from "./upload.ts";
-import { Box, Concept, Device, Jurisdiction, Walk, WalkState } from "./walk.ts";
+import { Box, Concept, Device, Gap, Jurisdiction, Side, Walk, WalkState } from "./walk.ts";
 
 export const VISITOR_HEADER = "x-emberwalk-visitor";
 
+export const WalkPart = z.strictObject({ walkId: Id, side: Side });
+
 export const StartWalkRequest = z.strictObject({
+  partOf: WalkPart.nullable().default(null),
   language: Language,
   jurisdiction: Jurisdiction,
   device: Device,
@@ -47,6 +50,7 @@ export const ResultFinding = z.strictObject({
     seconds: z.number().nonnegative(),
     marker: Box,
   }),
+  voiceNote: Finding.shape.voiceNote,
 });
 
 export const WalkResultsResponse = z
@@ -54,13 +58,27 @@ export const WalkResultsResponse = z
     walkId: Id,
     walkedOn: z.iso.date(),
     synthetic: z.boolean(),
-    coverage: z.literal("not_checked"),
-    gaps: z.tuple([]),
-    findings: z.array(ResultFinding).max(500),
+    coverage: z.enum(["checked", "not_checked"]),
+    loop: z.enum(["closed", "open", "not_checked"]).optional(),
+    gaps: z.array(Gap).max(16),
+    parts: z.array(WalkPart).max(4),
+    findings: z.array(ResultFinding).max(2500),
     notChecked: z.array(Concept).max(15),
   })
-  .refine((r) => r.findings.every((f) => f.proof.still === stillPath(r.walkId, f.id)), {
-    message: "each still is the finding's own, under its walk",
+  .refine((r) => r.coverage !== "checked" || (r.gaps.length === 0 && r.notChecked.length === 0), {
+    message: "a checked walk has no gap and nothing that was not checked",
+    path: ["coverage"],
+  })
+  .refine((r) => new Set(r.gaps.map((g) => `${g.side} ${g.kind}`)).size === r.gaps.length, {
+    message: "one gap per side and kind",
+    path: ["gaps"],
+  })
+  .refine((r) => new Set(r.parts.map((p) => p.side)).size === r.parts.length && r.parts.every((p) => p.walkId !== r.walkId), {
+    message: "one part walk per side, never the walk itself",
+    path: ["parts"],
+  })
+  .refine((r) => r.findings.every((f) => [r.walkId, ...r.parts.map((p) => p.walkId)].some((w) => f.proof.still === stillPath(w, f.id))), {
+    message: "each still is the finding's own, under its walk or one of its part walks",
     path: ["findings"],
   });
 
@@ -121,6 +139,11 @@ export const ErrorCode = z.enum(ERROR_CODES);
 
 export const ErrorBody = z.strictObject({ error: z.strictObject({ code: ErrorCode, message: Text(300) }) });
 
+export const FaultReportRequest = z.strictObject({ walkId: Id, code: ErrorCode, build: z.string().regex(/^[a-z0-9]{1,40}$/) });
+
+export const FaultReportResponse = z.strictObject({ received: z.literal(true) });
+
+export type WalkPart = z.infer<typeof WalkPart>;
 export type StartWalkRequest = z.infer<typeof StartWalkRequest>;
 export type StartWalkResponse = z.infer<typeof StartWalkResponse>;
 export type WalkFailure = z.infer<typeof WalkFailure>;
@@ -142,3 +165,5 @@ export type JudgeSampleResponse = z.infer<typeof JudgeSampleResponse>;
 export type HealthResponse = z.infer<typeof HealthResponse>;
 export type ErrorCode = z.infer<typeof ErrorCode>;
 export type ErrorBody = z.infer<typeof ErrorBody>;
+export type FaultReportRequest = z.infer<typeof FaultReportRequest>;
+export type FaultReportResponse = z.infer<typeof FaultReportResponse>;

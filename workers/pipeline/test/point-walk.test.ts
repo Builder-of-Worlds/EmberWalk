@@ -54,6 +54,33 @@ describe("a walk whose dry brush and fence are pointed at", () => {
     expect(deleted().sort()).toEqual(["/files/file-1", "/files/file-2"]);
   });
 
+  it("retries the segment step when R2 fails to delete the point stills, from the answer cache, and ends as it does without the failure", async () => {
+    const walkId = await walkWithBothClips();
+    stageRecorded();
+    harness.failPointDeletes = 1;
+
+    await using instance = await run(walkId);
+
+    expect(harness.failPointDeletes).toBe(0);
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const [loop] = await clipsForWalk(env.DB, walkId);
+    const onLoop = await detectionsForClip(env.DB, loop!.id);
+    expect(onLoop.tracks.map((t) => [t.concept, t.frames.map((f) => f.frame)])).toEqual([
+      ["dry_brush", framesOf(BRUSH[0])],
+      ["wooden_fence", framesOf(FENCE[1])],
+    ]);
+    expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
+    expect((await env.MEDIA.list({ prefix: `clips/${walkId}/` })).objects.filter((o) => o.key.includes("/point/"))).toEqual([]);
+    const withFailure = harness.requests.filter((r) => r.path === "/responses").length;
+
+    await resetAll();
+    harness.clip = { frames: FRAMES, fps: FPS, width: WIDTH, height: HEIGHT };
+    stageRecorded();
+    await using clean = await run(await walkWithBothClips());
+    expect(await clean.getOutput()).toEqual({ status: "done" });
+    expect(withFailure).toBe(harness.requests.filter((r) => r.path === "/responses").length);
+  });
+
   it("ends done with both concepts not checked when Muse Spark gave no usable answer", async () => {
     const walkId = await walkWithBothClips();
     harness.answers[asking("dry brush")] = [{ text: "no answer" }];

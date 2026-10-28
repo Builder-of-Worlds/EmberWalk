@@ -2,6 +2,7 @@ import { claimWalk, completeWalk, type Failure, failWalk, findingsForWalk, moveW
 import type { Clip, PipelineStep } from "@emberwalk/shared";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { blurredStills } from "./blur.ts";
+import { checkCoverage } from "./coverage-step.ts";
 import { type Deps, depsFrom } from "./deps.ts";
 import type { Env, PipelineParams } from "./env.ts";
 import { explainWalk } from "./explain-step.ts";
@@ -13,6 +14,8 @@ import { dropUpload, segmentClip, uploadClip } from "./segment.ts";
 import { STEP } from "./steps.ts";
 import { dropWalkVideo } from "./storage.ts";
 import { storeWalk } from "./store.ts";
+import { transcribeWalk } from "./transcribe.ts";
+import { storeVoiceNotes } from "./voice-notes.ts";
 
 const RETRY = { retries: { limit: 3, delay: "10 seconds", backoff: "exponential" }, timeout: "15 minutes" } as const;
 
@@ -20,7 +23,7 @@ export type PipelineResult = { status: "done" } | { status: "failed"; failure: F
 
 type Progress = { step: PipelineStep; uploads: string[] };
 
-const stuck = (step: PipelineStep): Failure => ({
+export const stuck = (step: PipelineStep): Failure => ({
   code: `${step}_failed`,
   message: "Something went wrong while checking this walk. Please try again.",
 });
@@ -92,6 +95,7 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
       clipIds.push(segmented.value.clipId);
     }
     await step.do(STEP.store, RETRY, () => storeWalk(deps, walkId, clipIds));
+    await step.do(STEP.transcribe, RETRY, () => transcribeWalk(deps, walkId));
 
     progress.step = "score";
     await step.do(STEP.enterScore, () => moveWalkStep(deps.db, walkId, "score"));
@@ -100,8 +104,10 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
       return outcome.ok ? pass({ findings: outcome.value.findings.length }) : outcome;
     });
     if (!scored.ok) return scored.failure;
+    await step.do(STEP.voiceNotes, RETRY, () => storeVoiceNotes(deps, walkId));
     const blurred = await step.do(STEP.blur, RETRY, () => blurWalk(deps, walkId, prepared.value));
     if (!blurred.ok) return blurred.failure;
+    await step.do(STEP.coverage, RETRY, () => checkCoverage(deps, walkId, prepared.value));
 
     if (scored.value.findings > 0) {
       progress.step = "explain";

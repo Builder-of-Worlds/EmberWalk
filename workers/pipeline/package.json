@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@emberwalk/catalog": "0.0.0",
     "@emberwalk/db": "0.0.0",
     "@emberwalk/explain": "0.0.0",
     "@emberwalk/meta": "0.0.0",

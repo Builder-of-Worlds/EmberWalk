@@ -1,0 +1,10 @@
+{
+  "sessionId": "shaped-transcribe-0001",
+  "transcript": "This woodpile is right up against the garage wall. The juniper by the porch has a lot of dead branches inside. I raked under the deck last week.",
+  "audioDurationMs": 21400,
+  "turns": [
+    { "turnId": 1, "startMs": 1200, "endMs": 5600, "transcript": "This woodpile is right up against the garage wall." },
+    { "turnId": 2, "startMs": 8100, "endMs": 13900, "transcript": " The juniper by the porch has a lot of dead branches inside. " },
+    { "turnId": 3, "startMs": 16800, "endMs": 20900, "transcript": "I raked under the deck last week." }
+  ]
+}

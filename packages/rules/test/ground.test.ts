@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   CAMERA_HEIGHT_FEET,
   depthFeet,
+  feetFromWall,
   fromWall,
   groundFeet,
   HEIGHT_ERROR_FEET,
   LONG_SIDE_FOV_DEGREES,
   tiltAt,
+  TILT_ERROR_DEGREES,
   TILT_GAP_SECONDS,
   verticalFov,
 } from "../src/index.ts";
@@ -100,6 +102,61 @@ describe("fromWall", () => {
   it("drops an object past 100 feet, and one whose wall is at the horizon", () => {
     expect(fromWall({ kind: "pan", y: 0.7, homeFeet: { low: 99, high: 99 } }, LEVEL)).toBeNull();
     expect(fromWall({ kind: "loop", y: 0.9, wallY: 0.5 }, { ...LEVEL, tiltBelowHorizonDegrees: 1 })).toBeNull();
+  });
+});
+
+describe("feetFromWall out to 30 feet on a pinhole picture", () => {
+  const FEET_OUT = [0, 2, 5, 10, 15, 20, 30];
+  const BEHIND = [8, 10, 15];
+  const EDGE = 1e-9;
+  const fov = verticalFov(CAMERA);
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const pictureY = (depth: number, tilt: number, height: number) => 0.5 + Math.tan(Math.atan(height / depth) - radians(tilt)) / (2 * Math.tan(radians(fov) / 2));
+  const readTilt = (out: number, behind: number) => ((Math.atan(CAMERA_HEIGHT_FEET / (out + behind)) + Math.atan(CAMERA_HEIGHT_FEET / behind)) * 90) / Math.PI;
+  const worlds = [-HEIGHT_ERROR_FEET, 0, HEIGHT_ERROR_FEET].flatMap((height) => [-TILT_ERROR_DEGREES, 0, TILT_ERROR_DEGREES].map((tilt) => ({ height, tilt })));
+
+  const measure = (out: number, behind: number, world: { height: number; tilt: number }) => {
+    const tilt = readTilt(out, behind);
+    const height = CAMERA_HEIGHT_FEET + world.height;
+    const seen = { kind: "loop" as const, y: pictureY(behind, tilt + world.tilt, height), wallY: pictureY(out + behind, tilt + world.tilt, height) };
+    return feetFromWall(seen, { tiltBelowHorizonDegrees: tilt, verticalFovDegrees: fov, cameraHeightFeet: CAMERA_HEIGHT_FEET });
+  };
+
+  it("holds the true distance at every distance out to 30 feet, for every height and tilt inside their errors", () => {
+    for (const out of FEET_OUT)
+      for (const behind of BEHIND)
+        for (const world of worlds) {
+          const range = measure(out, behind, world)!;
+          const where = `${out} feet out, ${behind} behind, height ${world.height}, tilt ${world.tilt}`;
+          expect(range.low, where).toBeLessThanOrEqual(out + EDGE);
+          expect(range.high, where).toBeGreaterThanOrEqual(out - EDGE);
+        }
+  });
+
+  it("sends at most 30 to 114 feet for a thing 30 feet out, and at most 2 to 4 feet for one 2 feet out", () => {
+    const widest = (out: number) => worlds.flatMap((world) => BEHIND.map((behind) => measure(out, behind, world)!)).reduce((a, b) => (b.high - b.low > a.high - a.low ? b : a));
+    expect(widest(30).low).toBeCloseTo(30, 6);
+    expect(widest(30).high).toBeCloseTo(114, 0);
+    expect(widest(2).low).toBeCloseTo(2, 6);
+    expect(widest(2).high).toBeCloseTo(4, 0);
+  });
+
+  it("gives null for an object at or above the horizon", () => {
+    const tilt = 10;
+    const view = { tiltBelowHorizonDegrees: tilt, verticalFovDegrees: fov, cameraHeightFeet: CAMERA_HEIGHT_FEET };
+    const horizon = 0.5 - Math.tan(radians(tilt)) / (2 * Math.tan(radians(fov) / 2));
+    for (const y of [horizon, horizon - 0.01]) expect(feetFromWall({ kind: "loop", y, wallY: pictureY(15, tilt, CAMERA_HEIGHT_FEET) }, view), String(y)).toBeNull();
+  });
+
+  it("never sends a negative edge for an object at or past the wall line", () => {
+    for (const past of [0, 0.25, 2])
+      for (const world of worlds) {
+        const tilt = readTilt(10, 5);
+        const height = CAMERA_HEIGHT_FEET + world.height;
+        const seen = { kind: "loop" as const, y: pictureY(15 + past, tilt + world.tilt, height), wallY: pictureY(15, tilt + world.tilt, height) };
+        const range = feetFromWall(seen, { tiltBelowHorizonDegrees: tilt, verticalFovDegrees: fov, cameraHeightFeet: CAMERA_HEIGHT_FEET })!;
+        expect(range, `${past} past`).toEqual({ low: 0, high: 0 });
+      }
   });
 });
 

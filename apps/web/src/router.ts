@@ -1,7 +1,9 @@
+import { WalkPart } from "@emberwalk/shared";
+import type { Side } from "@emberwalk/shared";
+
 export const ROUTES = {
   home: "#/",
   how: "#/how",
-  rules: "#/rules",
   record: "#/record",
   send: "#/send",
   results: "#/results",
@@ -53,11 +55,20 @@ export const findingIdsIn = (hash: string): FindingIds | null => {
 
 export const resultsIdIn = (hash: string): string | null => idAfter(`${ROUTES.results}/`, hash);
 
+export const recordPartFor = (walkId: string, side: Side): string => `${ROUTES.record}/${encodeURIComponent(walkId)}/${side}`;
+
+export const recordPartIn = (hash: string): WalkPart | null => {
+  const [walkId, side, ...rest] = (idAfter(`${ROUTES.record}/`, hash) ?? "").split("/");
+  const part = WalkPart.safeParse({ walkId, side });
+  return rest.length === 0 && part.success ? part.data : null;
+};
+
 const hasIds = (route: Route, hash: string): boolean =>
   route === "finding" ? findingIdsIn(hash) !== null : idAfter(`${ROUTES[route]}/`, hash) !== null;
 
 export const routeFor = (hash: string): Route => {
   const routed = WITH_ID.find((route) => hasIds(route, hash));
   if (routed !== undefined) return routed;
+  if (hash.startsWith(`${ROUTES.record}/`)) return "record";
   return BY_HASH.get(hash === "" || hash === "#" ? ROUTES.home : hash) ?? "home";
 };

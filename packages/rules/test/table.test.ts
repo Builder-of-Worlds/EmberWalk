@@ -51,7 +51,8 @@ describe("the California rule table", () => {
     for (const row of RULES) {
       const plant = (PLANT_CONCEPTS as readonly string[]).includes(row.concept) && (row.when.plant?.includes("unsure") ?? true);
       expect(row.unsure !== null, row.id).toBe(plant && /\bdead\b/i.test(row.plain.en));
-      if (row.unsure !== null) expect(row.unsure, row.id).toMatch(/ may be dead\. If it is, /);
+      if (row.unsure !== null) expect(row.unsure, row.id).toMatch(/\b(?:may|might|could) be dead\b/);
+      if (row.unsure !== null) expect(row.unsure.replace(/\b(?:may|might|could) be dead\b/, ""), row.id).not.toMatch(/\bdead\b/i);
     }
   });
 
@@ -84,6 +85,76 @@ describe("the California rule table", () => {
       const guided = RULES.some((r) => r.concept === concept && r.zone === "zone_0" && r.citation === "CAL FIRE Zone 0 guidance");
       expect(guided, concept).toBe(concept !== "house_wall" && concept !== "chimney");
     }
+  });
+});
+
+describe("the plain wording a homeowner reads (D-183)", () => {
+  const CODE = {
+    en: ["woody", "combustible", "fuel", "fuels", "aerial", "vegetation", "forbs", "flammable", "fire resistant", "fire-resistant"],
+    es: ["leñoso", "leñosa", "combustible", "combustibles", "aéreo", "aérea", "vegetación", "inflamable", "resistente al fuego"],
+  };
+  const URGENT = {
+    en: ["right away", "now", "immediately", "urgent", "soon", "at all times", "before it is too late", "danger", "dangerous"],
+    es: ["de inmediato", "inmediatamente", "ahora", "urgente", "pronto", "en todo momento", "antes de que sea tarde", "peligro"],
+  };
+  const has = (text: string, word: string) => new RegExp(`(?<![\\p{L}\\d])${word}(?![\\p{L}\\d])`, "iu").test(text);
+  const plainOf = (key: string) => rowsOf(key)[0]!.plain;
+
+  it("uses no code word from the cited law and no word of urgency or fear, in English and Spanish", () => {
+    for (const row of RULES) {
+      for (const language of ["en", "es"] as const) {
+        for (const word of [...CODE[language], ...URGENT[language]]) expect(has(row.plain[language], word), `${row.id} ${language} "${word}"`).toBe(false);
+      }
+      for (const word of [...CODE.en, ...URGENT.en]) if (row.unsure !== null) expect(has(row.unsure, word), `${row.id} unsure "${word}"`).toBe(false);
+    }
+  });
+
+  it("finds a listed word when it is there, so the check above can fail", () => {
+    expect(has("Remove the dead woody pile right away.", "woody")).toBe(true);
+    expect(has("Quítela ahora.", "ahora")).toBe(true);
+    expect(has("Do it now.", "now")).toBe(true);
+    expect(has("You know the snow.", "now")).toBe(false);
+  });
+
+  it("names a material that will not burn for the fence, and a place or a cover for the wood pile", () => {
+    expect(plainOf("wooden-fence-zone-0").en).toMatch(/\bmetal\b.*will not burn/);
+    expect(plainOf("wooden-fence-zone-0").es).toMatch(/\bmetal\b.*no se queme/);
+    expect(plainOf("wood-pile-uncovered").en).toMatch(/30 feet.*sheet metal/);
+    expect(plainOf("wood-pile-uncovered").es).toMatch(/30 pies.*lámina de metal/);
+    expect(plainOf("wood-pile-zone-0").en).toMatch(/far side of the yard/);
+    expect(plainOf("wood-pile-zone-0").es).toMatch(/otro lado del patio/);
+  });
+
+  const texts = (language: "en" | "es") =>
+    [...new Set(RULES.flatMap((r) => [r.plain[language], ...(language === "en" && r.unsure !== null ? [r.unsure] : [])]))];
+  const words = (text: string) => text.toLowerCase().replace(/[.,;:]/g, "").split(/\s+/);
+
+  it("opens every distinct plain and may be dead text with its own first two words, so a walk never reads as a refrain", () => {
+    for (const language of ["en", "es"] as const) {
+      const openings = texts(language).map((t) => words(t).slice(0, 2).join(" "));
+      const repeated = openings.filter((o, i) => openings.indexOf(o) !== i);
+      expect(repeated, language).toEqual([]);
+    }
+  });
+
+  it("shares no run of five words between two plain or may be dead texts", () => {
+    for (const language of ["en", "es"] as const) {
+      const owner = new Map<string, string>();
+      for (const text of texts(language)) {
+        const w = words(text);
+        for (let i = 0; i + 5 <= w.length; i++) {
+          const run = w.slice(i, i + 5).join(" ");
+          const first = owner.get(run);
+          expect(first === undefined || first === text, `${language} "${run}"`).toBe(true);
+          owner.set(run, text);
+        }
+      }
+    }
+  });
+
+  it("keeps the distance of its condition in English and Spanish alike", () => {
+    const feet = (text: string) => [...text.matchAll(/(\d+)\s*(?:to|a|y)?\s*(\d+)?\s*(?:feet|foot|pies)/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean);
+    for (const row of RULES) expect(feet(row.plain.es), row.id).toEqual(feet(row.plain.en));
   });
 });
 

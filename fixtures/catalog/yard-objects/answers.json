@@ -1,0 +1,28 @@
+{
+  "schema": "emberwalk.catalog-answers/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "catalog-yard-objects",
+  "sam": {
+    "wood pile": [
+      { "frame": 0, "id": 0, "box": [32, 33, 159, 166], "confidence": 0.93 },
+      { "frame": 1, "id": 0, "box": [48, 50, 175, 183], "confidence": 0.9 }
+    ],
+    "gas can": [
+      { "frame": 1, "id": 0, "box": [200, 210, 236, 262], "confidence": 0.74 },
+      { "frame": 2, "id": 0, "box": [202, 212, 238, 264], "confidence": 0.81 }
+    ],
+    "lawn mower": [
+      { "frame": 0, "id": 0, "box": [180, 150, 300, 250], "confidence": 0.88 },
+      { "frame": 1, "id": 0, "box": [184, 152, 304, 252], "confidence": 0.91 },
+      { "frame": 2, "id": 0, "box": [188, 154, 308, 254], "confidence": 0.86 }
+    ],
+    "grill": [
+      { "frame": 2, "id": 0, "box": [20, 180, 90, 270], "confidence": 0.67 }
+    ],
+    "tarp": [
+      { "frame": 0, "id": 0, "box": [100, 220, 180, 300], "confidence": 0.79 },
+      { "frame": 1, "id": 0, "box": [102, 222, 182, 302], "confidence": 0.77 }
+    ]
+  }
+}

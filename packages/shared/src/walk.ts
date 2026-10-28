@@ -111,6 +111,23 @@ export const Clip = z.strictObject({
   height: z.int().positive().max(8192),
 });
 
+export const SIDES = ["front", "right", "back", "left"] as const;
+export const GAP_KINDS = ["missing", "dark", "first_five_feet", "not_checked"] as const;
+export const GAP_HINTS = ["walk_side", "more_light", "tilt_down", "step_back", "again"] as const;
+
+export const HINTS_FOR: Record<(typeof GAP_KINDS)[number], readonly (typeof GAP_HINTS)[number][]> = {
+  missing: ["walk_side"],
+  dark: ["more_light"],
+  first_five_feet: ["tilt_down", "step_back"],
+  not_checked: ["again"],
+};
+
+export const Side = z.enum(SIDES);
+
+export const Gap = z
+  .strictObject({ side: Side, kind: z.enum(GAP_KINDS), hint: z.enum(GAP_HINTS) })
+  .refine((gap) => HINTS_FOR[gap.kind].includes(gap.hint), { message: "a gap's hint must suit its kind", path: ["hint"] });
+
 export const Box = z
   .tuple([Unit, Unit, Unit, Unit])
   .refine(([x0, y0, x1, y1]) => x0 < x1 && y0 < y1, "a box must have a positive width and height");
@@ -140,5 +157,7 @@ export type Walk = z.infer<typeof Walk>;
 export type MotionSample = z.infer<typeof MotionSample>;
 export type Tag = z.infer<typeof Tag>;
 export type Clip = z.infer<typeof Clip>;
+export type Side = z.infer<typeof Side>;
+export type Gap = z.infer<typeof Gap>;
 export type TrackFrame = z.infer<typeof TrackFrame>;
 export type Track = z.infer<typeof Track>;

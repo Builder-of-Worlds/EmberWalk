@@ -121,6 +121,29 @@ describe("the pointing call", () => {
     expect(s.transport.requests).toHaveLength(0);
   });
 
+  it("asks for the target text the caller gives, for a concept with no built in prompt", () => {
+    const call = sparkBoxCall({ concept: "gas can", target: "gas can: a red or yellow plastic container for petrol", jpeg: JPEG, content: "synthetic" });
+
+    const sent = call.request as Extract<HttpRequest, { json: unknown }>;
+    expect(JSON.stringify(sent.json)).toContain("Find the gas can: a red or yellow plastic container for petrol.");
+  });
+
+  it("prefers the caller's target text to the built in one", () => {
+    const call = sparkBoxCall({ concept: "dry brush", target: "dry brush: a pile of cut branches", jpeg: JPEG, content: "synthetic" });
+
+    const text = JSON.stringify((call.request as Extract<HttpRequest, { json: unknown }>).json);
+    expect(text).toContain("a pile of cut branches");
+    expect(text).not.toContain("heap of dead, dry branches");
+  });
+
+  it("refuses an empty target text before any request", () => {
+    const s = setup({ answer: () => ok(sparkBody("{}")) });
+
+    expect(() => sparkBoxCall({ concept: "dry brush", target: "  ", jpeg: JPEG, content: "synthetic" })).toThrow(TypeError);
+    expect(() => sparkBoxCall({ concept: "wood pile", target: "", jpeg: JPEG, content: "synthetic" })).toThrow(TypeError);
+    expect(s.transport.requests).toHaveLength(0);
+  });
+
   it("refuses an answer that did not complete", () => {
     const call = sparkBoxCall({ concept: "dry brush", jpeg: JPEG, content: "synthetic" });
 

@@ -9,6 +9,7 @@ export type FixtureServer = {
   failPuts: Set<string>;
   delays: Map<string, number>;
   chunked: Set<string>;
+  requested: (path: string) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -18,9 +19,12 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
   const failPuts = new Set<string>();
   const delays = new Map<string, number>();
   const chunked = new Set<string>();
+  const waiting = new Map<string, (() => void)[]>();
 
   const server: Server = createServer((req, res) => {
     const path = req.url ?? "/";
+    for (const wake of waiting.get(path) ?? []) wake();
+    waiting.delete(path);
     if (req.method === "PUT") {
       const chunks: Buffer[] = [];
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -61,6 +65,10 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
     failPuts,
     delays,
     chunked,
+    requested: (path) =>
+      new Promise<void>((resolve) => {
+        waiting.set(path, [...(waiting.get(path) ?? []), resolve]);
+      }),
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MetaRefused, SPARK_MODEL } from "@emberwalk/meta";
 import { evaluate, rank, type Observation } from "@emberwalk/rules";
-import { explainRequest, MAX_FRAMES, MAX_OUTPUT_TOKENS, ruleTable, type ExplainFinding, type ExplainInput } from "../src/index.ts";
+import { explainRequest, MAX_FRAME_CHARACTERS, MAX_FRAMES, MAX_OUTPUT_TOKENS, ruleTable, type ExplainFinding, type ExplainInput } from "../src/index.ts";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -88,6 +88,15 @@ describe("explainRequest, normal", () => {
     expect(retry.problems).toEqual(["finding 1: unknown rule id"]);
   });
 
+  it("sends a frame given as a JPEG data link as an image, in order with the web links", () => {
+    const still = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]).toString("base64")}`;
+    const [, walk] = body(input({ frames: [still, "https://frames.example/b.jpg"] })).input;
+    expect(walk!.content.slice(1)).toEqual([
+      { type: "input_image", image_url: still },
+      { type: "input_image", image_url: "https://frames.example/b.jpg" },
+    ]);
+  });
+
   it("estimates more input for every frame", () => {
     expect(explainRequest(input()).estimateNano).toBeGreaterThan(explainRequest(input({ frames: [] })).estimateNano);
   });
@@ -105,9 +114,24 @@ describe("explainRequest, invalid", () => {
     expect(() => explainRequest(input({ frames: ["http://frames.example/a.jpg"] }))).toThrow();
   });
 
+  it.each([
+    ["a PNG data link", "data:image/png;base64,AAAA"],
+    ["a data link that is not base64", "data:image/jpeg;base64,not base64!"],
+    ["a data link with no bytes", "data:image/jpeg;base64,"],
+    ["a script link", "javascript:alert(1)"],
+    ["a data link over the size cap", `data:image/jpeg;base64,${"A".repeat(MAX_FRAME_CHARACTERS)}`],
+  ])("refuses %s as a frame", (_name, frame) => {
+    expect(() => explainRequest(input({ frames: [frame] }))).toThrow();
+  });
+
   it("refuses a finding id given twice", () => {
     const [first] = input().findings;
     expect(() => explainRequest(input({ findings: [first!, { ...first!, rank: 2 }] }))).toThrow(/its own findingId/);
+  });
+
+  it("refuses a proof frame that is not a frame link", () => {
+    const [first] = input().findings;
+    expect(() => explainRequest(input({ findings: [{ ...first!, proofFrame: "file:///etc/passwd" }] }))).toThrow();
   });
 
   it("refuses a language other than en and es", () => {

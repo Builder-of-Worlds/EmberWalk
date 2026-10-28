@@ -1,0 +1,156 @@
+{
+  "schema": "emberwalk.openart-look/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-look",
+  "front_side": "front",
+  "credits_total": 504,
+  "stills": [
+    {
+      "view": "front",
+      "creation_id": "j66roBcYBMl9L4xQMPlR",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the street side: dry leaves and pine needles in the front gutter, a bed of dry plants and bark mulch between the garage wall and the porch, patio chairs with cushions on the porch. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-front-1.png", "bytes": 8655149, "sha256": "470e483565c66febbc8127d1468519c8928584abbb1b7670ec84a2dc192b6d3e"}
+    },
+    {
+      "view": "front",
+      "creation_id": "j66roBcYBMl9L4xQMPlR",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the street side: dry leaves and pine needles in the front gutter, a bed of dry plants and bark mulch between the garage wall and the porch, patio chairs with cushions on the porch. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-front-2.png", "bytes": 8793625, "sha256": "6e532837b77a273a3146b3a1911a4cb731ee60d15dd5b2c2b149fc8ab5f59b6f"},
+      "chosen": true,
+      "picked_by": "Deacon",
+      "picked_on": "2026-10-28",
+      "copy": {"file": "synthetic-hero-front.jpg", "bytes": 443281, "sha256": "2341b20de9265c5c8c56d9f7cf679811cdf29fb15298b4da3c54ef83667c79c7"}
+    },
+    {
+      "view": "east",
+      "creation_id": "HUh5HxgGXP8YZ3ge3ffY",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the east yard: a wooden fence meets the siding, trash cans against the wall, dry leaves and mulch heaped against a foundation vent, a branch reaching toward the chimney, a propane tank and a small wooden shed about 15 to 25 feet out. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-east-1.png", "bytes": 8808650, "sha256": "3f85a176ff53c16f6865d63b6e6a3e0ad5ba50f72d0ee681628ccfa84fdeef29"}
+    },
+    {
+      "view": "east",
+      "creation_id": "HUh5HxgGXP8YZ3ge3ffY",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the east yard: a wooden fence meets the siding, trash cans against the wall, dry leaves and mulch heaped against a foundation vent, a branch reaching toward the chimney, a propane tank and a small wooden shed about 15 to 25 feet out. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-east-2.png", "bytes": 9167512, "sha256": "d099ad88791718c7ea243f8761be4f88d4d4a984abb0b51867459cd1a51eab1f"}
+    },
+    {
+      "view": "east",
+      "creation_id": "TdF6VjS2kVEOKxQfvfpB",
+      "model": "nano-banana-pro:image2image",
+      "prompt": "Use the reference photo as the exact same made up house: the same warm grey beige horizontal fiber cement lap siding, off white trim, dark grey asphalt shingle roof with white gutters, the same siding clad chimney, the same windows and porch posts. Show it from its east side yard instead: a photoreal eye level phone photo, standing in the east yard about 12 feet out from the east wall, looking west at that wall. The siding clad chimney rises from the east wall; the corner of the covered front porch is at the left edge of the frame and the back of the house runs off to the right; the garage is on the far west side and hidden. Along the east wall: a weathered wooden fence that meets the siding, two plain unmarked trash bins with no lettering against the wall, dry leaves and bark mulch heaped against a foundation vent, an oak branch reaching toward the chimney. Out in the yard 15 to 25 feet away: a plain white propane tank and a small wooden shed. The same late afternoon sun and colour as the reference, with a light summer haze in the sky, withered golden grass, oaks and pines. No people, no cars, no house numbers, no signs, no lettering, no logos, no digits anywhere, no license plates.",
+      "reference": {"kind": "still", "file": "synthetic-hero-front-2.png"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-east-3.png", "bytes": 8079558, "sha256": "edef1d9e7862450243bff410573716b6bfe962db7bc4d81d3f77b8b1adacb417"},
+      "chosen": true,
+      "picked_by": "Deacon",
+      "picked_on": "2026-10-28",
+      "copy": {"file": "synthetic-hero-east.jpg", "bytes": 380302, "sha256": "ac2186190a57b2721a0b173c7d26fca0ec83bdc855f3bba2c7432e4dbdace6d9"}
+    },
+    {
+      "view": "east",
+      "creation_id": "TdF6VjS2kVEOKxQfvfpB",
+      "model": "nano-banana-pro:image2image",
+      "prompt": "Use the reference photo as the exact same made up house: the same warm grey beige horizontal fiber cement lap siding, off white trim, dark grey asphalt shingle roof with white gutters, the same siding clad chimney, the same windows and porch posts. Show it from its east side yard instead: a photoreal eye level phone photo, standing in the east yard about 12 feet out from the east wall, looking west at that wall. The siding clad chimney rises from the east wall; the corner of the covered front porch is at the left edge of the frame and the back of the house runs off to the right; the garage is on the far west side and hidden. Along the east wall: a weathered wooden fence that meets the siding, two plain unmarked trash bins with no lettering against the wall, dry leaves and bark mulch heaped against a foundation vent, an oak branch reaching toward the chimney. Out in the yard 15 to 25 feet away: a plain white propane tank and a small wooden shed. The same late afternoon sun and colour as the reference, with a light summer haze in the sky, withered golden grass, oaks and pines. No people, no cars, no house numbers, no signs, no lettering, no logos, no digits anywhere, no license plates.",
+      "reference": {"kind": "still", "file": "synthetic-hero-front-2.png"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-east-4.png", "bytes": 8155318, "sha256": "d91c45b61bc2e3feec51133749addae0ccff8a99cc279b1b2216058ff66dfe91"}
+    },
+    {
+      "view": "west",
+      "creation_id": "PtmJkPSvxvBWnDn67HIc",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the west yard: firewood stacked against the wall, a branch hanging over the roof, dry brush and an overgrown shrub 10 to 25 feet out, a second woodpile far out by the tree line. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-west-1.png", "bytes": 9286199, "sha256": "a72ca3cd31677149793d334ace379574756077e682e3c45b84261f48ab741801"}
+    },
+    {
+      "view": "west",
+      "creation_id": "PtmJkPSvxvBWnDn67HIc",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the west yard: firewood stacked against the wall, a branch hanging over the roof, dry brush and an overgrown shrub 10 to 25 feet out, a second woodpile far out by the tree line. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-west-2.png", "bytes": 8830101, "sha256": "0d7162de03c3a8e593a8a4ec098fd9f50d8bfd8e6889fe5f8beeffb913755413"},
+      "chosen": true,
+      "picked_by": "Deacon",
+      "picked_on": "2026-10-28",
+      "copy": {"file": "synthetic-hero-west.jpg", "bytes": 448153, "sha256": "6f96d3272ee2afac6f01da80931836432763fb39970339a82a3309d56646c69a"}
+    },
+    {
+      "view": "north",
+      "creation_id": "CbFWmHLGTpZouLilPKsY",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the back yard: a metal deck with metal steps and a back door, nothing stored within 30 feet, mowed low grass, tall dry grass far out at about 50 feet. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-north-1.png", "bytes": 8151512, "sha256": "34ee277c4574fa5a7649ecf73f893ecfbe9793dc8526db3b67a4bd7240132307"},
+      "chosen": true,
+      "picked_by": "Deacon",
+      "picked_on": "2026-10-28",
+      "copy": {"file": "synthetic-hero-north.jpg", "bytes": 371447, "sha256": "7237e1f46723dd2ccf6cdf5c2d9400ee12c08b1ce2c3cf655bff7e0437a6df64"}
+    },
+    {
+      "view": "north",
+      "creation_id": "CbFWmHLGTpZouLilPKsY",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. Seen from the back yard: a metal deck with metal steps and a back door, nothing stored within 30 feet, mowed low grass, tall dry grass far out at about 50 feet. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-north-2.png", "bytes": 8540855, "sha256": "556b758cee37d24af3cb606a4f6b0352195259f0f12aa975794ccac2dbcb64aa"}
+    },
+    {
+      "view": "after_front",
+      "creation_id": "JqvPGSjVetxOByeb5eUW",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. The same house and camera as the street side view, after the cleanup: gutters clear, the bed beside the porch now bare gravel, the porch empty, grass cut low near the house. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-after_front-1.png", "bytes": 8433075, "sha256": "47b75dba9e5c9b172d380731cbf6147b6171b94577f9a90e0e711a62f2d32403"}
+    },
+    {
+      "view": "after_front",
+      "creation_id": "JqvPGSjVetxOByeb5eUW",
+      "model": "nano-banana-pro:text2image",
+      "prompt": "Photoreal eye level photo, as if taken on a phone, of a made up one storey ranch house on a dry Northern California foothill lot in late summer, afternoon sun. L shaped plan: an attached two car garage projects toward the street with a concrete driveway; a small covered concrete front porch with concrete steps sits in the notch beside the garage. Painted fiber cement lap siding in warm grey beige, off white trim, dark grey asphalt shingle roof with gutters, a chimney on the east wall. Withered golden grass, scattered oaks and pines. The same house and camera as the street side view, after the cleanup: gutters clear, the bed beside the porch now bare gravel, the porch empty, grass cut low near the house. No people, no cars, no house numbers, no signs, no text, no license plates.",
+      "reference": {"kind": "none"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-after_front-2.png", "bytes": 8428633, "sha256": "2721f661750f92f7f79c5e29474be71112b17f076e9068d3ee91861fefc1d93e"}
+    },
+    {
+      "view": "after_front",
+      "creation_id": "70TYqISiUZCRXuiGWHJp",
+      "model": "nano-banana-pro:image2image",
+      "prompt": "Edit the reference photo of this made up house. Keep the exact same camera position, framing, eye level height, house, siding, chimney, porch posts, light and sky. Change only the yard and roof edge to the state after a defensible space cleanup: the gutters and the roof valley clear of leaves and pine needles; the bed of dry plants and bark mulch between the garage wall and the porch replaced by bare grey gravel; the porch empty, with no chairs and no table; the dry grass near the house cut low and tidy. Everything else stays exactly as in the reference. No people, no cars, no house numbers, no signs, no lettering, no digits, no license plates.",
+      "reference": {"kind": "still", "file": "synthetic-hero-front-2.png"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-after_front-3.png", "bytes": 8477857, "sha256": "d659a63da9d10a0ba7f1f1ef18a93cac0d913a5ace035618fe5b5160133120f2"},
+      "chosen": true,
+      "picked_by": "Deacon",
+      "picked_on": "2026-10-28",
+      "copy": {"file": "synthetic-hero-after_front.jpg", "bytes": 413047, "sha256": "dd16ff003f3cea0315285e719f5b55f8d4518b852501ed75a3b4b3846911e70e"}
+    },
+    {
+      "view": "after_front",
+      "creation_id": "70TYqISiUZCRXuiGWHJp",
+      "model": "nano-banana-pro:image2image",
+      "prompt": "Edit the reference photo of this made up house. Keep the exact same camera position, framing, eye level height, house, siding, chimney, porch posts, light and sky. Change only the yard and roof edge to the state after a defensible space cleanup: the gutters and the roof valley clear of leaves and pine needles; the bed of dry plants and bark mulch between the garage wall and the porch replaced by bare grey gravel; the porch empty, with no chairs and no table; the dry grass near the house cut low and tidy. Everything else stays exactly as in the reference. No people, no cars, no house numbers, no signs, no lettering, no digits, no license plates.",
+      "reference": {"kind": "still", "file": "synthetic-hero-front-2.png"},
+      "credits": 36,
+      "original": {"file": "synthetic-hero-after_front-4.png", "bytes": 8440422, "sha256": "afb82389f40f7352e4ea24da0d2af9e1611e8b79e8cf780d1aef77d772ca8363"}
+    }
+  ]
+}

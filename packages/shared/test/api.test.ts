@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ErrorBody,
+  FaultReportRequest,
+  FaultReportResponse,
   HealthResponse,
   JudgeSampleResponse,
   PreviewRequest,
@@ -61,7 +63,6 @@ const finding = {
 describe("api contracts", () => {
   it("starts a walk", () => {
     const req = { language: "en", jurisdiction: "ca_sra", device: walk.device, synthetic: false, visitorId: FP };
-    roundTrips(StartWalkRequest, req);
     refusesMissingAndExtra(StartWalkRequest, req);
     refuses(StartWalkRequest, { ...req, address: "1 Main St" });
     refusesEach(StartWalkRequest, req, [
@@ -69,6 +70,16 @@ describe("api contracts", () => {
       { visitorId: `${FP}a` },
       { visitorId: FP.toUpperCase() },
       { visitorId: null },
+    ]);
+    expect(StartWalkRequest.parse(req)).toEqual({ ...req, partOf: null });
+    roundTrips(StartWalkRequest, { ...req, partOf: { walkId: id(1), side: "back" } });
+    roundTrips(StartWalkRequest, { ...req, partOf: null });
+    refusesEach(StartWalkRequest, req, [
+      { partOf: { walkId: id(1) } },
+      { partOf: { walkId: id(1), side: "roof" } },
+      { partOf: { walkId: "w1", side: "back" } },
+      { partOf: { walkId: id(1), side: "back", extra: 1 } },
+      { partOf: id(1) },
     ]);
     roundTrips(StartWalkResponse, { walkId: id(1), state: { name: "recording" } });
     refusesMissingAndExtra(StartWalkResponse, { walkId: id(1), state: { name: "recording" } });
@@ -92,17 +103,54 @@ describe("api contracts", () => {
       sources: [{ citation: "14 CCR 1299.03", words: "Remove dead plants.", status: "in_force", url: "https://bof.fire.ca.gov/", retrievedOn: "2026-10-26" }],
       confidence: 0.9,
       proof: { still: stillPath(id(1), id(10)), frame: 4, seconds: 2.5, marker: [0.1, 0.2, 0.3, 0.4] },
+      voiceNote: null,
     };
-    const results = { walkId: id(1), walkedOn: "2026-10-27", synthetic: true, coverage: "not_checked", gaps: [], findings: [result], notChecked: ["chimney"] };
+    const results = { walkId: id(1), walkedOn: "2026-10-27", synthetic: true, coverage: "not_checked", gaps: [], parts: [], findings: [result], notChecked: ["chimney"] };
     roundTrips(WalkResultsResponse, results);
+    const said = { ...result, voiceNote: "The woodpile is against the garage wall." };
+    roundTrips(WalkResultsResponse, { ...results, findings: [said] });
+    roundTrips(WalkResultsResponse, { ...results, findings: [{ ...result, voiceNote: "x".repeat(2000) }] });
+    const unsaid = Object.fromEntries(Object.entries(result).filter(([key]) => key !== "voiceNote"));
+    for (const finding of [unsaid,{ ...result, voiceNote: "x".repeat(2001) }, { ...result, voiceNote: "  " }, { ...result, voiceNote: 7 }]) {
+      refuses(WalkResultsResponse, { ...results, findings: [finding] });
+    }
     roundTrips(WalkResultsResponse, { ...results, findings: [], notChecked: [] });
+    for (const loop of ["closed", "open", "not_checked"]) roundTrips(WalkResultsResponse, { ...results, loop });
+    roundTrips(WalkResultsResponse, { ...results, coverage: "checked", loop: "closed", notChecked: [] });
+    expect(WalkResultsResponse.parse(results).loop).toBeUndefined();
+    const partResult = { ...result, id: id(11), proof: { ...result.proof, still: stillPath(id(2), id(11)) } };
+    const gaps = [
+      { side: "back", kind: "not_checked", hint: "again" },
+      { side: "left", kind: "first_five_feet", hint: "tilt_down" },
+      { side: "left", kind: "dark", hint: "more_light" },
+    ];
+    roundTrips(WalkResultsResponse, { ...results, gaps, parts: [{ walkId: id(2), side: "right" }], findings: [result, partResult] });
+    const many = { ...results, parts: [{ walkId: id(2), side: "right" }], findings: [...Array(500).fill(result), ...Array(500).fill(partResult)] };
+    expect(WalkResultsResponse.safeParse(many).success).toBe(true);
+    refuses(WalkResultsResponse, { ...many, findings: Array(2501).fill(result) });
     refusesMissingAndExtra(WalkResultsResponse, results);
     refusesEach(WalkResultsResponse, results, [
       { notChecked: ["car"] },
       { view: "simple" },
       { pins: [] },
       { coverage: "checked" },
+      { coverage: "checked", notChecked: [], gaps },
+      { coverage: "checked", notChecked: ["chimney"], gaps: [] },
+      { coverage: "complete" },
+      { loop: "around" },
+      { loop: null },
       { gaps: [{ side: "front", kind: "missing" }] },
+      { gaps: [{ side: "roof", kind: "missing", hint: "walk_side" }] },
+      { gaps: [{ side: "front", kind: "smoke", hint: "walk_side" }] },
+      { gaps: [{ side: "front", kind: "missing", hint: "more_light" }] },
+      { gaps: [{ side: "front", kind: "not_checked", hint: "walk_side" }] },
+      { gaps: [gaps[0], gaps[0]] },
+      { gaps: [gaps[1], { ...gaps[1], hint: "step_back" }] },
+      { parts: [{ walkId: id(2), side: "back" }, { walkId: id(3), side: "back" }] },
+      { parts: [{ walkId: id(1), side: "back" }] },
+      { parts: [{ walkId: id(2), side: "roof" }] },
+      { findings: [partResult] },
+      { parts: [{ walkId: id(3), side: "back" }], findings: [partResult] },
       { walkedOn: AT },
       { findings: [{ ...result, sources: [] }] },
       { findings: [{ ...result, confidence: 1.5 }] },
@@ -170,6 +218,36 @@ describe("api contracts", () => {
     const error = { error: { code: "spend_cap_reached", message: "Live walks are paused until tomorrow." } };
     roundTrips(ErrorBody, error);
     refusesEach(ErrorBody, error, [{ error: { code: "oops", message: "x" } }, { error: { code: "not_found", message: "" } }, { error: {} }]);
+  });
+
+  it("takes a fault report with a known code and a short build", () => {
+    const fault = { walkId: id(1), code: "invalid_request", build: "a1b2c3d4e5f6" };
+    roundTrips(FaultReportRequest, fault);
+    roundTrips(FaultReportRequest, { ...fault, build: "dev" });
+    roundTrips(FaultReportRequest, { ...fault, build: "a".repeat(40) });
+    roundTrips(FaultReportResponse, { received: true });
+  });
+
+  it("refuses a fault report that is malformed, unknown or carries more than it should", () => {
+    const fault = { walkId: id(1), code: "invalid_request", build: "a1b2c3d4e5f6" };
+    refusesEach(FaultReportRequest, fault, [
+      { walkId: "not-a-uuid" },
+      { code: "oops" },
+      { code: "offline" },
+      { code: "" },
+      { build: "A1B2C3" },
+      { build: "a1 b2" },
+      { build: "a-b" },
+      { build: "" },
+      { build: "a".repeat(41) },
+      { build: 12 },
+    ]);
+    refusesMissingAndExtra(FaultReportRequest, fault);
+    refuses(FaultReportRequest, {});
+    refuses(FaultReportRequest, { walkId: id(1), build: "dev" });
+    refuses(FaultReportResponse, { received: false });
+    refuses(FaultReportResponse, {});
+    refuses(FaultReportResponse, { received: true, extra: 1 });
   });
 
   it("names the codes the upload endpoints answer with", () => {

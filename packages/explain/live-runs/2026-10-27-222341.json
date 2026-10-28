@@ -1,0 +1,67 @@
+{
+  "at": "2026-10-27T22:23:41.811Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and spoken turns",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "That is our firewood pile. I cover it with a tarp every night, but it sits right against the wall."
+      },
+      {
+        "t": 11,
+        "text": "The brush is what I cut last weekend. I have not hauled it away yet, it is still green."
+      },
+      {
+        "t": 16,
+        "text": "This fence is old cedar. It was here when we bought the place."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.02912875,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02079875,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00833,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the pile over 30 feet from the house or keep it fully covered with fire-resistant material.",
+      "verdict": "keep",
+      "reason": "Frames show an uncovered firewood pile stacked right against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the wooden fence section near the house with fire-resistant material.",
+      "verdict": "keep",
+      "reason": "Frames show the old cedar fence meeting the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Haul away the cut brush pile from near the house right away.",
+      "verdict": "keep",
+      "reason": "Frames show dry cut branches piled near the house, though you said it is still green."
+    }
+  ]
+}

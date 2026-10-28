@@ -1,0 +1,20 @@
+{
+  "schema": "emberwalk.house-changes/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "apartment-after",
+  "hazards": [
+    {"id": "gutter-leaves-back", "change": "removed"},
+    {"id": "vent-debris-left", "change": "removed"},
+    {"id": "dry-brush-front", "change": "removed"},
+    {"id": "wood-pile-back", "change": "fixed", "distance_in": 420},
+    {"id": "trash-cans-left", "change": "kept"},
+    {"id": "patio-furniture-back", "change": "removed"},
+    {"id": "branch-over-roof-back", "change": "fixed", "distance_in": 150, "size_in": [48, 24, 24]},
+    {"id": "branch-over-roof-front", "change": "removed"},
+    {"id": "branch-over-roof-left", "change": "removed"},
+    {"id": "shrub-front", "change": "removed"},
+    {"id": "dry-grass-front", "change": "fixed", "size_in": [360, 120, 3]},
+    {"id": "tall-grass-back", "change": "fixed", "size_in": [400, 240, 3]}
+  ]
+}

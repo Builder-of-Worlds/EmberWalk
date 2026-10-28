@@ -208,8 +208,8 @@ h2 {
   margin: 0;
 }
 
-.sample {
-  font-weight: 700;
+.lines .hint {
+  margin-top: 0.25rem;
   color: var(--soil);
 }
 

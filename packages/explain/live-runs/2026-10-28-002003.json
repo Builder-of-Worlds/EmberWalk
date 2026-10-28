@@ -1,0 +1,55 @@
+{
+  "at": "2026-10-28T00:20:03.580Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames that show only the wood pile",
+    "language": "en",
+    "turns": [],
+    "frameSeconds": [
+      1,
+      3,
+      5
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.02722475,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.020735,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00648975,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the uncovered wood pile at least 30 feet from the house or cover it completely.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered wood pile stacked directly against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the wooden fence near the house with fire resistant material.",
+      "verdict": "keep",
+      "reason": "The frames show only the wall and wood pile and do not show the fence area."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Remove dry brush within 30 feet of the house.",
+      "verdict": "keep",
+      "reason": "The frames show only bare ground by the wood pile and do not disprove brush elsewhere."
+    }
+  ]
+}

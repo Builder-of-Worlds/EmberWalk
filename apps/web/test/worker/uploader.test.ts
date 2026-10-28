@@ -83,7 +83,7 @@ afterEach(() => {
 });
 
 describe("sending a walk to the real API Worker", () => {
-  it("sends the take in parts, shows progress, queues the walk and clears the phone", async () => {
+  it("sends the take in parts, shows progress, queues the walk and keeps it on the phone for the first status answer", async () => {
     await seedWalk(WALK, "uploading");
     const take = await recordTake();
     const progress: Progress[] = [];
@@ -98,7 +98,7 @@ describe("sending a walk to the real API Worker", () => {
     expect(bytes.length).toBe(TOTAL);
     expect([bytes[MiB], bytes[PART + MiB], bytes[2 * PART]]).toEqual([1, 2, 3]);
     expect(await walkState(WALK)).toBe("queued");
-    expect(await takes.latest()).toBeNull();
+    expect((await latest()).upload?.walkId).toBe(WALK);
   });
 
   it("carries on after a dropped connection without sending finished parts again", async () => {
@@ -157,7 +157,7 @@ describe("sending a walk to the real API Worker", () => {
     const first = await sendTake(deps({ api: uploadApi("https://api.test", lostAnswer) }), await latest(), WALK);
     expect(first).toEqual({ code: "offline" });
     expect(await sendTake(deps(), await latest(), WALK)).toEqual({ walkId: WALK });
-    expect(await takes.latest()).toBeNull();
+    expect((await latest()).upload?.walkId).toBe(WALK);
   });
 
   it("says offline when the Worker cannot be reached, and keeps the take", async () => {
@@ -243,7 +243,7 @@ describe("each refusal the Worker can give the phone", () => {
     expect(await sendTake(deps(), kept, WALK)).toEqual({ walkId: WALK });
   });
 
-  it("counts upload_completed from a part link as sent and clears the phone", async () => {
+  it("counts upload_completed from a part link as sent and keeps the walk on the phone", async () => {
     await seedWalk(WALK, "uploading");
     const lostAnswer: Fetch = async (request) => {
       const response = await worker(request);
@@ -256,7 +256,7 @@ describe("each refusal the Worker can give the phone", () => {
     if (upload === null) throw new Error("no saved upload");
     const behind = await takes.saveUpload(open.id, { ...upload, parts: upload.parts.slice(0, 2) });
     expect(await sendTake(deps(), behind, WALK)).toEqual({ walkId: WALK });
-    expect(await takes.latest()).toBeNull();
+    expect((await latest()).upload?.walkId).toBe(WALK);
   });
 
   it("upload_expired after the upload ran out of time, then starts over and sends", async () => {

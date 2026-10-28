@@ -22,7 +22,7 @@ export const seedWalk = async (id: string, state: string, step: string | null = 
 };
 
 export const resetDb = async (): Promise<void> => {
-  await env.DB.batch(["agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walks"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["fault_reports", "follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walk_gaps", "walks"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 };
 
 export const tag = (over: Partial<Tag> = {}): Tag => ({

@@ -1,0 +1,54 @@
+{
+  "at": "2026-10-27T22:22:21.239Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames only",
+    "turns": [],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0277605,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02061625,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00714425,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the wood pile more than 30 feet from the house, or cover it completely with fire resistant material.",
+      "verdict": "keep",
+      "reason": "Frames show an uncovered stack of logs directly against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the wooden fence near the house with fire resistant material.",
+      "verdict": "keep",
+      "reason": "Frames show a combustible wooden fence attached very close to the house."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Remove dry brush within 30 feet of the house.",
+      "verdict": "keep",
+      "reason": "Frames show dead woody brush lying on the ground near the house."
+    }
+  ]
+}

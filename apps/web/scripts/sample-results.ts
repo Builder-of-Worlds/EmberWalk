@@ -90,6 +90,6 @@ export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> =>
       proof: proofOf(record, render),
     };
   });
-  const gaps = SIDES.filter((side) => side !== truth.side).map((side) => ({ side, kind: "missing" as const }));
+  const gaps = SIDES.filter((side) => side !== truth.side).map((side) => ({ side, kind: "missing" as const, hint: "walk_side" as const }));
   return { id: SAMPLE.id, walkedOn: SAMPLE.walkedOn, synthetic: true, gaps, findings };
 };

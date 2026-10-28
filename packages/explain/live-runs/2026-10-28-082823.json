@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T08:28:23.322Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames, and talk that has nothing to do with fire",
+    "language": "en",
+    "turns": [
+      {
+        "t": 3,
+        "text": "The kids are at school, so it is quiet today."
+      },
+      {
+        "t": 8,
+        "text": "We painted the shed last spring."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.02958975,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02290875,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.006681,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move that stack to a spot 30 feet from the walls, or cover it fully with sheet metal.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered stack of cut logs leaning against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the 5 feet of fence touching the house with metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "One frame shows a wooden fence section standing right beside the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Pick up the dead branches by the wall and haul them to the green waste bin.",
+      "verdict": "keep",
+      "reason": "Frames show tangled dead branches lying on the ground beside the house."
+    }
+  ]
+}

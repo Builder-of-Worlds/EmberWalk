@@ -1,8 +1,20 @@
-import { clipsForWalk, type Detections, detectionsForClip, findingsForWalk, getWalk, tagsForWalk, type WalkRecord } from "@emberwalk/db";
-import { RULES } from "@emberwalk/rules";
+import {
+  byWalkingOrder,
+  clipsForWalk,
+  type Detections,
+  detectionsForClip,
+  findingsForWalk,
+  gapsForWalk,
+  getWalk,
+  partsOf,
+  tagsForWalk,
+  type WalkRecord,
+} from "@emberwalk/db";
+import { CoverageRecord, coverageKey, RULES } from "@emberwalk/rules";
 import {
   type Clip,
   type ClipKind,
+  type Concept,
   Fingerprint,
   type Finding,
   Id,
@@ -89,22 +101,45 @@ const resultOf = (f: Finding, clips: Clip[], detections: Map<string, Detections>
     sources: sourcesOf(f.ruleIds),
     confidence: frame.confidence,
     proof: { still: stillPath(f.walkId, f.id), frame: f.proofFrame.frame, seconds: clipStart(tags, clip.kind) + f.proofFrame.frame / clip.fps, marker: frame.box },
+    voiceNote: f.voiceNote,
   };
 };
 
-export const resultsFor = async (db: D1Database, walk: WalkRecord): Promise<WalkResultsResponse> => {
-  const findings = (await findingsForWalk(db, walk.id)).filter((f) => f.veto === null);
-  const clips = await clipsForWalk(db, walk.id);
-  const tags = await tagsForWalk(db, walk.id);
+const checkedOf = async (db: D1Database, walkId: string): Promise<{ findings: ResultFinding[]; notChecked: Concept[] }> => {
+  const findings = (await findingsForWalk(db, walkId)).filter((f) => f.veto === null);
+  const clips = await clipsForWalk(db, walkId);
+  const tags = await tagsForWalk(db, walkId);
   const detections = new Map(await Promise.all(clips.map(async (c) => [c.id, await detectionsForClip(db, c.id)] as const)));
-  const notChecked = [...new Set([...detections.values()].flatMap((d) => d.runs.filter((r) => r.outcome === "not_checked").map((r) => r.concept)))];
+  const notChecked = [...detections.values()].flatMap((d) => d.runs.filter((r) => r.outcome === "not_checked").map((r) => r.concept));
+  return { findings: findings.map((f) => resultOf(f, clips, detections, tags)), notChecked };
+};
+
+const coverageRecordOf = async (media: R2Bucket, walkId: string): Promise<CoverageRecord | null> => {
+  const stored = await media.get(coverageKey(walkId));
+  if (stored === null) return null;
+  const record = CoverageRecord.parse(await stored.json());
+  if (record.walkId !== walkId) throw new ReadRefused(`the coverage record under walk ${walkId} belongs to walk ${record.walkId}`);
+  return record;
+};
+
+export const resultsFor = async (db: D1Database, media: R2Bucket, walk: WalkRecord): Promise<WalkResultsResponse> => {
+  const parts = await partsOf(db, walk.id);
+  const covered = new Set(parts.map((p) => p.side));
+  const own = (await gapsForWalk(db, walk.id)).filter((g) => !covered.has(g.side));
+  const partGaps = await Promise.all(parts.map(async (p) => (await gapsForWalk(db, p.walkId)).filter((g) => g.side === p.side)));
+  const checked = await Promise.all([walk.id, ...parts.map((p) => p.walkId)].map((id) => checkedOf(db, id)));
+  const record = await coverageRecordOf(media, walk.id);
+  const gaps = [...own, ...partGaps.flat()].sort(byWalkingOrder);
+  const notChecked = [...new Set(checked.flatMap((c) => c.notChecked))];
   return WalkResultsResponse.parse({
     walkId: walk.id,
     walkedOn: walk.createdAt.slice(0, 10),
     synthetic: walk.synthetic,
-    coverage: "not_checked",
-    gaps: [],
-    findings: findings.map((f) => resultOf(f, clips, detections, tags)),
+    coverage: record?.coverage === "checked" && gaps.length === 0 && notChecked.length === 0 ? "checked" : "not_checked",
+    loop: record?.loop ?? "not_checked",
+    gaps,
+    parts,
+    findings: checked.flatMap((c) => c.findings),
     notChecked,
   });
 };
@@ -131,7 +166,7 @@ export const handleWalkRead = async (request: Request, env: { DB: D1Database; ME
     if (results === undefined && findingId === undefined) return Response.json(status(walk));
     if (walk.state.name !== "done") return fail("walk_not_done");
     if (findingId !== undefined) return await still(env.DB, env.MEDIA, walk, findingId);
-    return Response.json(await resultsFor(env.DB, walk));
+    return Response.json(await resultsFor(env.DB, env.MEDIA, walk));
   } catch (error) {
     console.warn(`walk ${walkId} could not be read: ${error instanceof Error ? error.message : String(error)}`);
     return fail("server_error");

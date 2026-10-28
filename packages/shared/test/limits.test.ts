@@ -19,6 +19,9 @@ describe("limits", () => {
       uploadSessionTtlSeconds: 7200,
       uploadMaxTriesPerPart: 3,
       maxObjectsPerFrame: 16,
+      faultCountMost: 1000,
+      faultKeepDays: 30,
+      faultRowsADay: 500,
     });
     roundTrips(Limits, DEFAULT_LIMITS);
   });
@@ -58,5 +61,12 @@ describe("limits", () => {
       { uploadMaxTriesPerPart: "3" },
     ]);
     refuses(Limits, { ...DEFAULT_LIMITS, maxObjectsPerFrame: 0 });
+  });
+
+  it("refuses a zero, negative or fractional fault limit", () => {
+    for (const key of ["faultCountMost", "faultKeepDays", "faultRowsADay"]) {
+      refusesEach(Limits, DEFAULT_LIMITS, [{ [key]: 0 }, { [key]: -1 }, { [key]: 1.5 }, { [key]: "5" }]);
+      expect(limitsWith({ [key]: 1 })[key as "faultCountMost"]).toBe(1);
+    }
   });
 });

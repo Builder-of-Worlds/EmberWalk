@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { utcDay } from "@emberwalk/meta";
 import { explain, type ExplainAnswer } from "../src/index.ts";
 import keepFixture from "./fixtures/stand-in-keep.json" with { type: "json" };
-import { NOW, standIn, TRUTH_BANDS, yardTwo, yardTwoInput } from "./support.ts";
+import { NOW, standIn, TRUTH_BANDS, yardTwo, yardTwoInput, yardTwoProofFrames } from "./support.ts";
 
 const KEEP: ExplainAnswer = { findings: keepFixture.findings as ExplainAnswer["findings"] };
 
@@ -17,6 +17,15 @@ describe("explain on the second test yard, offline", () => {
       expect([f.band, f.label]).toEqual([TRUTH_BANDS[h.band as keyof typeof TRUTH_BANDS], h.label]);
     }
     expect(findings.map((f) => f.concept)).toEqual(["wood_pile", "wooden_fence", "dry_brush"]);
+  });
+
+  it("gives a finding a proof frame only when a sampled second falls inside the seconds its hazard is visible", () => {
+    const list = yardTwoInput().findings;
+    const frames = ["https://frames.example/s1.jpg", "https://frames.example/s2.jpg", "https://frames.example/s3.jpg"];
+    const named = (seconds: number[]) =>
+      Object.fromEntries(yardTwoProofFrames(list, seconds, frames).map((f) => [f.concept, f.proofFrame ?? null]));
+    expect(named([1, 3, 5])).toEqual({ wood_pile: frames[0], wooden_fence: null, dry_brush: null });
+    expect(named([5, 11, 16])).toEqual({ wood_pile: frames[0], dry_brush: frames[1], wooden_fence: frames[2] });
   });
 
   it("gives every finding the stand-in answer's wording, at zero cost in the ledger", async () => {

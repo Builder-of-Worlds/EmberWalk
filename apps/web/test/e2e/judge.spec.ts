@@ -18,7 +18,7 @@ test("the judge copy opens from a folder with no request outside it, then works 
 
   await page.getByRole("link", { name: copy.home.sample }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   const photo = page.locator(".proof img");
   await expect(photo).toBeVisible();
   expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
@@ -27,12 +27,12 @@ test("the judge copy opens from a folder with no request outside it, then works 
 
   await page.getByRole("button", { name: copy.results.detailed }).click();
   await expect(page.locator(".citations li").first()).toBeVisible();
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   expect(await page.evaluate(sideways)).toBe(0);
 
   await page.locator("li.finding a").first().click();
   await expect(page.locator("main.one-finding")).toBeVisible();
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   expect(await page.evaluate(sideways)).toBe(0);
 
   expect(asked.length).toBeGreaterThan(0);
@@ -47,7 +47,7 @@ test("the judge copy opens from a folder with no request outside it, then works 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.home.title);
   await page.getByRole("link", { name: copy.home.sample }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   await expect(page.locator(".proof img")).toBeVisible();
   expect(await page.evaluate(sideways)).toBe(0);
   await context.setOffline(false);

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { copy, draft } from "../../src/copy.ts";
+import { copy } from "../../src/copy.ts";
 import { ROUTES } from "../../src/router.ts";
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
@@ -146,29 +146,23 @@ test("Pause, Sound Off, Property Line and the outline during a walk, with no sid
   expect(marks.motion.length).toBeGreaterThanOrEqual(3);
 });
 
-test("step 3 offers the rules found from location and stores the choice with the walk", async ({ page, context }) => {
+test("the walk keeps the rules found from location, with no question", async ({ page, context }) => {
   await context.grantPermissions([...WALK_PERMISSIONS, "geolocation"]);
   await context.setGeolocation({ latitude: 38.58, longitude: -121.49 });
-  await page.goto(`/${ROUTES.rules}`);
-  await expect(page.getByRole("status")).toHaveText(draft.rules.found);
-  await expect(page.getByRole("radio", { name: draft.rules.choices.ca })).toBeChecked();
+  await page.goto(`/${ROUTES.record}`);
   expect(await page.evaluate(sideways)).toBe(0);
-  await page.getByRole("radio", { name: draft.rules.choices.ca_sra }).check();
-  await page.getByRole("button", { name: draft.rules.confirm }).click();
-  await expect(page).toHaveURL(new RegExp(`${ROUTES.record}$`));
   await recordFor(page, 1000);
-  expect((await savedTake(page)).jurisdiction).toBe("ca_sra");
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  expect((await savedTake(page)).jurisdiction).toBe("ca");
 });
 
-test("step 3 still reaches a choice when location is refused", async ({ page }) => {
+test("a refused location still records a walk and asks nothing about rules", async ({ page }) => {
   await page.addInitScript(() => {
     navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.({ code: 1 } as GeolocationPositionError);
   });
-  await page.goto(`/${ROUTES.rules}`);
-  await expect(page.getByRole("status")).toHaveText(draft.rules.refused);
-  await expect(page.getByRole("radio")).toHaveCount(3);
-  await expect(page.getByRole("button", { name: draft.rules.confirm })).toBeDisabled();
+  await page.goto(`/${ROUTES.record}`);
+  await recordFor(page, 1000);
+  await expect(page.getByRole("radio")).toHaveCount(0);
   expect(await page.evaluate(sideways)).toBe(0);
-  await page.getByRole("radio", { name: draft.rules.choices.ca }).check();
-  await expect(page.getByRole("button", { name: draft.rules.confirm })).toBeEnabled();
+  expect((await savedTake(page)).jurisdiction).toBeNull();
 });

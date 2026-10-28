@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Checking direction C: the trail of stages</title>
+<style>
+:root {
+  --bark: #4a3f35;
+  --soil: #6b5a48;
+  --leaf: #5b6b4f;
+  --leaf-dark: #46543d;
+  --stone: #d9d3c7;
+  --paper: #efeae0;
+  --ink: #2f2a25;
+  font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); }
+.app { min-height: 100dvh; max-width: 40rem; margin: 0 auto; padding: 1rem; overflow-wrap: break-word; }
+.screen { display: flex; flex-direction: column; gap: 1rem; }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0.5rem 0 0; color: var(--bark); }
+p { margin: 0; }
+.note { align-self: flex-end; max-width: 13rem; padding: 0.25rem 0.5rem; border-radius: 0.5rem; background: var(--bark); color: var(--paper); font-size: 0.7rem; line-height: 1.3; }
+.trail { margin: 0; padding: 0; list-style: none; }
+.trail li { position: relative; display: grid; grid-template-columns: 2rem 1fr; column-gap: 0.75rem; padding-bottom: 1rem; color: var(--soil); }
+.trail li:last-child { padding-bottom: 0; }
+.trail li::after { content: ""; position: absolute; left: calc(1rem - 2px); top: 2rem; bottom: 0; width: 4px; background: var(--stone); }
+.trail li:last-child::after { display: none; }
+.trail li.behind::after { background: var(--leaf); }
+.mark { width: 2rem; height: 2rem; border-radius: 50%; border: 3px solid var(--stone); background: var(--paper); display: grid; place-items: center; font-size: 1rem; font-weight: 700; color: var(--paper); }
+.behind .mark { background: var(--leaf); border-color: var(--leaf-dark); }
+.current .mark { border-color: var(--leaf-dark); border-width: 4px; }
+.current .mark::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--leaf-dark); }
+.label { align-self: center; }
+.behind .label { color: var(--ink); }
+.current .label { color: var(--bark); font-weight: 700; }
+.now { grid-column: 2; margin-top: 0.25rem; color: var(--ink); font-size: 1rem; }
+.bar { grid-column: 2; margin-top: 0.5rem; height: 0.75rem; border-radius: 0.375rem; background: var(--stone); overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--leaf); transition: width 0.6s ease; }
+.count { grid-column: 2; margin-top: 0.25rem; font-size: 1rem; color: var(--soil); font-variant-numeric: tabular-nums; }
+.about { margin-top: 1rem; padding: 0.75rem; border-radius: 0.75rem; background: var(--stone); font-size: 0.875rem; line-height: 1.4; display: flex; flex-direction: column; gap: 0.5rem; }
+.about a { color: var(--leaf-dark); font-weight: 700; }
+.playing { font-variant-numeric: tabular-nums; color: var(--soil); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="screen">
+    <p class="note">Direction preview, timed by script, not a real walk</p>
+    <h1>Send Your Walk</h1>
+    <p id="sent" role="status"></p>
+    <ol class="trail" id="trail"></ol>
+    <div class="about">
+      <p><strong>C: the trail.</strong> The five stages in a column, ticked off as each one finishes, with the stage now in bold and a plain line of what EmberWalk is doing. A bar appears under the stage now only when something real is being counted.</p>
+      <p><strong>From today's states:</strong> every tick and the bold stage, and the bar while sending, by bytes sent.</p>
+      <p><strong>Needs Task 3:</strong> the bar under Looking and Writing, by checks finished. Without it those stages show their line and no bar.</p>
+      <p><a id="mode"></a></p>
+      <p class="playing" id="playing"></p>
+    </div>
+  </div>
+</main>
+<script>
+const START = [
+  { name: "uploading", sent: 0 },
+  { name: "uploading", sent: 0.35 },
+  { name: "uploading", sent: 0.72 },
+  { name: "uploading", sent: 1 },
+  { name: "queued" },
+  { name: "processing", step: "prepare" },
+];
+const TODAY = [...START,
+  { name: "processing", step: "segment" },
+  { name: "processing", step: "score" },
+  { name: "processing", step: "explain" },
+  { name: "done" },
+];
+const counted = (step, done, total) => ({ name: "processing", step, progress: { done, total } });
+const COUNTED = [...START,
+  counted("segment", 0, 13), counted("segment", 3, 13), counted("segment", 6, 13), counted("segment", 9, 13),
+  counted("score", 11, 13), counted("score", 13, 13), counted("explain", 1, 2), counted("explain", 2, 2),
+  { name: "done" },
+];
+const STAGES = ["Sent", "Ready", "Looking", "Writing", "Done"];
+const STAGE_OF = { prepare: 1, segment: 2, score: 2, explain: 3 };
+const LINES = [
+  "Sending your walk.",
+  "Getting your walk ready to check.",
+  "Looking for what needs clearing.",
+  "Writing down what to do about each thing found.",
+  "Checked. Opening what EmberWalk found.",
+];
+const stageOf = (s) => s.name === "uploading" ? 0 : s.name === "queued" ? 1 : s.name === "done" ? 4 : STAGE_OF[s.step] ?? 2;
+const params = new URLSearchParams(location.search);
+const task3 = params.get("task3") === "1";
+const at = params.has("at") ? Number(params.get("at")) : null;
+const run = task3 ? COUNTED : TODAY;
+const trail = document.getElementById("trail");
+const rows = STAGES.map((label) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="mark" aria-hidden="true"></span><span class="label">${label}</span>`;
+  trail.append(li);
+  return li;
+});
+const extra = (li, s, stage) => {
+  const share = stage === 0 ? s.sent : s.progress ? s.progress.done / s.progress.total : null;
+  const said = stage === 0 ? `${Math.floor(s.sent * 100)}% sent` : s.progress ? `${s.progress.done} of ${s.progress.total} checks done` : null;
+  const bar = li.querySelector(".bar span");
+  if (bar && share !== null) {
+    bar.style.width = `${share * 100}%`;
+    li.querySelector(".count").textContent = said;
+    return;
+  }
+  li.querySelectorAll(".now, .bar, .count").forEach((el) => el.remove());
+  if (stage === 4) return;
+  li.insertAdjacentHTML("beforeend", `<p class="now" aria-live="polite">${LINES[stage]}</p>`);
+  if (share === null) return;
+  li.insertAdjacentHTML("beforeend", `<div class="bar" aria-hidden="true"><span style="width:${share * 100}%"></span></div><p class="count">${said}</p>`);
+};
+const draw = (s, n) => {
+  const stage = stageOf(s);
+  rows.forEach((li, i) => {
+    const done = i < stage || (stage === 4 && i === 4);
+    li.className = done ? "behind" : i === stage ? "current" : "";
+    li.querySelector(".mark").textContent = done ? "✓" : "";
+    if (i === stage) extra(li, s, stage);
+    else li.querySelectorAll(".now, .bar, .count").forEach((el) => el.remove());
+  });
+  document.getElementById("sent").textContent = stage === 0 ? "" : stage === 4 ? LINES[4] : "Your walk was sent. This walk is still being checked.";
+  document.getElementById("playing").textContent =
+    `Playing ${n + 1} of ${run.length}: ${s.name}${s.step ? ", step " + s.step : ""}${s.progress ? `, count ${s.progress.done} of ${s.progress.total}` : ""}`;
+};
+const mode = document.getElementById("mode");
+mode.textContent = task3 ? "Show today's states only" : "Show with Task 3 counts";
+mode.href = task3 ? "?" : "?task3=1";
+let n = at ?? 0;
+draw(run[n], n);
+if (at === null) {
+  const tick = () => {
+    n = (n + 1) % run.length;
+    draw(run[n], n);
+    setTimeout(tick, n === run.length - 1 ? 3000 : 1600);
+  };
+  setTimeout(tick, 1600);
+}
+</script>
+</body>
+</html>

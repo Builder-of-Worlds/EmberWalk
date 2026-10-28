@@ -13,10 +13,12 @@
     }
   ],
   "workflows": [{ "name": "walk-pipeline", "binding": "PIPELINE", "class_name": "WalkPipeline" }],
+  "triggers": { "crons": ["17 * * * *"] },
   "vars": {
     "R2_HOST": "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com",
     "R2_BUCKET_NAME": "emberwalk-media",
     "META_BASE_URL": "https://api.meta.ai/v1",
-    "META_BILLING": "free_credits"
+    "META_BILLING": "free_credits",
+    "VOICE_NOTES": "off"
   }
 }

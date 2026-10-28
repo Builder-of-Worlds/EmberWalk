@@ -5,15 +5,18 @@
   "gaps": [
     {
       "side": "front",
-      "kind": "missing"
+      "kind": "missing",
+      "hint": "walk_side"
     },
     {
       "side": "right",
-      "kind": "missing"
+      "kind": "missing",
+      "hint": "walk_side"
     },
     {
       "side": "left",
-      "kind": "missing"
+      "kind": "missing",
+      "hint": "walk_side"
     }
   ],
   "findings": [
@@ -26,7 +29,7 @@
         "high": 0
       },
       "label": "required_now",
-      "instruction": "Move the wood pile more than 30 feet from the house, or cover it completely with fire resistant material.",
+      "instruction": "Stack the firewood at least 30 feet from the house, or keep it completely covered with sheet metal.",
       "sources": [
         {
           "citation": "14 CCR 1299.03(a)(3)",

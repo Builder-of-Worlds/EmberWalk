@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T05:43:30.678Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames, and talk that has nothing to do with fire",
+    "language": "en",
+    "turns": [
+      {
+        "t": 3,
+        "text": "The kids are at school, so it is quiet today."
+      },
+      {
+        "t": 8,
+        "text": "We painted the shed last spring."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.030452,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0232525,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0071995,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the stacked logs more than 30 feet from the house, or cover them fully with sheet metal.",
+      "verdict": "keep",
+      "reason": "The first frame shows a stack of logs piled against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the part of the wooden fence within 5 feet of the house with metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "The third frame shows a wooden fence joining the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Cut and haul away the dry brush within 30 feet of the house, or bag it for yard waste pickup.",
+      "verdict": "keep",
+      "reason": "The second frame shows dead branches piled on the ground by the house."
+    }
+  ]
+}

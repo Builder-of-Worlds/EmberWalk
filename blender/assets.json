@@ -1,5 +1,6 @@
 {
-  "polyhaven:weathered_plank_siding": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/weathered_plank_siding", "resolution": "2k"},
+  "polyhaven:weathered_plank_siding": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/weathered_plank_siding", "resolution": "2k", "sidings": ["wood", "fiber cement lap"]},
+  "polyhaven:white_stucco_02": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/white_stucco_02", "resolution": "2k", "sidings": ["stucco"]},
   "polyhaven:withered_grass": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/withered_grass", "resolution": "2k"},
   "polyhaven:bark_brown_02": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/bark_brown_02", "resolution": "1k"},
   "polyhaven:weathered_planks": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/weathered_planks", "resolution": "1k"},
@@ -8,5 +9,15 @@
   "polyhaven:goegap": {"kind": "hdri", "license": "CC0-1.0", "source": "https://polyhaven.com/a/goegap", "resolution": "2k"},
   "scripted:wood_pile": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wood pile"], "material": "polyhaven:bark_brown_02"},
   "scripted:wood_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks"},
-  "scripted:wood_picket_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks", "tint": [3.4, 3.2, 2.9]}
+  "scripted:wood_picket_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks", "tint": [3.4, 3.2, 2.9]},
+  "scripted:gutter_leaves": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["roof debris"], "material": "polyhaven:withered_grass"},
+  "scripted:vent_leaf_mulch": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["foundation vent"], "material": "polyhaven:bark_brown_02"},
+  "scripted:overhanging_branch": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["tree branch over roof"], "material": "polyhaven:bark_brown_02"},
+  "scripted:dead_shrub": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shrub"], "material": "polyhaven:withered_grass"},
+  "scripted:propane_tank": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["propane tank"], "material": "polyhaven:grey_roof_01"},
+  "scripted:storage_shed": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shed"], "material": "polyhaven:weathered_planks"},
+  "scripted:trash_cans": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["trash can"], "material": "polyhaven:grey_roof_01"},
+  "scripted:patio_set": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["patio furniture"], "material": "polyhaven:weathered_planks"},
+  "scripted:tall_dry_grass": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["dry grass"], "material": "polyhaven:withered_grass"},
+  "scripted:lot_tree": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["tree"], "material": "polyhaven:bark_brown_02"}
 }

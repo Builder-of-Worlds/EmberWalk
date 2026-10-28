@@ -12,6 +12,7 @@ import {
   type ExplainInput,
   type FindingAnswer,
 } from "./request.ts";
+import { wordingProblems } from "./wording.ts";
 
 export const MAX_INSTRUCTION_WORDS = 25;
 export const ATTEMPTS = 2;
@@ -57,13 +58,15 @@ const rulesFeet = (ruleIds: string[], c: Context): Set<number> =>
     }),
   );
 
+const templateText = (f: Pick<RuleFinding, "instruction" | "ruleIds">, c: Context): string =>
+  c.input.language === "en" ? f.instruction : c.all.get(f.ruleIds[0]!)!.plain[c.input.language];
+
 function template(f: ExplainFinding, c: Context, problems: string[]): ExplainResult {
-  const first = c.all.get(f.ruleIds[0]!)!;
   return {
     findingId: f.findingId,
     band: f.band,
     wording: "template",
-    instruction: c.input.language === "en" ? f.instruction : first.plain[c.input.language],
+    instruction: templateText(f, c),
     ruleIds: f.ruleIds,
     label: f.label,
     verdict: "keep",
@@ -74,6 +77,19 @@ function template(f: ExplainFinding, c: Context, problems: string[]): ExplainRes
     bandCheck: null,
     problems,
   };
+}
+
+function sentenceProblems(instruction: string, used: Pick<RuleFinding, "instruction" | "ruleIds">, c: Context): string[] {
+  const allowed = rulesFeet(used.ruleIds, c);
+  const named = feetIn(instruction);
+  const wrong = named.filter((n) => !allowed.has(n));
+  if (wrong.length > 0) {
+    const listed = [...allowed].sort((x, y) => x - y).join(", ") || "no";
+    return [`names ${wrong.join(", ")} feet, its rules name ${listed} feet`];
+  }
+  const kept = feetIn(templateText(used, c));
+  const dropped = kept.length > 0 && !kept.some((n) => named.includes(n)) ? [`does not keep its rule's distance of ${kept.join(" to ")} feet`] : [];
+  return [...wordingProblems(instruction), ...dropped];
 }
 
 function judge(f: ExplainFinding, a: FindingAnswer, c: Context): ExplainResult | string[] {
@@ -92,23 +108,23 @@ function judge(f: ExplainFinding, a: FindingAnswer, c: Context): ExplainResult |
   const spacing = a.spacing ?? o.spacing;
   const [again] = evaluate([{ ...o, plantState, spacing }], c.input.jurisdiction);
   const used = again ?? f;
-  const allowed = rulesFeet(used.ruleIds, c);
-  const wrong = feetIn(a.instruction).filter((n) => !allowed.has(n));
-  if (wrong.length > 0) {
-    const named = [...allowed].sort((x, y) => x - y).join(", ") || "no";
-    return [`names ${wrong.join(", ")} feet, its rules name ${named} feet`];
+  const shown = f.proofFrame !== undefined && c.input.frames.includes(f.proofFrame);
+  const modelVeto = a.verdict === "veto" && shown;
+  const vetoBy = again === undefined ? "rules" : modelVeto ? "model" : null;
+  if (vetoBy === null) {
+    const wording = sentenceProblems(a.instruction, used, c);
+    if (wording.length > 0) return wording;
   }
-  const vetoBy = again === undefined ? "rules" : a.verdict === "veto" ? "model" : null;
   return {
     findingId: f.findingId,
     band: f.band,
-    wording: "model",
-    instruction: trimmed(a.instruction),
+    wording: vetoBy === null ? "model" : "template",
+    instruction: vetoBy === null ? trimmed(a.instruction) : templateText(used, c),
     ruleIds: used.ruleIds,
     label: used.label,
     verdict: vetoBy === null ? "keep" : "veto",
     vetoBy,
-    reason: a.reason,
+    reason: vetoBy === null && a.verdict === "veto" ? null : a.reason,
     plantState,
     spacing,
     bandCheck: a.bandCheck,

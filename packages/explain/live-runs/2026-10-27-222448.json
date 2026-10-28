@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-27T22:24:48.241Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and Spanish turns, a Spanish walk",
+    "language": "es",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "Esa es la leña para el invierno. La tapo con una lona por la noche, pero está pegada a la pared."
+      },
+      {
+        "t": 11,
+        "text": "Corté esas ramas el fin de semana y todavía no las he llevado."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0276865,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0207675,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.006919,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Aleje la leña a más de 30 pies de la casa o cúbrala totalmente con material resistente al fuego.",
+      "verdict": "keep",
+      "reason": "Los cuadros muestran la pila de leña descubierta y pegada a la pared y usted dice que solo la tapa de noche."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Cambie la cerca de madera junto a la casa por material resistente al fuego.",
+      "verdict": "keep",
+      "reason": "Los cuadros muestran la cerca de madera muy cerca de la pared de la casa."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Quite las ramas secas cortadas junto a la casa y llévelas lejos.",
+      "verdict": "keep",
+      "reason": "Los cuadros muestran ramas secas tiradas junto a la casa y usted dice que las cortó y aún no las lleva."
+    }
+  ]
+}
