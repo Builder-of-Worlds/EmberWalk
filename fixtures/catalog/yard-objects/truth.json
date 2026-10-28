@@ -1,0 +1,61 @@
+{
+  "schema": "emberwalk.truth/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "catalog-yard-objects",
+  "side": "back",
+  "frame": { "width_px": 320, "height_px": 334 },
+  "visible_rule": "a hazard is visible on a frame when its box is listed for that frame; boxes are [x1, y1, x2, y2] in pixels of the clip frame",
+  "hazards": [
+    {
+      "id": "wood-pile-1",
+      "concept": "wood pile",
+      "catalog_concept": "wood_pile",
+      "pending": false,
+      "frame_boxes": [
+        { "frame": 0, "box_px": [32, 33, 159, 166] },
+        { "frame": 1, "box_px": [48, 50, 175, 183] }
+      ]
+    },
+    {
+      "id": "gas-can-1",
+      "concept": "gas can",
+      "catalog_concept": "gas_can",
+      "pending": true,
+      "frame_boxes": [
+        { "frame": 1, "box_px": [200, 210, 236, 262] },
+        { "frame": 2, "box_px": [202, 212, 238, 264] }
+      ]
+    },
+    {
+      "id": "lawn-mower-1",
+      "concept": "lawn mower",
+      "catalog_concept": "lawn_mower",
+      "pending": true,
+      "frame_boxes": [
+        { "frame": 0, "box_px": [180, 150, 300, 250] },
+        { "frame": 1, "box_px": [184, 152, 304, 252] },
+        { "frame": 2, "box_px": [188, 154, 308, 254] }
+      ]
+    },
+    {
+      "id": "grill-1",
+      "concept": "grill",
+      "catalog_concept": "grill",
+      "pending": true,
+      "frame_boxes": [
+        { "frame": 2, "box_px": [20, 180, 90, 270] }
+      ]
+    },
+    {
+      "id": "tarp-1",
+      "concept": "tarp",
+      "catalog_concept": "tarp",
+      "pending": true,
+      "frame_boxes": [
+        { "frame": 0, "box_px": [100, 220, 180, 300] },
+        { "frame": 1, "box_px": [102, 222, 182, 302] }
+      ]
+    }
+  ]
+}

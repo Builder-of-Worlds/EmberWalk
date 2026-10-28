@@ -1,23 +1,25 @@
-import type { ConceptRun } from "@emberwalk/db";
+import { type CatalogRow, type DetectionScope, POINT_LOOKS, rowsForClip } from "@emberwalk/catalog";
 import { gridToPixels, type Rect, samBoxVideoCall, type SparkBox, sparkBoxCall } from "@emberwalk/meta";
-import { type Clip, type Concept, LOOP_CONCEPTS, PAN_CONCEPTS, type Track } from "@emberwalk/shared";
+import type { Clip, Concept } from "@emberwalk/shared";
+import { type PendingTally, type Settled, settleFrames, settleUnseen, storedConcept } from "./catalog-step.ts";
 import type { Deps } from "./deps.ts";
-import { isWholeStepRefusal, retrying, storeTracks, whyNotChecked } from "./tracks.ts";
+import { isWholeStepRefusal, retrying, whyNotChecked } from "./tracks.ts";
 
-export const POINT_CONCEPTS = ["dry_brush", "wooden_fence"] as const satisfies readonly Concept[];
-export type PointConcept = (typeof POINT_CONCEPTS)[number];
+export { POINT_LOOKS };
 
-export const POINT_LOOKS = 5;
+export const POINT_CONCEPTS: readonly Concept[] = rowsForClip("loop", "stored")
+  .filter((row) => row.point !== null)
+  .map(storedConcept);
+
 const LOOK_CENTRE = 0.5;
 const STILL_MIDFRAME = 0.5;
 const SAM_OBJECT_ID = 1;
 
-export type PointResult = { runs: ConceptRun[]; tracks: Track[] };
+export type PointResult = Pick<Settled, "runs" | "tracks"> & { pending?: PendingTally[] };
 
 type Look = { frame: number; jpeg: Uint8Array };
 type Pointed = { frame: number; box: Rect | null; failure: string | null };
-
-export const isPointConcept = (concept: Concept): concept is PointConcept => (POINT_CONCEPTS as readonly string[]).includes(concept);
+type Pointing = CatalogRow & { point: string };
 
 export const lookFrames = (frameCount: number): number[] => [
   ...new Set(Array.from({ length: POINT_LOOKS }, (_, i) => Math.floor(((i + LOOK_CENTRE) * frameCount) / POINT_LOOKS))),
@@ -25,9 +27,9 @@ export const lookFrames = (frameCount: number): number[] => [
 
 const pointKey = (walkId: string, clipId: string, frame: number): string => `clips/${walkId}/${clipId}/point/${frame}.jpg`;
 
-const notChecked = (concept: Concept, reason: string): ConceptRun => ({ concept, outcome: "not_checked", reason, framesBilled: 0 });
-
 const area = (box: Rect): number => (box.right - box.left) * (box.bottom - box.top);
+
+const pointingRows = (clip: Clip, scope: DetectionScope): Pointing[] => rowsForClip(clip.kind, scope).filter((row): row is Pointing => row.point !== null);
 
 const readLook = async (deps: Deps, frame: number, key: string): Promise<Look> => {
   const stored = await deps.bucket.get(key);
@@ -35,9 +37,10 @@ const readLook = async (deps: Deps, frame: number, key: string): Promise<Look> =
   return { frame, jpeg: new Uint8Array(await stored.arrayBuffer()) };
 };
 
-const lookAt = async (deps: Deps, walkId: string, concept: PointConcept, look: Look, content: "synthetic" | "real"): Promise<Pointed> => {
+const lookAt = async (deps: Deps, walkId: string, row: Pointing, look: Look, content: "synthetic" | "real"): Promise<Pointed> => {
   try {
-    const call = () => deps.meta().call(sparkBoxCall({ concept: concept.replaceAll("_", " "), jpeg: look.jpeg, content, step: "segment", walkId }));
+    const call = () =>
+      deps.meta().call(sparkBoxCall({ concept: row.concept.replaceAll("_", " "), target: row.point, jpeg: look.jpeg, content, step: "segment", walkId }));
     const answer: { value: SparkBox } = await retrying(deps, call);
     return { frame: look.frame, box: answer.value.found ? answer.value.box : null, failure: null };
   } catch (error) {
@@ -46,22 +49,18 @@ const lookAt = async (deps: Deps, walkId: string, concept: PointConcept, look: L
   }
 };
 
-const trackConcept = async (
+const trackRow = async (
   deps: Deps,
   walkId: string,
   clip: Clip,
   fileId: string,
-  concept: PointConcept,
+  row: Pointing,
   looks: Look[],
   content: "synthetic" | "real",
-): Promise<PointResult> => {
-  const pointed = await Promise.all(looks.map((look) => lookAt(deps, walkId, concept, look, content)));
+): Promise<Settled> => {
+  const pointed = await Promise.all(looks.map((look) => lookAt(deps, walkId, row, look, content)));
   const seen = pointed.flatMap((p) => (p.box === null ? [] : [{ frame: p.frame, pixels: gridToPixels(p.box, { width: clip.width, height: clip.height }) }]));
-  if (seen.length === 0) {
-    const failed = pointed.find((p) => p.failure !== null);
-    const run: ConceptRun = failed?.failure ? notChecked(concept, failed.failure) : { concept, outcome: "none", reason: null, framesBilled: 0 };
-    return { runs: [run], tracks: [] };
-  }
+  if (seen.length === 0) return settleUnseen(clip, row, pointed.find((p) => p.failure !== null)?.failure || null);
 
   let best = seen[0] as (typeof seen)[number];
   for (const candidate of seen) if (area(candidate.pixels) > area(best.pixels)) best = candidate;
@@ -79,18 +78,23 @@ const trackConcept = async (
         }),
       );
     const answer = await retrying(deps, call);
-    const tracks = await storeTracks(deps, walkId, clip, concept, answer.value.frames);
-    return { runs: [{ concept, outcome: tracks.length > 0 ? "found" : "none", reason: null, framesBilled: answer.value.framesBilled }], tracks };
+    return await settleFrames(deps, walkId, clip, row, answer.value.frames, answer.value.framesBilled);
   } catch (error) {
     if (isWholeStepRefusal(error)) throw error;
-    return { runs: [notChecked(concept, whyNotChecked(error, "SAM"))], tracks: [] };
+    return settleUnseen(clip, row, whyNotChecked(error, "SAM"));
   }
 };
 
-export const pointAndTrack = async (deps: Deps, walkId: string, clip: Clip, fileId: string, content: "synthetic" | "real"): Promise<PointResult> => {
-  const listed: readonly Concept[] = clip.kind === "loop" ? LOOP_CONCEPTS : PAN_CONCEPTS;
-  const concepts = listed.filter(isPointConcept);
-  if (concepts.length === 0) return { runs: [], tracks: [] };
+export const pointAndTrack = async (
+  deps: Deps,
+  walkId: string,
+  clip: Clip,
+  fileId: string,
+  content: "synthetic" | "real",
+  scope: DetectionScope = "stored",
+): Promise<PointResult> => {
+  const rows = pointingRows(clip, scope);
+  if (rows.length === 0) return { runs: [], tracks: [] };
 
   const frames = lookFrames(clip.frameCount);
   const keys = frames.map((frame) => pointKey(walkId, clip.id, frame));
@@ -101,12 +105,26 @@ export const pointAndTrack = async (deps: Deps, walkId: string, clip: Clip, file
         frames.map(async (frame, i) => ({ time: (frame + STILL_MIDFRAME) / clip.fps, output: await deps.signer.put(keys[i] as string), regions: [] })),
       ),
     });
-    if (!made.ok) return { runs: concepts.map((concept) => notChecked(concept, made.failure.message)), tracks: [] };
-
-    const looks = await Promise.all(frames.map((frame, i) => readLook(deps, frame, keys[i] as string)));
-    const parts = await Promise.all(concepts.map((concept) => trackConcept(deps, walkId, clip, fileId, concept, looks, content)));
-    return { runs: parts.flatMap((p) => p.runs), tracks: parts.flatMap((p) => p.tracks) };
+    const parts = made.ok
+      ? await trackAll(deps, walkId, clip, fileId, rows, frames, keys, content)
+      : rows.map((row) => settleUnseen(clip, row, made.failure.message));
+    const pending = parts.flatMap((p) => p.pending);
+    return { runs: parts.flatMap((p) => p.runs), tracks: parts.flatMap((p) => p.tracks), ...(pending.length > 0 ? { pending } : {}) };
   } finally {
     await deps.bucket.delete(keys);
   }
+};
+
+const trackAll = async (
+  deps: Deps,
+  walkId: string,
+  clip: Clip,
+  fileId: string,
+  rows: Pointing[],
+  frames: number[],
+  keys: string[],
+  content: "synthetic" | "real",
+): Promise<Settled[]> => {
+  const looks = await Promise.all(frames.map((frame, i) => readLook(deps, frame, keys[i] as string)));
+  return Promise.all(rows.map((row) => trackRow(deps, walkId, clip, fileId, row, looks, content)));
 };

@@ -1,13 +1,45 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { copy } from "../../src/copy.ts";
+import { copy, unbacked } from "../../src/copy.ts";
+import { resultsFor } from "../../src/router.ts";
+import { LIVE_WALK, liveBodyAt, liveFindingId } from "../unit/result-fakes.ts";
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
+
+const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+
+test("the fix first list runs out to 30 feet nearest first at 390 px, every row reachable, the drafted words off screen", async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === `/api/walks/${LIVE_WALK}/results`) return route.fulfill({ json: liveBodyAt([[28, 40], [2, 3], [12, 19]]) });
+    if (pathname.startsWith(`/api/walks/${LIVE_WALK}/stills/`)) return route.fulfill({ status: 200, contentType: "image/jpeg", body: await STILL });
+    return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "Not found." } } });
+  });
+  await page.goto(`/${resultsFor(LIVE_WALK)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.fixFirst(3));
+  const rows = page.locator("main > ul.findings > li.finding");
+  await expect(rows).toHaveCount(3);
+  expect(await rows.evaluateAll((items) => items.map((li) => li.getAttribute("data-finding")))).toEqual([2, 3, 1].map(liveFindingId));
+  expect(page.viewportSize()?.width).toBe(390);
+  expect(await page.evaluate(sideways)).toBe(0);
+  for (const row of await rows.all()) {
+    await row.scrollIntoViewIfNeeded();
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  }
+  await expect(page.getByText(unbacked.results.lead)).toHaveCount(0);
+  await expect(page.locator("[data-part=distance]")).toHaveCount(0);
+  await expect(page.getByText(/looking inside the first 5 feet/i)).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 2, name: copy.results.bands.zone_0 })).toBeVisible();
+});
 
 test("the sample house opens from Home in both views at 390 px, and the view is remembered", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: copy.home.sample }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   const photo = page.locator(".proof img");
   await expect(photo).toBeVisible();
   expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
@@ -33,7 +65,7 @@ test("one finding opens from the sample house at 390 px, and This Isn't Right th
   await row.click();
   await expect(page.locator("main.one-finding")).toBeVisible();
   await expect(page.locator("p.sentence")).toHaveText(sentence ?? "");
-  await expect(page.getByText(copy.results.sample)).toBeVisible();
+  await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   expect(await page.locator(".proof img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
   expect(page.viewportSize()?.width).toBe(390);
   expect(await page.evaluate(sideways)).toBe(0);

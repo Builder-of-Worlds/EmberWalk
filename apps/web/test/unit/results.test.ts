@@ -1,13 +1,14 @@
+import { GAP_KINDS, HINTS_FOR, SIDES } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { copy, longDate } from "../../src/copy.ts";
-import { bandsOf, blocksGreen, dayOf, fixOrder, overAYearOld, verdictOf } from "../../src/results.ts";
-import type { Gap, WalkResults } from "../../src/results.ts";
+import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, FIX_FIRST_MOST, fixFirstOf, fixOrder, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
+import type { Gap, ResultFinding, Side, WalkResults } from "../../src/results.ts";
 import { feet, finding, walk } from "./result-fakes.ts";
-import { SETTLED_GAPS } from "./settled.ts";
+import { SETTLED_GAPS, SETTLED_SIDE } from "./settled.ts";
 
 describe("verdictOf", () => {
   it("is incomplete whenever the video has a gap, whatever was found", () => {
-    const gap: Gap = { side: "back", kind: "missing" };
+    const gap: Gap = { side: "back", kind: "missing", hint: "walk_side" };
     expect(verdictOf(walk([], [gap]))).toEqual({ kind: "incomplete", gaps: [gap] });
     expect(verdictOf(walk([finding("a")], [gap])).kind).toBe("incomplete");
     expect(verdictOf(walk([], [gap]), () => true).kind).toBe("incomplete");
@@ -15,8 +16,8 @@ describe("verdictOf", () => {
 
   it("lets every gap block green on its own", () => {
     for (const side of ["front", "right", "back", "left"] as const)
-      for (const kind of ["missing", "dark", "first_five_feet"] as const)
-        expect(verdictOf(walk([], [{ side, kind }])).kind, `${side} ${kind}`).toBe("incomplete");
+      for (const kind of GAP_KINDS)
+        expect(verdictOf(walk([], [{ side, kind, hint: HINTS_FOR[kind][0]! }])).kind, `${side} ${kind}`).toBe("incomplete");
   });
 
   it("is ready only with no gap and nothing blocking", () => {
@@ -25,24 +26,28 @@ describe("verdictOf", () => {
     expect(verdictOf(walk([finding("a")])).kind).toBe("fix");
   });
 
-  it("counts at most three items to fix first, Required Now first, then distance", () => {
+  it("lists the nearest open findings under 30 feet first, whatever their label, cut at the most it shows", () => {
     const list = [
-      finding("rec-near", { label: "recommended", band: "zone_0", ...feet(1) }),
-      finding("req-far", feet(20)),
-      finding("req-near", feet(6)),
-      finding("req-mid", feet(12)),
+      finding("req-far", feet(25, 28)),
+      finding("rec-near", { label: "recommended", band: "zone_0", ...feet(3, 4) }),
+      finding("rec-mid", { label: "recommended", ...feet(12, 19) }),
+      finding("req-mid", feet(8, 12)),
     ];
     const verdict = verdictOf(walk(list));
-    expect(verdict.kind === "fix" && verdict.first.map((f) => f.id)).toEqual(["req-near", "req-mid", "req-far"]);
+    expect(verdict.kind === "fix" && verdict.first.map((f) => f.id)).toEqual(["rec-near", "req-mid", "rec-mid", "req-far"].slice(0, FIX_FIRST_MOST));
     const two = verdictOf(walk(list.slice(0, 2)));
-    expect(two.kind === "fix" && two.first.map((f) => f.id)).toEqual(["req-far", "rec-near"]);
-    const one = verdictOf(walk([list[2]!]));
-    expect(one.kind === "fix" && one.first.length).toBe(1);
+    expect(two.kind === "fix" && two.first.map((f) => f.id)).toEqual(["rec-near", "req-far"]);
   });
 
-  it("never puts a Recommended item past five feet in the fix first list", () => {
-    const verdict = verdictOf(walk([finding("req"), finding("rec", { label: "recommended", ...feet(8) })]));
-    expect(verdict.kind === "fix" && verdict.first.map((f) => f.id)).toEqual(["req"]);
+  it("keeps a walk with only Recommended findings past five feet ready, with no list", () => {
+    expect(verdictOf(walk([finding("rec", { label: "recommended", ...feet(10) })]))).toEqual({ kind: "ready" });
+  });
+
+  it("lists what blocks green by distance when nothing open is under 30 feet", () => {
+    const list = [finding("req-60", { band: "zone_2", ...feet(60) }), finding("req-40", { band: "zone_2", ...feet(40) })];
+    expect(verdictOf(walk(list))).toMatchObject({ kind: "fix", first: [{ id: "req-40" }, { id: "req-60" }] });
+    const rec = finding("rec-50", { label: "recommended", band: "zone_2", ...feet(50) });
+    expect(verdictOf(walk([rec, list[0]!]))).toMatchObject({ kind: "fix", first: [{ id: "req-60" }] });
   });
 
   it("leaves cleared items out of what blocks green", () => {
@@ -64,6 +69,47 @@ describe("verdictOf", () => {
   it("still puts a Required Now item first while coverage is not checked", () => {
     const verdict = verdictOf(walk([finding("req"), finding("far", { label: "recommended", band: "zone_2", ...feet(40) })], [], { coverage: "not_checked" }));
     expect(verdict).toMatchObject({ kind: "fix", first: [{ id: "req" }] });
+  });
+});
+
+describe("fixFirstOf", () => {
+  const ids = (list: ResultFinding[]) => list.map((f) => f.id);
+
+  it("orders findings at 2, 4, 12 and 28 feet by distance whatever their labels", () => {
+    const list = [
+      finding("at-12", feet(12, 14)),
+      finding("at-28", { label: "recommended", ...feet(28, 40) }),
+      finding("at-2", { label: "recommended", band: "zone_0", ...feet(2, 3) }),
+      finding("at-4", feet(4, 6)),
+    ];
+    expect(ids(fixFirstOf(list, () => false))).toEqual(["at-2", "at-4", "at-12", "at-28"]);
+  });
+
+  it("puts a Recommended finding at 3 feet above a Required Now one at 25 feet", () => {
+    const list = [finding("req-25", feet(25)), finding("rec-3", { label: "recommended", band: "zone_0", ...feet(3) })];
+    expect(ids(fixFirstOf(list, () => false))).toEqual(["rec-3", "req-25"]);
+  });
+
+  it("never lists a finding whose near edge is 30 feet or more", () => {
+    const list = [finding("at-30", feet(30, 31)), finding("at-45", { band: "zone_2", ...feet(45) }), finding("under", feet(29.9, 60))];
+    expect(FIX_FIRST_FEET).toBe(30);
+    expect(ids(fixFirstOf(list, () => false))).toEqual(["under"]);
+  });
+
+  it("orders equal ranges by the far edge, then Required Now before Recommended, then id", () => {
+    const list = [
+      finding("b-rec", { label: "recommended", ...feet(6, 9) }),
+      finding("b-req", feet(6, 9)),
+      finding("a-req", feet(6, 9)),
+      finding("near-far", feet(6, 20)),
+    ];
+    expect(ids(fixFirstOf(list, () => false))).toEqual(["a-req", "b-req", "b-rec", "near-far"]);
+  });
+
+  it("drops a rechecked finding, and one removed by you never reaches it", () => {
+    const list = [finding("a", feet(2)), finding("b", feet(3)), finding("c", feet(4))];
+    expect(ids(fixFirstOf(list, (f) => f.id === "b"))).toEqual(["a", "c"]);
+    expect(ids(fixFirstOf(withoutRemoved(walk(list), [{ findingId: "a", atMs: 1 }]).findings, () => false))).toEqual(["b", "c"]);
   });
 });
 
@@ -125,9 +171,32 @@ describe("dates", () => {
 describe("gap lines", () => {
   it("says each gap as what the video lacks, in the settled words", () => {
     expect([
-      copy.results.gap({ side: "back", kind: "missing" }),
-      copy.results.gap({ side: "left", kind: "dark" }),
-      copy.results.gap({ side: "right", kind: "first_five_feet" }),
+      copy.results.gap({ side: "back", kind: "missing", hint: "walk_side" }),
+      copy.results.gap({ side: "left", kind: "dark", hint: "more_light" }),
+      copy.results.gap({ side: "right", kind: "first_five_feet", hint: "tilt_down" }),
     ]).toEqual(SETTLED_GAPS);
+  });
+
+  it("says a side the check could not finish as still needing a check, never as missing from the video", () => {
+    expect(copy.results.gap({ side: "back", kind: "not_checked", hint: "again" })).toBe(SETTLED_SIDE.notChecked);
+    expect(SIDES.map((side) => copy.results.walkSide(side))).toEqual(Object.values(SETTLED_SIDE.walk));
+  });
+});
+
+describe("sidesToWalk", () => {
+  const gap = (side: Side, kind: Gap["kind"] = "missing"): Gap => ({ side, kind, hint: HINTS_FOR[kind][0]! });
+
+  it("names each gapped side once, in walking order", () => {
+    expect(sidesToWalk([gap("left"), gap("back", "dark"), gap("back", "not_checked"), gap("front")])).toEqual(["front", "back", "left"]);
+    expect(sidesToWalk([gap("right", "first_five_feet")])).toEqual(["right"]);
+  });
+
+  it("names no side when there is no gap", () => {
+    expect(sidesToWalk([])).toEqual([]);
+  });
+
+  it("names no side when every side is gapped, so the whole walk is asked for", () => {
+    expect(sidesToWalk(SIDES.map((side) => gap(side)))).toEqual([]);
+    expect(sidesToWalk([...SIDES.slice(0, 3).map((side) => gap(side)), gap("front", "dark")])).toEqual(["front", "right", "back"]);
   });
 });

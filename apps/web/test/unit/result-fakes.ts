@@ -38,11 +38,23 @@ export const liveBody = (walkId = LIVE_WALK, count = 2, over: Partial<WalkResult
   synthetic: false,
   coverage: "not_checked",
   gaps: [],
+  parts: [],
   findings: Array.from({ length: count }, (_, i) => {
     const id = liveFindingId(i + 1);
     const { proof, ...rest } = finding(id, { label: "recommended", band: "zone_2", ...feet(40 + i) });
-    return { ...rest, proof: { ...proof, still: stillPath(walkId, id) } };
+    return { ...rest, proof: { ...proof, still: stillPath(walkId, id) }, voiceNote: null };
   }),
   notChecked: ["roof_debris"],
   ...over,
 });
+
+export const liveBodyAt = (ranges: [low: number, high: number][], walkId = LIVE_WALK): WalkResultsResponse =>
+  liveBody(walkId, 0, {
+    coverage: "checked",
+    notChecked: [],
+    findings: ranges.map(([low, high], i) => {
+      const id = liveFindingId(i + 1);
+      const { proof, ...rest } = finding(id, { band: low <= 5 ? "zone_0" : low <= 30 ? "zone_1" : "zone_2", ...feet(low, high) });
+      return { ...rest, proof: { ...proof, still: stillPath(walkId, id) }, voiceNote: null };
+    }),
+  });

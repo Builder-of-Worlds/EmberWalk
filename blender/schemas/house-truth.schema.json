@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk ground truth for one synthetic sample house on a rectilinear footprint",
+  "description": "Same fields as the one side truth (emberwalk.truth/1) per hazard, plus the hazard's side, rule_id, the footprint ring and its sides with their clean marks (shapes as in emberwalk.house-spec/1). box_in is in the hazard's side frame: x along the wall from its right end as seen from the yard, y out from the wall face, z up. frame_boxes, visible_frames and visible_s come from the render's mask pass and are absent before it; their shapes are the ones of emberwalk.truth/1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "synthetic", "label", "scene", "state", "units", "axes", "footprint", "sides", "hazards"],
+  "properties": {
+    "schema": {"const": "emberwalk.house-truth/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "state": {"enum": ["before", "after"]},
+    "units": {"const": "inch"},
+    "axes": {"type": "string", "minLength": 10},
+    "visible_rule": {"type": "string", "minLength": 10},
+    "box_source": {"type": "string", "minLength": 10},
+    "footprint": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["side", "start_in"],
+        "properties": {
+          "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+          "start_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}
+        }
+      }
+    },
+    "sides": {"type": "object"},
+    "hazards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "concept", "side", "distance_in", "distance_ft", "distance_text", "band", "contact",
+          "label", "rule", "rule_id", "asset", "box_in"
+        ],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "concept": {"type": "string", "minLength": 1},
+          "side": {"type": "string", "minLength": 1},
+          "distance_in": {"type": "integer"},
+          "distance_ft": {"type": "number"},
+          "distance_text": {"type": "string", "pattern": "^[0-9]+ ft [0-9]+ in$"},
+          "band": {"enum": ["0_5", "5_30", "30_100"]},
+          "contact": {"type": "boolean"},
+          "label": {"enum": ["required_now", "recommended"]},
+          "rule": {"type": "string", "minLength": 3},
+          "rule_id": {"type": "string", "minLength": 3},
+          "asset": {"type": "string", "minLength": 1},
+          "box_in": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["min", "max"],
+            "properties": {
+              "min": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "max": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
+            }
+          },
+          "frame_boxes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["frame", "t", "box_px", "area_px"],
+              "properties": {
+                "frame": {"type": "integer", "minimum": 1},
+                "t": {"type": "number", "minimum": 0},
+                "box_px": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}},
+                "area_px": {"type": "integer", "minimum": 1}
+              }
+            }
+          },
+          "visible_frames": {"type": "integer", "minimum": 0},
+          "visible_s": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {"type": "number", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}

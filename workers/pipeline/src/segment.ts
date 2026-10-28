@@ -1,20 +1,19 @@
+import { type CatalogRow, checkWalkCost, type DetectionScope, rowsForClip, samPhraseOf, walkCost } from "@emberwalk/catalog";
 import { type ConceptRun, getWalk } from "@emberwalk/db";
-import { deleteFile, MetaRefused, type PhraseConcept, SAM_PHRASES, samPhrase, samVideoCall, uploadFile } from "@emberwalk/meta";
-import { type Clip, type Concept, LOOP_CONCEPTS, PAN_CONCEPTS, type Track } from "@emberwalk/shared";
+import { deleteFile, MetaRefused, samVideoCall, uploadFile } from "@emberwalk/meta";
+import type { Clip, Track } from "@emberwalk/shared";
+import { type PendingTally, settleFrames, settleUnseen } from "./catalog-step.ts";
 import type { Deps } from "./deps.ts";
 import { type Outcome, pass, refuse } from "./outcome.ts";
-import { isPointConcept, pointAndTrack } from "./point.ts";
+import { pointAndTrack } from "./point.ts";
 import { detectionsKey } from "./storage.ts";
-import { isWholeStepRefusal, retrying, storeTracks, whyNotChecked } from "./tracks.ts";
+import { isWholeStepRefusal, retrying, whyNotChecked } from "./tracks.ts";
 
 const UPLOAD_EXPIRY_SECONDS = 3600;
 
 export type ClipDetections = { runs: ConceptRun[]; tracks: Track[] };
 
-const conceptsFor = (clip: Clip): readonly Concept[] => (clip.kind === "loop" ? LOOP_CONCEPTS : PAN_CONCEPTS);
-
-const phraseFor = (concept: Concept): string =>
-  concept in SAM_PHRASES ? samPhrase(concept as PhraseConcept) : concept.replaceAll("_", " ");
+export type SegmentResult = { clipId: string; found: number; notChecked: number; pending?: PendingTally[] };
 
 export const uploadClip = async (deps: Deps, walkId: string, clip: Clip): Promise<Outcome<string>> => {
   const walk = await getWalk(deps.db, walkId);
@@ -59,22 +58,29 @@ export const askSam = async (deps: Deps, walkId: string, clip: Clip, fileId: str
   }
 };
 
-const runConcept = async (deps: Deps, walkId: string, clip: Clip, fileId: string, concept: Concept, content: "synthetic" | "real") => ({
-  concept,
-  ...(await askSam(deps, walkId, clip, fileId, phraseFor(concept), content)),
+const runRow = async (deps: Deps, walkId: string, clip: Clip, fileId: string, row: CatalogRow, content: "synthetic" | "real") => ({
+  row,
+  ...(await askSam(deps, walkId, clip, fileId, samPhraseOf(row), content)),
 });
 
-export const segmentClip = async (deps: Deps, walkId: string, clip: Clip, fileId: string): Promise<Outcome<{ clipId: string; found: number; notChecked: number }>> => {
+export const segmentClip = async (
+  deps: Deps,
+  walkId: string,
+  clip: Clip,
+  fileId: string,
+  scope: DetectionScope = "stored",
+): Promise<Outcome<SegmentResult>> => {
   const walk = await getWalk(deps.db, walkId);
   if (walk === null) return refuse("walk_missing", "This walk no longer exists.");
   const content = walk.synthetic ? "synthetic" : "real";
-  const phrased = conceptsFor(clip).filter((concept) => !isPointConcept(concept));
+  const asked = rowsForClip(clip.kind, scope);
   let results;
   let pointed;
   try {
+    if (scope === "catalog") await checkWalkCost(deps.meta(), walkCost([clip]).nano);
     [results, pointed] = await Promise.all([
-      Promise.all(phrased.map((concept) => runConcept(deps, walkId, clip, fileId, concept, content))),
-      pointAndTrack(deps, walkId, clip, fileId, content),
+      Promise.all(asked.filter((row) => row.point === null).map((row) => runRow(deps, walkId, clip, fileId, row, content))),
+      pointAndTrack(deps, walkId, clip, fileId, content, scope),
     ]);
   } catch (error) {
     if (error instanceof MetaRefused) return refusalOutcome(error);
@@ -83,15 +89,23 @@ export const segmentClip = async (deps: Deps, walkId: string, clip: Clip, fileId
 
   const runs: ConceptRun[] = [...pointed.runs];
   const tracks: Track[] = [...pointed.tracks];
+  const pending: PendingTally[] = [...(pointed.pending ?? [])];
   for (const result of results) {
-    if (result.failure !== null) {
-      runs.push({ concept: result.concept, outcome: "not_checked", reason: result.failure, framesBilled: 0 });
-      continue;
-    }
-    const found = await storeTracks(deps, walkId, clip, result.concept, result.frames);
-    runs.push({ concept: result.concept, outcome: found.length > 0 ? "found" : "none", reason: null, framesBilled: result.framesBilled });
-    tracks.push(...found);
+    const settled =
+      result.failure === null
+        ? await settleFrames(deps, walkId, clip, result.row, result.frames, result.framesBilled)
+        : settleUnseen(clip, result.row, result.failure);
+    runs.push(...settled.runs);
+    tracks.push(...settled.tracks);
+    pending.push(...settled.pending);
   }
   await deps.bucket.put(detectionsKey(walkId, clip.id), JSON.stringify({ runs, tracks } satisfies ClipDetections));
-  return pass({ clipId: clip.id, found: runs.filter((r) => r.outcome === "found").length, notChecked: runs.filter((r) => r.outcome === "not_checked").length });
+  const order = asked.map((row) => row.concept);
+  pending.sort((a, b) => order.indexOf(a.object) - order.indexOf(b.object));
+  return pass({
+    clipId: clip.id,
+    found: runs.filter((r) => r.outcome === "found").length,
+    notChecked: runs.filter((r) => r.outcome === "not_checked").length,
+    ...(scope === "catalog" ? { pending } : {}),
+  });
 };

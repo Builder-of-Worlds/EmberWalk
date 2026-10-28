@@ -23,7 +23,8 @@ describe("live Get It Fixed agent on one synthetic job", () => {
     });
     const crews = [1, 2, 3, 4].map((n) => crew(n));
     const directory = { near: async (_t: string, _z: string, n: number) => crews.slice(0, n) };
-    const outcome = await runJob({ enabled: true, client, db: env.DB, directory, now: () => new Date(), newId: () => crypto.randomUUID() }, JOB);
+    const photos = { has: async () => true };
+    const outcome = await runJob({ enabled: true, client, db: env.DB, directory, photos, now: () => new Date(), newId: () => crypto.randomUUID() }, JOB);
     expect(outcome).toMatchObject({ status: "waiting_on_homeowner", drafts: 3 });
     expect(await jobCrews(env.DB, JOB)).toHaveLength(3);
     expect((await messagesForJob(env.DB, JOB)).every((m) => m.status === "draft")).toBe(true);

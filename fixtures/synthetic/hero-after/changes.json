@@ -1,0 +1,23 @@
+{
+  "schema": "emberwalk.house-changes/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-after",
+  "hazards": [
+    {"id": "wood-pile-wall", "change": "fixed", "distance_in": 540, "along_in": 300},
+    {"id": "fence-at-siding", "change": "kept"},
+    {"id": "gutter-leaves-front", "change": "removed"},
+    {"id": "vent-debris-right", "change": "removed"},
+    {"id": "dry-plants-garage-side", "change": "removed"},
+    {"id": "branch-over-roof-left", "change": "fixed", "distance_in": 150, "size_in": [48, 24, 24]},
+    {"id": "branch-by-chimney-right", "change": "removed"},
+    {"id": "dry-brush-left", "change": "removed"},
+    {"id": "shrub-left", "change": "removed"},
+    {"id": "propane-tank-right", "change": "fixed", "distance_in": 300},
+    {"id": "shed-right", "change": "fixed", "distance_in": 420},
+    {"id": "trash-cans-right", "change": "removed"},
+    {"id": "patio-furniture-front", "change": "removed"},
+    {"id": "tall-grass-back", "change": "fixed", "size_in": [300, 240, 3]},
+    {"id": "wood-pile-far-left", "change": "removed"}
+  ]
+}

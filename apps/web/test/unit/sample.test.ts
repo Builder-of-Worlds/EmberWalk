@@ -11,6 +11,7 @@ import { findingFor, resultsFor } from "../../src/router.ts";
 import { SAMPLES, sampleResults as bundledResults, syntheticOnly } from "../../src/samples.ts";
 import { testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
+import { NEVER_LABELLED } from "./settled.ts";
 
 const SAMPLE_DIR = resolve(REPO, "apps/web/src/samples");
 const committed = JSON.parse(readFileSync(resolve(SAMPLE_DIR, "test-yard.json"), "utf8"));
@@ -36,9 +37,9 @@ describe("the test yard sample", () => {
     const results = sampleResults();
     expect(results.synthetic).toBe(true);
     expect(results.gaps).toEqual([
-      { side: "front", kind: "missing" },
-      { side: "right", kind: "missing" },
-      { side: "left", kind: "missing" },
+      { side: "front", kind: "missing", hint: "walk_side" },
+      { side: "right", kind: "missing", hint: "walk_side" },
+      { side: "left", kind: "missing", hint: "walk_side" },
     ]);
     expect(verdictOf({ ...results, coverage: "checked", notChecked: [] }).kind).toBe("incomplete");
   });
@@ -71,7 +72,7 @@ const until = async (check: () => boolean) => {
 const shown = async (hash: string) => {
   window.location.hash = hash;
   const view = await render(createElement(App, { deps: testDeps({ results: bundledResults }) }));
-  await until(() => view.text().includes(copy.results.sample));
+  await until(() => view.host.querySelector("main.results, main.one-finding") !== null);
   return view;
 };
 
@@ -80,8 +81,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("every bundled sample is labelled", () => {
-  it("is marked synthetic, and its results and finding screens say so in both views", async () => {
+describe("every bundled sample", () => {
+  it("is marked synthetic in its data, and its results and finding screens never say so, in both views (D-177)", async () => {
     expect(SAMPLES.length).toBeGreaterThan(0);
     for (const sample of SAMPLES) {
       expect(sample.synthetic).toBe(true);
@@ -89,12 +90,14 @@ describe("every bundled sample is labelled", () => {
       for (const chosen of [copy.results.detailed, copy.results.simple]) {
         const button = [...results.host.querySelectorAll("button")].find((b) => b.textContent === chosen);
         await settle(() => button?.click());
-        expect(results.text()).toContain(copy.results.sample);
+        expect(results.host.querySelector("h1")?.textContent).toBe(copy.results.incomplete);
+        expect(results.text()).not.toMatch(NEVER_LABELLED);
       }
       await results.unmount();
       for (const finding of sample.findings) {
         const one = await shown(findingFor(sample.id, finding.id));
-        expect(one.text()).toContain(copy.results.sample);
+        expect(one.host.querySelector("p.sentence")?.textContent).toBe(finding.instruction);
+        expect(one.text()).not.toMatch(NEVER_LABELLED);
         await one.unmount();
       }
     }

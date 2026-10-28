@@ -2,7 +2,14 @@ import { copy } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import { WALK_START } from "../router.ts";
 
-export const HOW_LINES: readonly string[] = [copy.how.walk, copy.how.camera, copy.how.microphone, copy.how.motion];
+export const HOW_LINES: readonly string[] = [
+  copy.how.walk,
+  copy.how.asks,
+  copy.how.camera,
+  copy.how.microphone,
+  copy.how.motion,
+  copy.how.location,
+];
 
 export const How = () => {
   const { prefs } = useDeps();

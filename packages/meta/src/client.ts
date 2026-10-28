@@ -11,12 +11,16 @@ export type Step = CostRecord["step"];
 
 export type CostLine = { kind: CostRecord["units"]["kind"]; count: number; unitPriceNano: number };
 
-export type Call<T> = {
+export type JsonRequest = { method: "POST"; path: string; json: Json };
+export type FormRequest = { method: "POST"; path: string; form: FormData };
+export type CallRequest = JsonRequest | FormRequest;
+
+export type Call<T, R extends CallRequest = JsonRequest> = {
   model: string;
   content: ContentKind;
   step: Step;
   walkId: string | null;
-  request: { method: "POST"; path: string; json: Json };
+  request: R;
   estimateNano: number;
   cost: (raw: unknown) => CostLine[];
   read: (raw: unknown) => T;
@@ -35,6 +39,20 @@ export type ClientOptions = {
 };
 
 const lineNano = (l: CostLine): number => l.count * l.unitPriceNano;
+
+const sha256 = async (bytes: ArrayBuffer): Promise<string> =>
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+async function formParts(form: FormData): Promise<Json> {
+  const parts: Json[] = [];
+  for (const [name, value] of form.entries()) {
+    parts.push(typeof value === "string" ? [name, value] : [name, { type: value.type, sha256: await sha256(await value.arrayBuffer()) }]);
+  }
+  return parts;
+}
+
+const requestFingerprint = async (r: CallRequest): Promise<string> =>
+  "json" in r ? fingerprint({ path: r.path, body: r.json }) : fingerprint({ path: r.path, form: await formParts(r.form) });
 
 export class MetaClient {
   readonly billing: Billing;
@@ -76,9 +94,9 @@ export class MetaClient {
     };
   }
 
-  async call<T>(c: Call<T>): Promise<Answer<T>> {
+  async call<T>(c: Call<T, CallRequest>): Promise<Answer<T>> {
     this.assertMaySend(c.model, c.content);
-    const fp = await fingerprint({ path: c.request.path, body: c.request.json });
+    const fp = await requestFingerprint(c.request);
     const hit = await this.cache.get(fp);
     if (hit !== null) {
       const value = c.read(hit);
@@ -110,7 +128,7 @@ export class MetaClient {
     }
   }
 
-  private safeCost(c: Call<unknown>, raw: unknown): CostLine[] {
+  private safeCost(c: Call<unknown, CallRequest>, raw: unknown): CostLine[] {
     try {
       return c.cost(raw);
     } catch {
@@ -118,7 +136,7 @@ export class MetaClient {
     }
   }
 
-  private async writeCost(c: Call<unknown>, lines: CostLine[], cached: boolean): Promise<number> {
+  private async writeCost(c: Call<unknown, CallRequest>, lines: CostLine[], cached: boolean): Promise<number> {
     const at = this.now().toISOString();
     let nano = 0;
     for (const line of lines) {

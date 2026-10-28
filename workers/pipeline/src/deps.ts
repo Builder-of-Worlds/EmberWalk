@@ -12,6 +12,7 @@ export type Deps = {
   meta: () => MetaClient;
   sleep: (ms: number) => Promise<void>;
   newId: () => string;
+  voiceNotes: boolean;
 };
 
 type CachedAnswer = Awaited<ReturnType<AnswerCache["get"]>>;
@@ -51,4 +52,5 @@ export const depsFrom = (env: Env): Deps => ({
   meta: () => metaFor(env),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   newId: () => crypto.randomUUID(),
+  voiceNotes: env.VOICE_NOTES === "on",
 });

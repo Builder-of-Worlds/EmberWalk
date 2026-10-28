@@ -1,11 +1,10 @@
-import type { Band, Concept } from "@emberwalk/shared";
+import type { Band, Concept, Gap } from "@emberwalk/shared";
+import { SIDES } from "@emberwalk/shared";
+import type { Side } from "@emberwalk/shared";
 import type { Removal } from "./finding-marks.ts";
 
-export const SIDES = ["front", "right", "back", "left"] as const;
-export type Side = (typeof SIDES)[number];
-
-export const GAP_KINDS = ["missing", "dark", "first_five_feet"] as const;
-export type Gap = { side: Side; kind: (typeof GAP_KINDS)[number] };
+export { SIDES };
+export type { Gap, Side };
 
 export type Label = "required_now" | "recommended";
 
@@ -25,6 +24,7 @@ export type ResultFinding = {
   sources: Source[];
   confidence: number;
   proof: Proof;
+  voiceNote?: string | null;
 };
 
 export type Coverage = "checked" | "not_checked";
@@ -43,15 +43,22 @@ export const BANDS: Band[] = ["zone_0", "zone_1", "zone_2"];
 
 export const FIX_FIRST_MOST = 3;
 
+export const FIX_FIRST_FEET = 30;
+
 export const blocksGreen = (f: ResultFinding): boolean => f.label === "required_now" || f.band === "zone_0";
 
 const byId = (a: ResultFinding, b: ResultFinding) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-export const fixOrder = (a: ResultFinding, b: ResultFinding): number =>
-  Number(a.label !== "required_now") - Number(b.label !== "required_now") ||
-  a.distanceFeet.low - b.distanceFeet.low ||
-  a.distanceFeet.high - b.distanceFeet.high ||
-  byId(a, b);
+const byLabel = (a: ResultFinding, b: ResultFinding) => Number(a.label !== "required_now") - Number(b.label !== "required_now");
+
+const byDistance = (a: ResultFinding, b: ResultFinding) => a.distanceFeet.low - b.distanceFeet.low || a.distanceFeet.high - b.distanceFeet.high;
+
+export const fixOrder = (a: ResultFinding, b: ResultFinding): number => byLabel(a, b) || byDistance(a, b) || byId(a, b);
+
+const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, b) || byLabel(a, b) || byId(a, b);
+
+export const fixFirstOf = (findings: ResultFinding[], cleared: (f: ResultFinding) => boolean): ResultFinding[] =>
+  findings.filter((f) => !cleared(f) && f.distanceFeet.low < FIX_FIRST_FEET).sort(nearOrder);
 
 export type Verdict =
   | { kind: "incomplete"; gaps: Gap[] }
@@ -61,12 +68,20 @@ export type Verdict =
 
 export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => boolean = () => false): Verdict => {
   if (results.gaps.length > 0) return { kind: "incomplete", gaps: results.gaps };
-  const open = results.findings.filter((f) => blocksGreen(f) && !cleared(f)).sort(fixOrder);
-  if (open.length > 0) return { kind: "fix", first: open.slice(0, FIX_FIRST_MOST) };
+  const blocking = results.findings.filter((f) => blocksGreen(f) && !cleared(f));
+  if (blocking.length > 0) {
+    const near = fixFirstOf(results.findings, cleared);
+    return { kind: "fix", first: (near.length > 0 ? near : blocking.sort(nearOrder)).slice(0, FIX_FIRST_MOST) };
+  }
   return results.coverage === "checked" ? { kind: "ready" } : { kind: "so_far" };
 };
 
-export const withoutRemoved = (results: WalkResults, removed: Removal[]): WalkResults => {
+export const sidesToWalk = (gaps: readonly Gap[]): Side[] => {
+  const gapped = SIDES.filter((side) => gaps.some((gap) => gap.side === side));
+  return gapped.length === SIDES.length ? [] : gapped;
+};
+
+export const withoutRemoved =(results: WalkResults, removed: Removal[]): WalkResults => {
   const gone = new Set(removed.map((r) => r.findingId));
   return { ...results, findings: results.findings.filter((f) => !gone.has(f.id)) };
 };

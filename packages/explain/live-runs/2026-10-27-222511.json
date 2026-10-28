@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-27T22:25:11.993Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames that show only the wood pile",
+    "language": "en",
+    "turns": [],
+    "frameSeconds": [
+      1,
+      3,
+      5
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.01282495,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00455125,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00193695,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00633675,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the uncovered woodpile at the wall at least 30 feet from the house.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered stacked woodpile directly against the house wall on bare soil."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "No fence was seen, so no fence work is needed.",
+      "verdict": "veto",
+      "reason": "The frames show only the house wall and woodpile with no separate wooden fence visible."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "No dry brush was seen, so no clearing is needed.",
+      "verdict": "veto",
+      "reason": "The frames show bare sandy ground with no dry brush visible."
+    }
+  ]
+}

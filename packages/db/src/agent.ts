@@ -1,4 +1,4 @@
-import { AgentJob, Crew, Id, OutgoingMessage, Text, Timestamp, Zip } from "@emberwalk/shared";
+import { AgentJob, Crew, FollowUp, Id, OutgoingMessage, Text, Timestamp, Zip } from "@emberwalk/shared";
 import { z } from "zod";
 import { DbRefused } from "./errors.ts";
 
@@ -22,6 +22,11 @@ export const AgentStep = z.strictObject({
 });
 export type AgentStep = z.infer<typeof AgentStep>;
 
+export const FollowUpRecord = FollowUp.extend({ forMessageId: Id, createdAt: Timestamp });
+export type FollowUpRecord = z.infer<typeof FollowUpRecord>;
+export const NewFollowUp = FollowUpRecord.omit({ done: true });
+export type NewFollowUp = z.infer<typeof NewFollowUp>;
+
 const SentHow = z.enum(["sent", "sent_by_phone"]);
 
 type JobRow = { id: string; walk_id: string; trade: string; finding_ids: string; zip: string; status: string; created_at: string; updated_at: string };
@@ -36,6 +41,16 @@ type MessageRow = {
   created_at: string;
   approved_at: string | null;
   sent_at: string | null;
+};
+type FollowUpRow = {
+  id: string;
+  job_id: string;
+  for_message_id: string;
+  due_at: string;
+  note: string;
+  draft_message_id: string | null;
+  done: number;
+  created_at: string;
 };
 type StepRow = { job_id: string; n: number; at: string; tool: string; arguments: string; outcome: string; detail: string };
 
@@ -63,6 +78,18 @@ const toMessage = (r: MessageRow): OutgoingMessage =>
     createdAt: r.created_at,
     approvedAt: r.approved_at,
     sentAt: r.sent_at,
+  });
+
+const toFollowUp = (r: FollowUpRow): FollowUpRecord =>
+  FollowUpRecord.parse({
+    id: r.id,
+    jobId: r.job_id,
+    forMessageId: r.for_message_id,
+    dueAt: r.due_at,
+    note: r.note,
+    draftMessageId: r.draft_message_id,
+    done: r.done === 1,
+    createdAt: r.created_at,
   });
 
 const requireOne = (changes: number, reason: string): void => {
@@ -120,14 +147,18 @@ export const jobCrews = async (db: D1Database, jobId: string): Promise<Crew[]> =
   return results.map((r) => Crew.parse(JSON.parse(r.crew)));
 };
 
+const asDraft = (input: Draft): OutgoingMessage => OutgoingMessage.parse({ ...Draft.parse(input), status: "draft", approvedAt: null, sentAt: null });
+
+const insertDraft = (db: D1Database, message: OutgoingMessage): D1PreparedStatement =>
+  db
+    .prepare("INSERT INTO agent_messages (id, job_id, crew_id, channel, status, subject, body, created_at) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)")
+    .bind(message.id, message.jobId, message.crewId, message.channel, message.subject, message.body, message.createdAt);
+
 export const saveDraft = async (db: D1Database, input: Draft): Promise<OutgoingMessage> => {
-  const message = OutgoingMessage.parse({ ...Draft.parse(input), status: "draft", approvedAt: null, sentAt: null });
+  const message = asDraft(input);
   const onJob = await db.prepare("SELECT 1 AS x FROM agent_job_crews WHERE job_id = ? AND crew_id = ?").bind(message.jobId, message.crewId).first();
   if (onJob === null) throw new DbRefused(`crew ${message.crewId} is not on job ${message.jobId}`);
-  await db
-    .prepare("INSERT INTO agent_messages (id, job_id, crew_id, channel, status, subject, body, created_at) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)")
-    .bind(message.id, message.jobId, message.crewId, message.channel, message.subject, message.body, message.createdAt)
-    .run();
+  await insertDraft(db, message).run();
   return message;
 };
 
@@ -185,4 +216,37 @@ export const logStep = async (db: D1Database, input: Omit<AgentStep, "n">): Prom
 export const stepsForJob = async (db: D1Database, jobId: string): Promise<AgentStep[]> => {
   const { results } = await db.prepare("SELECT * FROM agent_steps WHERE job_id = ? ORDER BY n").bind(Id.parse(jobId)).all<StepRow>();
   return results.map((r) => AgentStep.parse({ jobId: r.job_id, n: r.n, at: r.at, tool: r.tool, arguments: r.arguments, outcome: r.outcome, detail: r.detail }));
+};
+
+export const scheduleFollowUp = async (db: D1Database, input: NewFollowUp, reminder?: Draft): Promise<FollowUpRecord> => {
+  const followUp = FollowUpRecord.parse({ ...NewFollowUp.parse(input), done: false });
+  const draft = reminder === undefined ? null : asDraft(reminder);
+  if (draft !== null && draft.id !== followUp.draftMessageId) throw new DbRefused(`follow up ${followUp.id} does not name its reminder draft ${draft.id}`);
+  const insert = db
+    .prepare("INSERT INTO follow_ups (id, job_id, for_message_id, due_at, note, draft_message_id, done, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)")
+    .bind(followUp.id, followUp.jobId, followUp.forMessageId, followUp.dueAt, followUp.note, followUp.draftMessageId, followUp.createdAt);
+  await db.batch(draft === null ? [insert] : [insertDraft(db, draft), insert]).catch((error: unknown) => {
+    throw new DbRefused(`follow up for message ${followUp.forMessageId} refused: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  return followUp;
+};
+
+export const followUpsForJob = async (db: D1Database, jobId: string): Promise<FollowUpRecord[]> => {
+  const { results } = await db.prepare("SELECT * FROM follow_ups WHERE job_id = ? ORDER BY due_at, created_at, id").bind(Id.parse(jobId)).all<FollowUpRow>();
+  return results.map(toFollowUp);
+};
+
+export const dueFollowUps = async (db: D1Database, at: string): Promise<FollowUpRecord[]> => {
+  const { results } = await db
+    .prepare(
+      "SELECT f.* FROM follow_ups f JOIN agent_messages m ON m.id = f.for_message_id WHERE f.done = 0 AND f.due_at <= ? AND m.status <> 'replied' ORDER BY f.due_at, f.created_at, f.id",
+    )
+    .bind(Timestamp.parse(at))
+    .all<FollowUpRow>();
+  return results.map(toFollowUp);
+};
+
+export const closeFollowUp = async (db: D1Database, followUpId: string): Promise<void> => {
+  const result = await db.prepare("UPDATE follow_ups SET done = 1 WHERE id = ? AND done = 0").bind(Id.parse(followUpId)).run();
+  requireOne(result.meta.changes, `follow up ${followUpId} does not exist or is already closed`);
 };

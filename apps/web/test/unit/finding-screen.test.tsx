@@ -8,7 +8,7 @@ import { findingFor, resultsFor, ROUTES } from "../../src/router.ts";
 import { fakeClock, memoryMarks, memoryStorage, testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
 import { feet, finding, walk } from "./result-fakes.ts";
-import { NEVER_SAID, SETTLED_FINDING, SETTLED_RESULTS, SETTLED_STATUS, shownLines } from "./settled.ts";
+import { NEVER_LABELLED, NEVER_SAID, SETTLED_FINDING, SETTLED_RESULTS, SETTLED_STATUS, shownLines } from "./settled.ts";
 
 const until = async (check: () => boolean) => {
   for (let i = 0; i < 50 && !check(); i++) await settle(() => new Promise((r) => setTimeout(r, 5)));
@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("Finding, step 10", () => {
-  it("shows only settled lines and the finding's own words, with the sample label on a sample house", async () => {
+  it("shows only settled lines and the finding's own words, with no synthetic label on a sample house (D-177)", async () => {
     const results = walk([RECOMMENDED, REQUIRED], [], { synthetic: true });
     const view = await open(results, RECOMMENDED.id);
     await pick(view.host, copy.finding.more);
@@ -67,7 +67,7 @@ describe("Finding, step 10", () => {
     await pick(view.host, copy.finding.more);
     const allowed = new Set([...SETTLED_RESULTS, ...SETTLED_FINDING, ...SETTLED_STATUS, RECOMMENDED.instruction, ...RECOMMENDED.sources.flatMap((s) => [s.citation, s.words])]);
     for (const line of shownLines(view.host)) expect(allowed, line).toContain(line);
-    expect(view.text()).toContain(copy.results.sample);
+    expect(view.text()).not.toMatch(NEVER_LABELLED);
     for (const word of NEVER_SAID) expect(view.text().toLowerCase()).not.toContain(word);
     await view.unmount();
   });
@@ -79,7 +79,7 @@ describe("Finding, step 10", () => {
     expect([marker?.style.left, marker?.style.top, marker?.style.width, marker?.style.height]).toEqual(["10%", "20%", "40%", "40%"]);
     expect(view.host.querySelector("p.label")?.textContent).toBe(copy.results.label.required_now);
     expect(view.host.querySelector("p.sentence")?.textContent).toBe(REQUIRED.instruction);
-    expect(view.text()).not.toContain(copy.results.sample);
+    expect(view.text()).not.toMatch(NEVER_LABELLED);
     await view.unmount();
   });
 
@@ -271,6 +271,54 @@ describe("Finding status", () => {
     expect(view.host.querySelector(".status-picker")).toBeNull();
     await pick(view.host, copy.finding.undo);
     expect(pressed(view.host)).toEqual([copy.status.kind.needs_fixing]);
+    await view.unmount();
+  });
+});
+
+describe("What You Said", () => {
+  const NOTE = "This woodpile is right up against the garage wall. I meant to move it last spring.";
+
+  const moreOrder = (host: HTMLElement) =>
+    [...(host.querySelector("#more")?.children ?? [])].map((el) => (el.tagName === "H2" || el.tagName === "BUTTON" ? el.textContent : el.className));
+
+  it("shows the note under its heading in More, after the sources and before This Isn't Right", async () => {
+    const view = await open(walk([finding("said", { voiceNote: NOTE })]), "said");
+    expect(view.text()).not.toContain(NOTE);
+    await pick(view.host, copy.finding.more);
+    expect(copy.finding.said).toBe("What You Said");
+    expect(moreOrder(view.host)).toEqual([copy.finding.source, "sources", copy.finding.said, "said", copy.finding.notRight]);
+    expect(view.host.querySelector("#more p.said")?.textContent).toBe(NOTE);
+    expect(view.host.querySelector("#more audio, #more [aria-label*='play' i]")).toBeNull();
+    await view.unmount();
+  });
+
+  it.each([
+    ["null", { voiceNote: null }],
+    ["missing, as in a bundled sample or an older kept copy", {}],
+    ["blank", { voiceNote: "  \n " }],
+  ])("shows no heading and no empty block when the note is %s", async (_, over) => {
+    const view = await open(walk([finding("quiet", over)]), "quiet");
+    await pick(view.host, copy.finding.more);
+    expect(moreOrder(view.host)).toEqual([copy.finding.source, "sources", copy.finding.notRight]);
+    expect(view.text()).not.toContain(copy.finding.said);
+    await view.unmount();
+  });
+
+  it("renders the words as text, never as markup", async () => {
+    const said = `<b>loud</b> <img src=x onerror="alert(1)"> & more`;
+    const view = await open(walk([finding("markup", { voiceNote: said })]), "markup");
+    await pick(view.host, copy.finding.more);
+    const shown = view.host.querySelector("#more p.said");
+    expect(shown?.textContent).toBe(said);
+    expect(shown?.children.length).toBe(0);
+    await view.unmount();
+  });
+
+  it("keeps the note on a removed item and adds nothing else to it", async () => {
+    const view = await open(walk([finding("gone", { voiceNote: NOTE })]), "gone");
+    await pick(view.host, copy.finding.more);
+    await pick(view.host, copy.finding.notRight);
+    expect(moreOrder(view.host)).toEqual([copy.finding.source, "sources", copy.finding.said, "said"]);
     await view.unmount();
   });
 });

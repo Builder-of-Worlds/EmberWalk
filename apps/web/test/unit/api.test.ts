@@ -1,8 +1,9 @@
-import { ERROR_CODES, stillPath, VISITOR_HEADER } from "@emberwalk/shared";
+import { ERROR_CODES, FaultReportRequest, stillPath, VISITOR_HEADER } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { uploadApi, walkApi } from "../../src/api.ts";
 import type { Fetch } from "../../src/api.ts";
 import { copy } from "../../src/copy.ts";
+import { BUILD } from "../../src/deps.ts";
 import { LIVE_WALK, liveBody, liveFindingId } from "./result-fakes.ts";
 
 const answering =
@@ -90,6 +91,45 @@ describe("the walk API client's tags", () => {
     expect(await walkApi("https://a.test", answering(200, '{"tags":1}')).tags(tag.walkId, [tag])).toEqual({ code: "server_error" });
     const offline = walkApi("https://a.test", () => Promise.reject(new TypeError("Failed to fetch")));
     expect(await offline.tags(tag.walkId, [tag])).toEqual({ code: "offline" });
+  });
+});
+
+describe("the walk API client's fault report", () => {
+  const report = { walkId: LIVE_WALK, code: "invalid_request", build: "a1b2c3d4e5f6" } as const;
+
+  it("posts the report as JSON to /api/faults and reads received", async () => {
+    const seen: Request[] = [];
+    const api = walkApi("https://api.example", async (request) => {
+      seen.push(request);
+      return Response.json({ received: true });
+    });
+    expect(await api.reportFault(report)).toEqual({ value: { received: true } });
+    expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual(["POST https://api.example/api/faults"]);
+    expect(await seen[0]?.json()).toEqual(report);
+    expect(seen[0]?.headers.get(VISITOR_HEADER)).toBeNull();
+  });
+
+  it("reads a reply that is not exactly received as a failure", async () => {
+    const api = (status: number, body: string) => walkApi("https://a.test", answering(status, body));
+    const serverError = { code: "server_error" };
+    expect(await api(200, '{"received":false}').reportFault(report)).toEqual(serverError);
+    expect(await api(200, "{}").reportFault(report)).toEqual(serverError);
+    expect(await api(200, '{"received":true,"extra":1}').reportFault(report)).toEqual(serverError);
+    expect(await api(200, "null").reportFault(report)).toEqual(serverError);
+    expect(await api(200, "not json").reportFault(report)).toEqual(serverError);
+  });
+
+  it("gives the refusal code the Worker named, and offline", async () => {
+    const limited = JSON.stringify({ error: { code: "rate_limited", message: "Too many reports today." } });
+    expect(await walkApi("https://a.test", answering(429, limited)).reportFault(report)).toEqual({ code: "rate_limited" });
+    const offline = walkApi("https://a.test", () => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await offline.reportFault(report)).toEqual({ code: "offline" });
+  });
+});
+
+describe("the app build", () => {
+  it("is a value the fault report contract accepts", () => {
+    expect(FaultReportRequest.safeParse({ walkId: LIVE_WALK, code: "invalid_request", build: BUILD }).success).toBe(true);
   });
 });
 

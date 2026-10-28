@@ -3,7 +3,8 @@ import { PartLinkResponse, StartUploadResponse, StartWalkResponse } from "@ember
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index.ts";
 import { MiB, call, link, start } from "./route.ts";
-import { clearWalks, walkState } from "./seed.ts";
+import { partOfWalk } from "@emberwalk/db";
+import { clearWalks, OWNER, seedGap, seedWalk, walkState } from "./seed.ts";
 
 const VISITOR = "c".repeat(64);
 const body = (over: Record<string, unknown> = {}) => ({
@@ -109,6 +110,78 @@ describe("refusing a bad create request", () => {
     const reply = await call("/api/walks/anything/else", body());
     expect([reply.status, reply.json.error.code]).toEqual([404, "not_found"]);
     expect(await walkCount()).toBe(0);
+  });
+});
+
+describe("creating a walk of one side, a part of a done walk", () => {
+  const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7e01";
+  const partBody = (over: Record<string, unknown> = {}) => body({ visitorId: OWNER, partOf: { walkId: PARENT, side: "back" }, ...over });
+  const stored = (walkId: string) => env.DB.prepare("SELECT * FROM walks WHERE id = ?").bind(walkId).first<Record<string, unknown>>();
+
+  beforeEach(async () => {
+    await seedWalk(PARENT, "done");
+    await env.DB.prepare("UPDATE walks SET language = 'es', jurisdiction = 'us_ca_lra' WHERE id = ?").bind(PARENT).run();
+    await seedGap(PARENT, "back");
+  });
+
+  it("creates the part walk for a side with a gap, under the parent's rules, language and real footage flag whatever the request says", async () => {
+    const reply = await call("/api/walks", partBody({ language: "en", jurisdiction: "us_or", synthetic: true }));
+    expect(reply.status).toBe(200);
+    const { walkId } = StartWalkResponse.parse(reply.json);
+    expect(await stored(walkId)).toMatchObject({
+      part_of: PARENT,
+      part_side: "back",
+      language: "es",
+      jurisdiction: "us_ca_lra",
+      synthetic: 0,
+      visitor_id: OWNER,
+      state: "uploading",
+    });
+    expect(await partOfWalk(env.DB, walkId)).toEqual({ walkId: PARENT, side: "back" });
+  });
+
+  it("creates a whole walk, marked as no part, when partOf is null", async () => {
+    const { walkId } = StartWalkResponse.parse((await call("/api/walks", body({ partOf: null }))).json);
+    expect(await stored(walkId)).toMatchObject({ part_of: null, part_side: null });
+  });
+
+  it("answers 404 unknown_walk for a parent that does not exist or is another visitor's, and stores nothing", async () => {
+    for (const payload of [partBody({ partOf: { walkId: "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7eff", side: "back" } }), partBody({ visitorId: VISITOR })]) {
+      const reply = await call("/api/walks", payload);
+      expect([reply.status, reply.json.error.code]).toEqual([404, "unknown_walk"]);
+    }
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("answers 400 invalid_request for a malformed partOf, and stores nothing", async () => {
+    for (const partOf of [{ walkId: PARENT }, { walkId: PARENT, side: "roof" }, { walkId: "nope", side: "back" }, PARENT]) {
+      const reply = await call("/api/walks", partBody({ partOf }));
+      expect([reply.status, reply.json.error.code]).toEqual([400, "invalid_request"]);
+    }
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("answers 409 walk_not_done for a parent still being checked, uploading or failed", async () => {
+    for (const [state, step] of [["processing", "segment"], ["uploading", null], ["failed", "segment"]] as const) {
+      await env.DB.prepare("UPDATE walks SET state = ?, step = ? WHERE id = ?").bind(state, step, PARENT).run();
+      const reply = await call("/api/walks", partBody());
+      expect([reply.status, reply.json.error.code]).toEqual([409, "walk_not_done"]);
+    }
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("answers 400 invalid_request for a side with no gap, a synthetic parent and a part of a part walk", async () => {
+    const front = await call("/api/walks", partBody({ partOf: { walkId: PARENT, side: "front" } }));
+    expect([front.status, front.json.error.code]).toEqual([400, "invalid_request"]);
+    const { walkId: part } = StartWalkResponse.parse((await call("/api/walks", partBody())).json);
+    await env.DB.prepare("UPDATE walks SET state = 'done' WHERE id = ?").bind(part).run();
+    await seedGap(part, "back");
+    const ofPart = await call("/api/walks", partBody({ partOf: { walkId: part, side: "back" } }));
+    expect([ofPart.status, ofPart.json.error.code]).toEqual([400, "invalid_request"]);
+    await env.DB.prepare("UPDATE walks SET synthetic = 1 WHERE id = ?").bind(PARENT).run();
+    const synthetic = await call("/api/walks", partBody());
+    expect([synthetic.status, synthetic.json.error.code]).toEqual([400, "invalid_request"]);
+    expect(await walkCount()).toBe(2);
   });
 });
 

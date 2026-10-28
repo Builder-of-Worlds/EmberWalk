@@ -1,6 +1,8 @@
 import type { Device, StartWalkRequest, Tag } from "@emberwalk/shared";
 import type { Fetch, UploadApi, WalkApi } from "./api.ts";
 import type { Jurisdiction } from "./location.ts";
+import { partsOf } from "./parts.ts";
+import type { Part } from "./parts.ts";
 import { IDEAL_SIZE, UNKNOWN_CAMERA } from "./recorder.ts";
 import type { Take, TakeStore } from "./take-store.ts";
 import { sendTake } from "./uploader.ts";
@@ -17,41 +19,50 @@ export type SenderDeps = {
   newId?: () => string;
 };
 
-export const UNCONFIRMED_RULES: Jurisdiction = "ca";
+export const FALLBACK_RULES: Jurisdiction = "ca";
 
 const UNKNOWN_DEVICE: Device = { camera: UNKNOWN_CAMERA, ...IDEAL_SIZE };
 
 export const walkRequest = (take: Take, visitorId: string): StartWalkRequest => ({
+  partOf: take.partOf ?? null,
   language: "en",
-  jurisdiction: take.jurisdiction ?? UNCONFIRMED_RULES,
+  jurisdiction: take.jurisdiction ?? FALLBACK_RULES,
   device: take.device ?? UNKNOWN_DEVICE,
   synthetic: false,
   visitorId,
 });
 
-const walkTag = (take: Take, walkId: string, id: string): Tag | null => {
-  if (take.durationMs === null || take.durationMs <= 0) return null;
-  return {
-    id,
+const walkTags = (take: Take, walkId: string, parts: readonly Part[], ids: readonly string[]): Tag[] =>
+  parts.map((part, i) => ({
+    id: ids[i] as string,
     walkId,
     kind: "loop",
-    startSeconds: 0,
-    endSeconds: take.durationMs / 1000,
-    label: "Walk",
-    samples: take.marks.motion,
+    startSeconds: part.startSeconds,
+    endSeconds: part.endSeconds,
+    label: part.side ?? "Walk",
+    samples: take.marks.motion.filter(({ t }) => t >= part.startSeconds && (t < part.endSeconds || (i === parts.length - 1 && t === part.endSeconds))),
     propertyLine: null,
-  };
+  }));
+
+const partsFor = (take: Take): Part[] => {
+  const parts = partsOf(take.durationMs ?? 0, take.marks.motion);
+  const side = take.partOf?.side;
+  return side === undefined || parts.length === 0 ? parts : [{ side, startSeconds: 0, endSeconds: parts.at(-1)!.endSeconds }];
 };
+
+const savedIds =(saved: Take["tags"]): string[] => (saved === null || saved === undefined ? [] : "ids" in saved ? saved.ids : [saved.id]);
 
 const sendTags = async (deps: SenderDeps, takes: TakeStore, take: Take, walkId: string): Promise<void> => {
   const saved = (await takes.get(take.id)).tags;
   if (saved?.sent === true) return;
-  const id = saved?.id ?? (deps.newId ?? (() => crypto.randomUUID()))();
-  const tag = walkTag(take, walkId, id);
-  if (tag === null) return;
-  const answer = await deps.walks.tags(walkId, [tag]);
+  const newId = deps.newId ?? (() => crypto.randomUUID());
+  const parts = partsFor(take);
+  if (parts.length === 0) return;
+  const ids = parts.map((_, i) => savedIds(saved)[i] ?? newId());
+  const tags = walkTags(take, walkId, parts, ids);
+  const answer = await deps.walks.tags(walkId, tags);
   const refusal = answer.code ?? null;
-  await takes.saveTags(take.id, { id, sent: refusal === null || refusal === "walk_not_uploading", refusal });
+  await takes.saveTags(take.id, { ids, sent: refusal === null || refusal === "walk_not_uploading", refusal });
 };
 
 export const walkSender =

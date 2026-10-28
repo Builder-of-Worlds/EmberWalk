@@ -1,4 +1,5 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
+import { handleFaultReport } from "./fault-report.ts";
 import { createUploadApi } from "./upload-api.ts";
 import type { PipelineStarter } from "./upload-api.ts";
 import { r2UploadStore } from "./upload-store.ts";
@@ -46,6 +47,7 @@ export default {
   async fetch(request, env): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/health") return Response.json({ status: "ok" });
+    if (pathname === "/api/faults") return handleFaultReport(request, env.DB, Date.now);
     if (pathname === "/api/walks") return handleCreateWalk(request, env.DB, () => crypto.randomUUID());
     const tagsOf = TAGS_PATH.exec(pathname);
     if (tagsOf !== null) return handleAddTags(request, env.DB, tagsOf[1] ?? "");

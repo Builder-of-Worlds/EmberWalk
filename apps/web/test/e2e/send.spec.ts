@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Request, Route } from "@playwright/test";
-import { copy, draft } from "../../src/copy.ts";
+import { copy } from "../../src/copy.ts";
 import { ROUTES } from "../../src/router.ts";
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
@@ -37,6 +37,7 @@ const standInApi = async (page: Page, refuseWalk: string | null = null) => {
       return answer(route, { url, method: "PUT", headers: { "content-length": String(size) }, expiresAt: EXPIRES });
     }
     if (pathname === "/api/uploads/complete") return answer(route, { walkId: WALK, bytes: total });
+    if (pathname === `/api/walks/${WALK}`) return answer(route, { walkId: WALK, state: { name: "queued" }, failure: null });
     return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "Not found." } } });
   });
   await page.route("**/storage/**", async (route) => {
@@ -52,9 +53,7 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   await context.setGeolocation(SPOT);
   const api = await standInApi(page);
 
-  await page.goto(`/${ROUTES.rules}`);
-  await page.getByRole("radio", { name: draft.rules.choices.ca_vhfhsz }).check();
-  await page.getByRole("button", { name: draft.rules.confirm }).click();
+  await page.goto(`/${ROUTES.record}`);
   await page.getByRole("button", { name: copy.record.start }).click();
   await expect(page.locator("video.preview")).toBeVisible();
   await page.waitForTimeout(2500);
@@ -76,8 +75,8 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   expect(await page.evaluate(sideways)).toBe(0);
 
   const walk = JSON.parse(api.seen.find((r) => r.url.pathname === "/api/walks")?.body ?? "{}") as Record<string, unknown>;
-  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "synthetic", "visitorId"]);
-  expect(walk).toMatchObject({ jurisdiction: "ca_vhfhsz", language: "en", synthetic: false });
+  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "partOf", "synthetic", "visitorId"]);
+  expect(walk).toMatchObject({ jurisdiction: "ca", language: "en", synthetic: false, partOf: null });
   expect(walk.visitorId).toMatch(/^[0-9a-f]{64}$/);
   expect(api.stored.length).toBeGreaterThan(1);
   expect(api.stored.reduce((sum, n) => sum + n, 0)).toBe(api.total());
@@ -87,7 +86,9 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   const sentWords = api.seen.filter((r) => r.method === "POST").map((r) => r.body).join("\n");
   for (const coordinate of [String(SPOT.latitude), String(SPOT.longitude), "38.58", "121.49"]) expect(sentWords).not.toContain(coordinate);
 
-  await page.getByRole("link", { name: copy.send.back }).click();
+  await expect(page.getByRole("link", { name: copy.send.back })).toHaveCount(0);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.home.title);
   await expect(page.locator(".walks")).toHaveCount(0);
 });
 

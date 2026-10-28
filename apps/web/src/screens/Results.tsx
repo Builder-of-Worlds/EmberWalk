@@ -4,9 +4,9 @@ import { copy } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
-import { bandsOf, dayOf, overAYearOld, verdictOf, withoutRemoved } from "../results.ts";
+import { bandsOf, dayOf, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../results.ts";
 import type { ResultFinding, Verdict, WalkResults } from "../results.ts";
-import { findingFor, ROUTES, WALK_START } from "../router.ts";
+import { findingFor, recordPartFor, ROUTES, WALK_START } from "../router.ts";
 import { Photo } from "./Photo.tsx";
 import { StatusLine } from "./Status.tsx";
 
@@ -65,13 +65,22 @@ const Body = ({ verdict, results, shown, walkAgain }: { verdict: Verdict; result
       <>
         <ul className="lines">
           {verdict.gaps.map((gap) => (
-            <li key={`${gap.side}-${gap.kind}`}>{copy.results.gap(gap)}</li>
+            <li key={`${gap.side}-${gap.kind}`}>
+              <span>{copy.results.gap(gap)}</span>
+              {results.synthetic ? null : <p className="hint">{copy.results.hint[gap.hint](gap.side)}</p>}
+            </li>
           ))}
         </ul>
-        {results.synthetic ? null : (
+        {results.synthetic ? null : sidesToWalk(verdict.gaps).length === 0 ? (
           <a className="button primary" href={walkAgain}>
             {copy.results.walkAgain}
           </a>
+        ) : (
+          sidesToWalk(verdict.gaps).map((side) => (
+            <a key={side} className="button primary" href={recordPartFor(results.id, side)}>
+              {copy.results.walkSide(side)}
+            </a>
+          ))
         )}
         {results.findings.length > 0 ? (
           <section className="so-far">
@@ -84,7 +93,6 @@ const Body = ({ verdict, results, shown, walkAgain }: { verdict: Verdict; result
   if (verdict.kind === "fix")
     return (
       <>
-        <p className="lead">{copy.results.startHere}</p>
         <Rows findings={verdict.first} shown={shown} />
         <Bands findings={results.findings} shown={shown} sub={false} />
       </>
@@ -121,6 +129,7 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
   const statusOf = (findingId: string) => deps.marks.statusOf(results.id, findingId);
   const verdict = verdictOf(listed, (f) => isRechecked(statusOf(f.id)));
   const shown: Shown = { view, resultsId: results.id, statusOf };
+  const notChecked = results.notChecked ?? [];
   const choose = (chosen: ViewPreference) => {
     deps.prefs.setView(chosen);
     setView(chosen);
@@ -136,9 +145,15 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
         ))}
       </div>
       <h1>{heading(verdict)}</h1>
-      {results.synthetic ? <p className="sample">{copy.results.sample}</p> : null}
       <p>{copy.results.walked(dayOf(results.walkedOn))}</p>
       {overAYearOld(results.walkedOn, deps.clock.now()) ? <p>{copy.results.old}</p> : null}
+      {notChecked.length > 0 ? (
+        <ul className="lines not-checked">
+          {notChecked.map((concept) => (
+            <li key={concept}>{copy.results.notChecked(concept)}</li>
+          ))}
+        </ul>
+      ) : null}
       <Body verdict={verdict} results={listed} shown={shown} walkAgain={deps.prefs.introSeen() ? WALK_START : ROUTES.how} />
     </main>
   );

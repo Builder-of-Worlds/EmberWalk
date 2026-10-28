@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T08:28:35.703Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and Spanish turns, a Spanish walk",
+    "language": "es",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "Esa es la leña para el invierno. La tapo con una lona por la noche, pero está pegada a la pared."
+      },
+      {
+        "t": 11,
+        "text": "Corté esas ramas el fin de semana y todavía no las he llevado."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.030938,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02294375,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00799425,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Mueva la leña para el invierno a 30 pies o más de la pared, o tápela toda con lámina de metal.",
+      "verdict": "keep",
+      "reason": "El video muestra la leña pegada a la pared sin cubrir y usted dice que solo la tapa con lona de noche."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Cambie los primeros 5 pies de la cerca junto a la casa por metal, ladrillo u otro material que no se queme.",
+      "verdict": "keep",
+      "reason": "El video muestra la cerca de madera pegada a la pared de la casa."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Termine de recoger esas ramas que cortó y lléveselas lejos, o échelas en el bote de desechos verdes.",
+      "verdict": "keep",
+      "reason": "El video muestra las ramas secas tiradas junto a la pared y usted dice que las cortó y aún no las lleva."
+    }
+  ]
+}

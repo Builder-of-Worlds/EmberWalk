@@ -3,7 +3,7 @@ import { stillPath, VISITOR_HEADER } from "@emberwalk/shared";
 import { describe, expect, it, vi } from "vitest";
 import { walkApi } from "../../src/api.ts";
 import type { Fetch } from "../../src/api.ts";
-import { apiResults, apiStills, isLiveStill, samplesThenApi } from "../../src/live-results.ts";
+import { apiResults, apiStills, isLiveStill, samplesThenApi } from "../../src/live-api.ts";
 import { keptResults, openResultsStore } from "../../src/results-store.ts";
 import { verdictOf } from "../../src/results.ts";
 import { SAMPLES, sampleResults } from "../../src/samples.ts";
@@ -34,6 +34,17 @@ describe("apiResults", () => {
     expect(verdictOf(results!).kind).toBe("so_far");
   });
 
+  it("brings each side the walk could not check onto the phone, so the results ask for that side", async () => {
+    const gaps = [
+      { side: "back", kind: "not_checked", hint: "again" },
+      { side: "left", kind: "dark", hint: "more_light" },
+    ] as const;
+    const { walks } = serving(() => Response.json(liveBody(LIVE_WALK, 1, { gaps: [...gaps] })));
+    const results = await apiResults(walks, BASE)(LIVE_WALK);
+    expect(results?.gaps).toEqual(gaps);
+    expect(verdictOf(results!)).toEqual({ kind: "incomplete", gaps });
+  });
+
   it("gives null for a walk that is unknown or not done yet", async () => {
     for (const [code, status] of [["unknown_walk", 404], ["walk_not_done", 409]] as const) {
       const { walks } = serving(() => refusal(code, status));
@@ -43,7 +54,8 @@ describe("apiResults", () => {
 
   it("throws on a body off the contract, a server error, a refusal of the request and no signal", async () => {
     const answers = [
-      () => Response.json({ ...liveBody(), gaps: [{ side: "back", kind: "missing" }] }),
+      () => Response.json({ ...liveBody(), gaps: [{ side: "roof", kind: "missing", hint: "walk_side" }] }),
+      () => Response.json({ ...liveBody(), gaps: [{ side: "back", kind: "smoke", hint: "walk_side" }] }),
       () => Response.json({ ...liveBody(), walkId: liveFindingId(9) }),
       () => refusal("server_error", 500),
       () => refusal("invalid_request", 400),
@@ -80,6 +92,25 @@ describe("samplesThenApi", () => {
     online = false;
     expect(await load(LIVE_WALK)).toEqual(first);
     expect(first?.findings).toHaveLength(2);
+  });
+
+  it("carries each finding's voice note, and keeps it on the phone for when there is no signal", async () => {
+    const body = liveBody();
+    body.findings[1]!.voiceNote = "The woodpile is right against the garage.";
+    let online = true;
+    const { walks } = serving(() => (online ? Response.json(body) : Promise.reject(new TypeError("Failed to fetch"))));
+    const store = openResultsStore(new IDBFactory());
+    const load = keptResults(() => store, samplesThenApi(sampleResults, apiResults(walks, BASE)), fakeClock().clock);
+    expect((await load(LIVE_WALK))?.findings.map((f) => f.voiceNote)).toEqual([null, "The woodpile is right against the garage."]);
+    online = false;
+    expect((await load(LIVE_WALK))?.findings.map((f) => f.voiceNote)).toEqual([null, "The woodpile is right against the garage."]);
+  });
+
+  it("refuses a body whose voice note is over 2,000 characters", async () => {
+    const body = liveBody();
+    body.findings[0]!.voiceNote = "x".repeat(2001);
+    const { walks } = serving(() => Response.json(body));
+    await expect(apiResults(walks, BASE)(LIVE_WALK)).rejects.toThrow();
   });
 });
 

@@ -2,19 +2,20 @@
 
 Wildfire defensible space checks from one phone video, using Meta SAM 3.1 and Muse on Cloudflare.
 
-**Status, Tuesday Oct. 27th, 2026:** the phone screens and the walk pipeline are built and tested, and the first SAM 3.1 and Muse Spark calls have run.
+**Status, Wednesday Oct. 28th, 2026:** a walk sent from the phone comes back as ranked results in a test run.
 
 ## What it does
 
 The homeowner films one walk around the house, and EmberWalk finds what could carry fire to the house and ranks what to fix first, with the California rule behind each item.
 
-As of the end of Day 2:
+As of the end of Day 3:
 
-- **Film one walk.** The phone app records from the rear camera and sends the walk in parts. If the connection drops, the upload carries on, and a walk stopped by lost signal sends itself when signal returns. The app opens offline after the first visit.
-- **What the app finds.** SAM 3.1 finds objects in the video, Muse Spark points out dry brush and fences, and each one is tracked through the walk. The walk video is deleted when the check ends.
-- **How the results look.** Findings come in Simple and Detailed views with Required Now first. Each finding shows its rule from 38 California rules, is worded in plain language and comes with a proof photo that is blurred before it is kept. A walk that was not fully covered is never shown as green. This Isn't Right sets a finding aside until Undo.
-- **Get It Fixed.** An agent finds crews and drafts requests for the homeowner to read, and nothing is sent without the homeowner's approval.
-- **Try it on sample houses.** Synthetic sample houses, always labelled as such, show the whole flow without anyone's real home.
+- **Film one walk.** The phone records from the rear camera, sends the walk in parts, says the walk is being checked and opens the results when the check is done.
+- **Did the walk cover the house?** The check confirms the walk went all the way around, ended where it started and showed the base of the wall on every side. If a side was missed, the phone asks for that side alone, with a tip on how to film it.
+- **What the app finds.** Dry brush, fences and other hazards near the house, each with its rule and a blurred proof photo. A catalog of 25 things to look for gives a plain reason each matters in a fire.
+- **How results look.** Required Now first, and a fix first list of the three nearest open findings within 30 feet of the house. Every rule is in English and Spanish and says what to do and how.
+- **Voice notes.** Spoken notes are written out and attached to the finding they describe.
+- **Get It Fixed.** Quote requests list the exact work with a blurred photo per item, follow ups are drafted after 3 days, and nothing is sent without the homeowner's approval.
 
 ## How it works
 
@@ -61,6 +62,8 @@ EmberWalk is built during the Meta Global AI Developer Hackathon, Monday Oct. 26
 | Day | Date | Built |
 | --- | --- | --- |
 | 1 | Monday Oct. 26th | Landing page with signup, the video upload API, the ffmpeg media Container, the Meta model client for SAM 3.1 and Muse Spark, the shared contracts and the synthetic house builder. [Write-up](docs/devlog/day-01.md) |
+| 2 | Tuesday Oct. 27th | Phone screens, results screens, the walk pipeline steps, the rules engine and the privacy blur. [Write-up](docs/devlog/day-02.md) |
+| 3 | Wednesday Oct. 28th | Results back on the phone, one side redone, the coverage check, the location step and plainer wording. [Write-up](docs/devlog/day-03.md) |
 
 ## License
 

@@ -74,6 +74,61 @@ describe("findPrivacy", () => {
     expect((await readRecord(walkId, clip.id)).frames).toEqual([{ frame: 0, regions: [[0, 0, 1, 1]] }]);
   });
 
+  describe("house number margin", () => {
+    const frameSize: [number, number] = [1920, 1080];
+    const px = (region: number[]) => ({
+      left: region[0]! * 1920,
+      top: region[1]! * 1080,
+      width: (region[2]! - region[0]!) * 1920,
+      height: (region[3]! - region[1]!) * 1080,
+    });
+    const stored = async (phrase: string, box: Box) => {
+      const { walkId, clip } = await setup();
+      harness.answers[phrase] = [{ found: [{ frame: 0, id: 0, box, frameSize }] }];
+      await findPrivacy(deps(), walkId, clip, "file-1");
+      return (await readRecord(walkId, clip.id)).frames[0]?.regions[0] ?? [];
+    };
+
+    it("grows a house number box by a few pixels, never by a share of the frame", async () => {
+      const region = px(await stored("house number", [800, 500, 900, 540]));
+
+      expect(region.width).toBeGreaterThan(101);
+      expect(region.width).toBeLessThanOrEqual(107.001);
+      expect(region.height).toBeGreaterThan(41);
+      expect(region.height).toBeLessThanOrEqual(47.001);
+      expect(region.left).toBeLessThan(800);
+      expect(region.top).toBeLessThan(500);
+    });
+
+    it.each(["face", "license plate"])("still grows a %s box by BOX_PADDING", async (phrase) => {
+      const region = px(await stored(phrase, [800, 500, 900, 540]));
+
+      expect(region.width).toBeCloseTo(101 + 2 * BOX_PADDING * 1920, 3);
+      expect(region.height).toBeCloseTo(41 + 2 * BOX_PADDING * 1080, 3);
+    });
+
+    it("clamps a house number box at the top left corner to 0", async () => {
+      const region = await stored("house number", [0, 0, 60, 30]);
+
+      expect(region.slice(0, 2)).toEqual([0, 0]);
+      expect(region[2]).toBeGreaterThan(60 / 1920);
+    });
+
+    it("clamps a house number box at the bottom right corner to 1", async () => {
+      const region = await stored("house number", [1860, 1050, 1919, 1079]);
+
+      expect(region.slice(2)).toEqual([1, 1]);
+      expect(region[0]).toBeLessThan(1860 / 1920);
+    });
+
+    it("keeps a house number box of zero width as a region with some width", async () => {
+      const region = px(await stored("house number", [500, 300, 500, 340]));
+
+      expect(region.width).toBeGreaterThan(0);
+      expect(region.width).toBeLessThanOrEqual(7.001);
+    });
+  });
+
   it("keeps all sixteen objects SAM finds on one frame", async () => {
     const { walkId, clip } = await setup();
     const crowd = Array.from({ length: 16 }, (_, id) => ({ frame: 0, id, box: [id * 10, 10, id * 10 + 9, 40] as Box }));

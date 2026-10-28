@@ -1,9 +1,11 @@
 import { env, exports } from "cloudflare:workers";
 import { ErrorBody, stillPath, VISITOR_HEADER, WalkResultsResponse, WalkStatusResponse } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
+import { coverageKey } from "@emberwalk/rules";
+import { setVoiceNotes } from "@emberwalk/db";
 import { handleWalkRead, READ_PATH } from "../src/walk-read.ts";
 import { emptyBucket } from "./route.ts";
-import { clearWalks, type DoneWalk, OWNER, seedDoneWalk, seedWalk } from "./seed.ts";
+import { clearWalks, type DoneWalk, OWNER, seedCoverage, seedDonePart, seedDoneWalk, seedGap, seedWalk } from "./seed.ts";
 
 const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c01";
 const OTHER = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c02";
@@ -64,7 +66,7 @@ describe("GET /api/walks/{walkId}/results", () => {
     const response = await get(`/api/walks/${WALK}/results`);
     expect(response.status).toBe(200);
     const body = WalkResultsResponse.parse(await response.json());
-    expect(body).toMatchObject({ walkId: WALK, synthetic: true, coverage: "not_checked", gaps: [], notChecked: ["chimney", "propane_tank"] });
+    expect(body).toMatchObject({ walkId: WALK, synthetic: true, coverage: "not_checked", gaps: [], parts: [], notChecked: ["chimney", "propane_tank"] });
     expect(body.walkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(body.findings.map((f) => f.id)).toEqual([walk.fence.id, walk.brush.id]);
     const [fence, brush] = body.findings;
@@ -85,9 +87,147 @@ describe("GET /api/walks/{walkId}/results", () => {
     expect(fence!.sources).toEqual([expect.objectContaining({ status: "recommended", url: expect.stringMatching(/^https:\/\//) })]);
   });
 
+  it("carries a finding's stored voice note, null where there is none, and never another walk's", async () => {
+    const other = (await env.DB.prepare("SELECT id FROM findings WHERE walk_id = ?").bind(OTHER).first<{ id: string }>())!.id;
+    expect(await setVoiceNotes(env.DB, WALK, [{ findingId: walk.brush.id, text: "The brush by the shed is dry." }])).toBe(1);
+    expect(await setVoiceNotes(env.DB, OTHER, [{ findingId: other, text: "Not this walk's words." }])).toBe(1);
+    const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+    expect(body.findings.map((f) => [f.id, f.voiceNote])).toEqual([
+      [walk.fence.id, null],
+      [walk.brush.id, "The brush by the shed is dry."],
+    ]);
+  });
+
+  it("refuses results whose stored voice note is blank, never sending an empty note", async () => {
+    await env.DB.prepare("UPDATE findings SET voice_note = ' \n ' WHERE id = ?").bind(walk.brush.id).run();
+    await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
+  });
+
   it("names each concept that was not checked once, however many clips missed it", async () => {
     const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
     expect(body.notChecked.filter((c) => c === "chimney")).toHaveLength(1);
+  });
+});
+
+describe("results of a walk with a side that could not be checked", () => {
+  const PART = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c11";
+  const LATER_PART = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c12";
+  const results = async (walkId = WALK) => WalkResultsResponse.parse(await (await get(`/api/walks/${walkId}/results`)).json());
+
+  beforeEach(async () => {
+    await seedGap(WALK, "back");
+    await seedGap(WALK, "left", "dark", "more_light");
+  });
+
+  it("names each gap with its hint, in walking order, and lists no part walk yet", async () => {
+    const body = await results();
+    expect(body.gaps).toEqual([
+      { side: "back", kind: "not_checked", hint: "again" },
+      { side: "left", kind: "dark", hint: "more_light" },
+    ]);
+    expect(body.parts).toEqual([]);
+    expect(body.findings.map((f) => f.id)).toEqual([walk.fence.id, walk.brush.id]);
+  });
+
+  it("drops the back gap once a done part walk covers the back, and adds its findings with stills under the part walk", async () => {
+    const part = await seedDonePart(WALK, PART, "back", 3);
+    await seedGap(PART, "back", "first_five_feet", "tilt_down");
+    const body = await results();
+    expect(body.gaps).toEqual([
+      { side: "back", kind: "first_five_feet", hint: "tilt_down" },
+      { side: "left", kind: "dark", hint: "more_light" },
+    ]);
+    expect(body.parts).toEqual([{ walkId: PART, side: "back" }]);
+    expect(body.findings.map((f) => f.id)).toEqual([walk.fence.id, walk.brush.id, part.fence.id, part.brush.id]);
+    expect(body.findings[2]!.proof.still).toBe(stillPath(PART, part.fence.id));
+    const still = await get(body.findings[2]!.proof.still);
+    expect(new Uint8Array(await still.arrayBuffer())).toEqual(part.stills.get(part.fence.id));
+  });
+
+  it("takes only the newest done part walk of a side, and only its gaps on that side", async () => {
+    const later = await seedDonePart(WALK, PART, "back", 3);
+    await seedDonePart(WALK, LATER_PART, "back", 4);
+    await env.DB.prepare("UPDATE walks SET created_at = '2999-01-01T00:00:00.000Z' WHERE id = ?").bind(PART).run();
+    await seedGap(PART, "front", "missing", "walk_side");
+    const body = await results();
+    expect(body.parts).toEqual([{ walkId: PART, side: "back" }]);
+    expect(body.gaps).toEqual([{ side: "left", kind: "dark", hint: "more_light" }]);
+    expect(body.findings.slice(2).map((f) => f.id)).toEqual([later.fence.id, later.brush.id]);
+  });
+
+  it("answers a part walk's own results as any walk's", async () => {
+    const part = await seedDonePart(WALK, PART, "back", 3);
+    const body = await results(PART);
+    expect(body).toMatchObject({ walkId: PART, gaps: [], parts: [] });
+    expect(body.findings.map((f) => f.id)).toEqual([part.fence.id, part.brush.id]);
+  });
+
+  it("leaves the gap in place and adds nothing while the part walk is not done, or after it failed", async () => {
+    await seedDonePart(WALK, PART, "back", 3);
+    for (const [state, step] of [["processing", "score"], ["failed", "segment"]] as const) {
+      await env.DB.prepare("UPDATE walks SET state = ?, step = ? WHERE id = ?").bind(state, step, PART).run();
+      const body = await results();
+      expect(body.gaps.map((g) => g.side)).toEqual(["back", "left"]);
+      expect([body.parts, body.findings.length]).toEqual([[], 2]);
+    }
+  });
+
+  it("never takes in a part walk stored under another visitor", async () => {
+    await seedDonePart(WALK, PART, "back", 3);
+    await env.DB.prepare("UPDATE walks SET visitor_id = ? WHERE id = ?").bind(STRANGER, PART).run();
+    const body = await results();
+    expect([body.parts, body.findings.length, body.gaps.length]).toEqual([[], 2, 2]);
+  });
+});
+
+describe("results of a walk the coverage check has looked at", () => {
+  const results = async () => WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+  const loopOpen = { kind: "loop_open", side: null, where: { startSeconds: 0, endSeconds: 60 }, reason: { measure: "degrees", measured: 180, needed: 330 } };
+  const pansMissing = { kind: "pans_missing", side: null, where: null, reason: { measure: "pans", measured: 2, needed: 4 } };
+  const everythingChecked = () => env.DB.prepare("DELETE FROM concept_runs WHERE outcome = 'not_checked'").run();
+
+  it("says the loop is not checked, and coverage not checked, for a walk with no record", async () => {
+    expect(await results()).toMatchObject({ coverage: "not_checked", loop: "not_checked", gaps: [] });
+  });
+
+  it("sends the loop the record found, and coverage not checked while the record says so", async () => {
+    for (const loop of ["closed", "open", "not_checked"]) {
+      await seedCoverage(WALK, { loop });
+      expect(await results()).toMatchObject({ coverage: "not_checked", loop });
+    }
+  });
+
+  it("sends checked only when the record says so, no gap is left and nothing was not checked", async () => {
+    await everythingChecked();
+    await seedCoverage(WALK, { coverage: "checked" });
+    expect(await results()).toMatchObject({ coverage: "checked", loop: "closed", gaps: [], notChecked: [] });
+  });
+
+  it("brings the side gaps through the gaps line, and never says checked while one is left", async () => {
+    await everythingChecked();
+    await seedGap(WALK, "back", "missing", "walk_side");
+    await seedCoverage(WALK, { coverage: "checked" });
+    expect(await results()).toMatchObject({ coverage: "not_checked", gaps: [{ side: "back", kind: "missing", hint: "walk_side" }] });
+  });
+
+  it("never says checked for a record that says so while a concept was not checked", async () => {
+    await seedCoverage(WALK, { coverage: "checked" });
+    expect(await results()).toMatchObject({ coverage: "not_checked", notChecked: ["chimney", "propane_tank"] });
+  });
+
+  it("keeps the walk level gaps out of the gaps line, with coverage not checked", async () => {
+    await everythingChecked();
+    await seedCoverage(WALK, { loop: "open", gaps: [loopOpen, pansMissing] });
+    expect(await results()).toMatchObject({ coverage: "not_checked", loop: "open", gaps: [] });
+  });
+
+  it("refuses results when the record is malformed, belongs to another walk, or says checked with a gap", async () => {
+    for (const over of [{ coverage: "complete" }, { gaps: [{ kind: "smoke" }] }, { walkId: OTHER }, { coverage: "checked", gaps: [pansMissing] }]) {
+      await seedCoverage(WALK, over);
+      await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
+    }
+    await env.MEDIA.put(coverageKey(WALK), "not json");
+    await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
   });
 });
 

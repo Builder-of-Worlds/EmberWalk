@@ -1,0 +1,68 @@
+{
+  "at": "2026-10-28T08:28:03.032Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and spoken turns",
+    "language": "en",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "That is our firewood pile. I cover it with a tarp every night, but it sits right against the wall."
+      },
+      {
+        "t": 11,
+        "text": "The brush is what I cut last weekend. I have not hauled it away yet, it is still green."
+      },
+      {
+        "t": 16,
+        "text": "This fence is old cedar. It was here when we bought the place."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0332175,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.022975,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0102425,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the pile at least 30 feet from the wall, or cover it fully with sheet metal instead of the tarp.",
+      "verdict": "keep",
+      "reason": "The first frame shows an uncovered stack of logs sitting against the wall, which you said you cover with a tarp at night."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the 5 feet of old cedar fence by the house with metal or brick posts and rails.",
+      "verdict": "keep",
+      "reason": "The third frame shows the old cedar fence meeting the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Haul that weekend cutting to the green waste bin, even if it still looks green.",
+      "verdict": "keep",
+      "reason": "The second frame shows a pile of cut branches on the ground, which you said is last weekend's cutting."
+    }
+  ]
+}

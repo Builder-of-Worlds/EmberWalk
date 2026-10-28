@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T05:43:41.098Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and Spanish turns, a Spanish walk",
+    "language": "es",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "Esa es la leña para el invierno. La tapo con una lona por la noche, pero está pegada a la pared."
+      },
+      {
+        "t": 11,
+        "text": "Corté esas ramas el fin de semana y todavía no las he llevado."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.029688,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0232875,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0064005,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Lleve la leña a más de 30 pies de la casa o cúbrala por completo con lámina de metal.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered log pile against the house wall and the homeowner says it stays against the wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Cambie la parte de la cerca a menos de 5 pies de la casa por metal, ladrillo u otro material que no se queme.",
+      "verdict": "keep",
+      "reason": "The frames show a wooden fence joined to the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Corte y retire la maleza seca a menos de 30 pies de la casa, o embólsela para la recolección.",
+      "verdict": "keep",
+      "reason": "The frames show cut dry branches piled on the ground by the house and the homeowner says they have not hauled them away."
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "at": "2026-10-28T08:28:48.917Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames that show only the wood pile",
+    "language": "en",
+    "turns": [],
+    "frameSeconds": [
+      1,
+      3,
+      5
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.0162818,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0046475,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00218655,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.00944775,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Move the stacked logs at least 30 feet from the wall, or drape sheet metal fully over them.",
+      "verdict": "keep",
+      "reason": "The frames show an uncovered stack of logs sitting tight against the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Swap the first 5 feet of fence by the house for metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "The frames show only the log stack and wall, with no clear view of the fence spot."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Cut the dry brush patches and haul them to the green waste bin for pickup.",
+      "verdict": "keep",
+      "reason": "The frames show bare dirt by the house and give no view that rules out brush farther out."
+    }
+  ]
+}

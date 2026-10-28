@@ -33,7 +33,7 @@ const SAMPLES = [
   { t: 2, tiltDegrees: -3, headingDegrees: 120 },
 ];
 
-const recordTake = async (): Promise<Take> => {
+const recordTake = async (motion = SAMPLES, durationMs = 3000): Promise<Take> => {
   const take = await takes.create("video/mp4", Date.now(), {
     jurisdiction: null,
     sound: true,
@@ -42,8 +42,8 @@ const recordTake = async (): Promise<Take> => {
   const bytes = new Uint8Array(4096);
   bytes.set(MP4_HEAD, 0);
   await takes.append(take.id, new Blob([bytes]));
-  await takes.mark(take.id, (marks) => ({ ...marks, motion: SAMPLES }));
-  return takes.finish(take.id, 3000, "stopped");
+  await takes.mark(take.id, (marks) => ({ ...marks, motion }));
+  return takes.finish(take.id, durationMs, "stopped");
 };
 
 const sender = (visitorId = VISITOR) =>
@@ -83,7 +83,7 @@ describe("sending a walk through POST /api/walks and the upload routes of the re
     });
     expect((await env.MEDIA.head(`originals/${walkId}/walk.mp4`))?.size).toBe(4096);
     expect(await walkState(walkId)).toBe("queued");
-    expect(await takes.latest()).toBeNull();
+    expect((await takes.latest())?.upload?.walkId).toBe(walkId);
   });
 
   it("stores the walk's tag, with its motion, and reads it back", async () => {
@@ -93,8 +93,26 @@ describe("sending a walk through POST /api/walks and the upload routes of the re
     const walkId = result.walkId ?? "";
     const stored = await tagsForWalk(env.DB, walkId);
     expect(stored).toEqual([
-      { id: expect.any(String), walkId, kind: "loop", startSeconds: 0, endSeconds: 3, label: "Walk", samples: SAMPLES, propertyLine: null },
+      { id: expect.any(String), walkId, kind: "loop", startSeconds: 0, endSeconds: 3, label: "front", samples: SAMPLES, propertyLine: null },
     ]);
+  });
+
+  it("stores one tag per side of a synthetic four corner walk, and the API takes every tag of a phone that kept turning", async () => {
+    const sides = Array.from({ length: 41 }, (_, t) => ({ t, tiltDegrees: -5, headingDegrees: (360 - 90 * Math.min(4, Math.floor(t / 10))) % 360 }));
+    const walked = await sender()(await recordTake(sides, 45_000), () => undefined);
+    const stored = await tagsForWalk(env.DB, walked.walkId ?? "");
+    expect(stored.map(({ label, startSeconds, endSeconds }) => [label, startSeconds, endSeconds])).toEqual([
+      ["front", 0, 10],
+      ["right", 10, 20],
+      ["back", 20, 30],
+      ["left", 30, 45],
+    ]);
+
+    const spins = Array.from({ length: 400 }, (_, t) => ({ t, tiltDegrees: 0, headingDegrees: (360 - ((90 * t) % 360)) % 360 }));
+    const spinning = await recordTake(spins, 400_000);
+    const spun = await sender()(spinning, () => undefined);
+    expect(await tagsForWalk(env.DB, spun.walkId ?? "")).toHaveLength(4);
+    expect((await takes.get(spinning.id)).tags).toMatchObject({ sent: true, refusal: null });
   });
 
   it("stores the tag before the upload starts, so a walk cut off at the upload already has it", async () => {

@@ -3,12 +3,15 @@ import { presign } from "@emberwalk/sigv4";
 import type { Env } from "./env.ts";
 
 export const originalKey = (walkId: string): string => `originals/${walkId}/walk.mp4`;
+export const soundKey = (walkId: string): string => `originals/${walkId}/sound.wav`;
+export const turnsKey = (walkId: string): string => `originals/${walkId}/turns.json`;
 export const clipKey = (walkId: string, kind: string): string => `clips/${walkId}/${kind}.mp4`;
 export const detectionsKey = (walkId: string, clipId: string): string => `clips/${walkId}/${clipId}/detections.json`;
-export const maskKey = (walkId: string, clipId: string, trackId: string): string => `clips/${walkId}/${clipId}/masks/${trackId}.json`;
+export const lookKey = (walkId: string, clipId: string, n: number): string => `clips/${walkId}/${clipId}/look/${n}.jpg`;
+export const maskKey =(walkId: string, clipId: string, trackId: string): string => `clips/${walkId}/${clipId}/masks/${trackId}.json`;
 
 export const dropWalkVideo = async (bucket: R2Bucket, walkId: string): Promise<void> => {
-  await bucket.delete([originalKey(walkId), ...ClipKind.options.map((kind) => clipKey(walkId, kind))]);
+  await bucket.delete([originalKey(walkId), soundKey(walkId), turnsKey(walkId), ...ClipKind.options.map((kind) => clipKey(walkId, kind))]);
 };
 
 export type Signer = {

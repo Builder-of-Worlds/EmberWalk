@@ -1,5 +1,6 @@
 import {
   ErrorBody,
+  FaultReportResponse,
   PartLinkResponse,
   StartUploadResponse,
   StartWalkResponse,
@@ -7,7 +8,7 @@ import {
   WalkResultsResponse,
   WalkStatusResponse,
 } from "@emberwalk/shared";
-import type { CompletedPart, ErrorCode, StartWalkRequest, Tag } from "@emberwalk/shared";
+import type { CompletedPart, ErrorCode, FaultReportRequest, StartWalkRequest, Tag } from "@emberwalk/shared";
 
 export type Fetch = (request: Request) => Promise<Response>;
 
@@ -33,6 +34,7 @@ export type WalkApi = {
   tags(walkId: string, tags: Tag[]): Promise<Answer<Tagged>>;
   status(walkId: string): Promise<Answer<WalkStatusResponse>>;
   results(walkId: string): Promise<Answer<WalkResultsResponse>>;
+  reportFault(report: FaultReportRequest): Promise<Answer<FaultReportResponse>>;
 };
 
 type Read<T> =(body: unknown) => T | null;
@@ -97,6 +99,7 @@ export const walkApi = (base: string, send: Fetch, visitorId: () => string = () 
     tags: (walkId, tags) => ask(send, post(`/api/walks/${walkId}/tags`, { tags }), readTagged),
     status: (walkId) => ask(send, get(new URL(`/api/walks/${walkId}`, base)), bySchema(WalkStatusResponse)),
     results: (walkId) => ask(send, get(new URL(`/api/walks/${walkId}/results`, base)), bySchema(WalkResultsResponse)),
+    reportFault: (report) => ask(send, post("/api/faults", report), bySchema(FaultReportResponse)),
   };
 };
 

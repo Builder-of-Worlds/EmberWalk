@@ -1,0 +1,221 @@
+{
+  "schema": "emberwalk.house-spec/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "id": "mobile-before",
+  "state": "before",
+  "units": "inch",
+  "axes": "house axes: x east, y north, z up, origin at the south west corner of the footprint's bounding box, whole inches; a box is in its side frame: x along the wall from its start corner, its right end as seen from the yard, y out from the wall face, z up from the ground",
+  "house": {
+    "style": "double wide mobile home",
+    "storeys": 1,
+    "dwelling_units": 1,
+    "siding": "fiber cement lap",
+    "terrain": "foothill lot",
+    "area": "State Responsibility Area",
+    "features": {
+      "gutters": false,
+      "skirting": true,
+      "foundation_vents": [
+        {
+          "side": "front",
+          "along_in": 200,
+          "width_in": 16,
+          "height_in": 8,
+          "elevation_in": 8
+        },
+        {
+          "side": "back",
+          "along_in": 400,
+          "width_in": 16,
+          "height_in": 8,
+          "elevation_in": 8
+        }
+      ]
+    }
+  },
+  "footprint": [
+    {"side": "left", "start_in": [0, 0]},
+    {"side": "back", "start_in": [0, 336]},
+    {"side": "right", "start_in": [720, 336]},
+    {"side": "front", "start_in": [720, 0]}
+  ],
+  "sides": {
+    "left": {"length_in": 336, "height_in": 120, "facing": "west", "clean": true},
+    "back": {"length_in": 720, "height_in": 120, "facing": "north", "clean": false},
+    "right": {"length_in": 336, "height_in": 120, "facing": "east", "clean": false},
+    "front": {"length_in": 720, "height_in": 120, "facing": "south", "clean": false}
+  },
+  "front_door": {"side": "front", "along_in": 456, "width_in": 36, "height_in": 76},
+  "back_door": {"side": "back", "along_in": 180, "width_in": 36, "height_in": 76},
+  "structures": [
+    {"id": "front-porch", "kind": "porch", "material": "concrete", "min_in": [168, -72], "max_in": [300, 0], "height_in": 30},
+    {"id": "front-porch-steps", "kind": "steps", "material": "concrete", "min_in": [210, -120], "max_in": [282, -72], "height_in": 30},
+    {"id": "back-porch", "kind": "porch", "material": "concrete", "min_in": [132, 336], "max_in": [264, 408], "height_in": 30},
+    {"id": "back-porch-steps", "kind": "steps", "material": "concrete", "min_in": [162, 408], "max_in": [234, 456], "height_in": 30},
+    {"id": "carport", "kind": "carport", "material": "metal", "min_in": [-264, -24], "max_in": [-24, 312], "height_in": 96},
+    {"id": "parking-pad", "kind": "driveway", "material": "gravel", "min_in": [-264, -1260], "max_in": [-24, -24], "height_in": 0},
+    {"id": "road", "kind": "road", "material": "asphalt", "min_in": [-1500, -1380], "max_in": [2220, -1260], "height_in": 0}
+  ],
+  "lot": {"min_in": [-1500, -1380], "max_in": [2220, 1716]},
+  "look": {
+    "siding": {"material": "polyhaven:weathered_plank_siding", "colour": "#cfc8b6", "tint": [1.0, 1.0, 1.0]},
+    "trim": {"colour": "#f2efe8"},
+    "roof": {"material": "polyhaven:grey_roof_01", "colour": "#8f9296", "tint": [1.0, 1.0, 1.0]},
+    "ground": {"material": "polyhaven:withered_grass", "tint": [1.0, 0.95, 0.85]},
+    "light": {"hdri": "polyhaven:goegap", "rotation_deg": -94}
+  },
+  "hazards": [
+    {
+      "id": "dry-grass-skirting",
+      "concept": "dry grass",
+      "asset": "scripted:tall_dry_grass",
+      "side": "front",
+      "distance_in": 0,
+      "along_in": 40,
+      "size_in": [120, 18, 20],
+      "elevation_in": 0,
+      "band": "0_5",
+      "contact": true,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(1)",
+      "rule_id": "ca-dry-grass-ccr-z0"
+    },
+    {
+      "id": "vent-debris-front",
+      "concept": "foundation vent",
+      "asset": "scripted:vent_leaf_mulch",
+      "side": "front",
+      "distance_in": 0,
+      "along_in": 196,
+      "size_in": [36, 12, 14],
+      "elevation_in": 0,
+      "band": "0_5",
+      "contact": true,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(1)",
+      "rule_id": "ca-vent-debris-ccr-z0"
+    },
+    {
+      "id": "patio-furniture-porch",
+      "concept": "patio furniture",
+      "asset": "scripted:patio_set",
+      "side": "front",
+      "distance_in": 12,
+      "along_in": 504,
+      "size_in": [40, 36, 36],
+      "elevation_in": 30,
+      "band": "0_5",
+      "contact": false,
+      "label": "recommended",
+      "rule": "CAL FIRE Zone 0 guidance",
+      "rule_id": "ca-patio-furniture-zone-0-calfire-z0"
+    },
+    {
+      "id": "propane-tank-right",
+      "concept": "propane tank",
+      "asset": "scripted:propane_tank",
+      "side": "right",
+      "distance_in": 24,
+      "along_in": 120,
+      "size_in": [48, 30, 30],
+      "elevation_in": 0,
+      "band": "0_5",
+      "contact": false,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(c)(1)",
+      "rule_id": "ca-propane-clearance-ccr-z0"
+    },
+    {
+      "id": "trash-cans-right",
+      "concept": "trash can",
+      "asset": "scripted:trash_cans",
+      "side": "right",
+      "distance_in": 18,
+      "along_in": 230,
+      "size_in": [48, 26, 42],
+      "elevation_in": 0,
+      "band": "0_5",
+      "contact": false,
+      "label": "recommended",
+      "rule": "CAL FIRE Zone 0 guidance",
+      "rule_id": "ca-trash-can-zone-0-calfire-z0"
+    },
+    {
+      "id": "wood-pile-back",
+      "concept": "wood pile",
+      "asset": "scripted:wood_pile",
+      "side": "back",
+      "distance_in": 0,
+      "along_in": 300,
+      "size_in": [96, 24, 48],
+      "elevation_in": 0,
+      "band": "0_5",
+      "contact": true,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(3)",
+      "rule_id": "ca-wood-pile-uncovered-ccr-z0"
+    },
+    {
+      "id": "branch-over-roof-back",
+      "concept": "tree branch over roof",
+      "asset": "scripted:overhanging_branch",
+      "side": "back",
+      "distance_in": 24,
+      "along_in": 520,
+      "size_in": [96, 60, 40],
+      "elevation_in": 120,
+      "band": "0_5",
+      "contact": false,
+      "label": "required_now",
+      "rule": "PRC 4291(a)(3)",
+      "rule_id": "ca-branch-dead-prc-z0"
+    },
+    {
+      "id": "dry-brush-right",
+      "concept": "dry brush",
+      "asset": "polyhaven:dry_branches_medium_01",
+      "side": "right",
+      "distance_in": 84,
+      "along_in": 40,
+      "size_in": [72, 24, 30],
+      "elevation_in": 0,
+      "band": "5_30",
+      "contact": false,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(a)(1)",
+      "rule_id": "ca-dry-brush-ccr-z1"
+    },
+    {
+      "id": "shed-back",
+      "concept": "shed",
+      "asset": "scripted:storage_shed",
+      "side": "back",
+      "distance_in": 240,
+      "along_in": 80,
+      "size_in": [96, 120, 96],
+      "elevation_in": 0,
+      "band": "5_30",
+      "contact": false,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(c)(1)",
+      "rule_id": "ca-shed-clearance-ccr-z1"
+    },
+    {
+      "id": "tall-grass-back",
+      "concept": "dry grass",
+      "asset": "scripted:tall_dry_grass",
+      "side": "back",
+      "distance_in": 540,
+      "along_in": 200,
+      "size_in": [300, 240, 30],
+      "elevation_in": 0,
+      "band": "30_100",
+      "contact": false,
+      "label": "required_now",
+      "rule": "14 CCR 1299.03(b)(2)(B)",
+      "rule_id": "ca-dry-grass-far-ccr-z2"
+    }
+  ],
+  "route": {"placeholder": true}
+}

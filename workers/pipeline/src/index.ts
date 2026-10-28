@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./env.ts";
 import { type StartResult, startWalk } from "./start.ts";
+import { sweepVideos } from "./sweep.ts";
 
 export { WalkPipeline } from "./workflow.ts";
 
@@ -14,5 +15,8 @@ export default {
   async fetch(request): Promise<Response> {
     if (new URL(request.url).pathname === "/health") return Response.json({ status: "ok" });
     return Response.json({ error: { code: "not_found", message: "No such endpoint." } }, { status: 404 });
+  },
+  async scheduled(controller, env): Promise<void> {
+    await sweepVideos(env, new Date(controller.scheduledTime));
   },
 } satisfies ExportedHandler<Env>;

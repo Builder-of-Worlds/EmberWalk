@@ -1,0 +1,64 @@
+{
+  "at": "2026-10-28T05:42:55.760Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "spoken turns only",
+    "language": "en",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "That is our firewood pile. I cover it with a tarp every night, but it sits right against the wall."
+      },
+      {
+        "t": 11,
+        "text": "The brush is what I cut last weekend. I have not hauled it away yet, it is still green."
+      },
+      {
+        "t": 16,
+        "text": "This fence is old cedar. It was here when we bought the place."
+      }
+    ],
+    "frameSeconds": []
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.02789575,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.01882625,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0090695,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "Instead of the nightly tarp, move the firewood pile more than 30 feet from the house or cover it with sheet metal.",
+      "verdict": "keep",
+      "reason": "The homeowner said the firewood sits right against the wall and is only covered with a tarp at night."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Replace the old cedar fence part within 5 feet of the house with metal, brick or another material that will not burn.",
+      "verdict": "keep",
+      "reason": "The homeowner said the fence is old cedar that was there when they bought the place."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Even though the cut brush is still green, bag it for yard waste pickup to clear within 30 feet of the house.",
+      "verdict": "keep",
+      "reason": "The homeowner said the brush was cut last weekend and has not been hauled away yet."
+    }
+  ]
+}

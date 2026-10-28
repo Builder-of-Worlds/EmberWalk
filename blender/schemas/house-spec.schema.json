@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk house spec: one synthetic sample house on a rectilinear footprint, every length in whole inches",
+  "description": "House axes: x east, y north, z up, origin at the south west corner of the footprint's bounding box. The footprint is the ring of the house's sides in clockwise order seen from above: each entry names a side and the corner where it starts, and the side runs to the next entry's corner. Every side runs north, south, east or west, with the yard on its left as it runs. sides holds one entry per footprint side, keyed by its name: length_in and facing must agree with the footprint (house.py checks them; the side entry shape is SIDE_SCHEMA there). A hazard sits on one side: along_in runs along that wall from its start corner (the wall's right end as seen from the yard), distance_in runs out from the wall face to the near edge, elevation_in is the height of its base above the ground, size_in is [width along the wall, depth out from the wall, height]. structures are the built parts beside the house (porch, deck, landing, balcony, steps, walkway, driveway, road, carport), each a box in house axes made of one material; a structure that burns is a hazard, not a structure, so only concrete, asphalt, gravel, masonry and metal pass. A porch, deck or landing more than 8 in up has steps that touch it, and steps touch what they lead to. back_door is an optional second door on any side. trees are lot trees, not hazards: a trunk and a round canopy centred at at_in in house axes; the trunk stands clear of the house, the structures, the hazards and the walk, and the canopy stays 5 ft off the walls; a branch of the tree that reaches nearer is a tree branch over roof hazard the tree names in branches. house.siding is one siding for every wall, and only a non combustible one passes the check. state is before or after; an after spec lists in hazards only the hazards kept, and the objects that were fixed (moved or resized, no longer hazards) in fixed. The route block is a placeholder: the route task replaces it with the loop, the pans and the standoff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "synthetic", "label", "id", "state", "units", "axes", "house", "footprint", "sides", "front_door", "structures", "lot", "look", "hazards", "route"],
+  "properties": {
+    "schema": {"const": "emberwalk.house-spec/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "state": {"enum": ["before", "after"]},
+    "units": {"const": "inch"},
+    "axes": {"type": "string", "minLength": 10},
+    "house": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style", "storeys", "dwelling_units", "siding", "terrain", "area", "features"],
+      "properties": {
+        "style": {"enum": ["one storey ranch", "double wide mobile home", "apartment building"]},
+        "storeys": {"type": "integer", "minimum": 1, "maximum": 3},
+        "dwelling_units": {"type": "integer", "minimum": 1, "maximum": 12},
+        "siding": {"enum": ["wood", "vinyl", "fiber cement lap", "stucco", "metal"]},
+        "terrain": {"const": "foothill lot"},
+        "area": {"const": "State Responsibility Area"},
+        "roof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["eave_in", "blocks"],
+          "properties": {
+            "eave_in": {"type": "integer", "minimum": 0, "maximum": 36},
+            "blocks": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["min_in", "max_in", "ridge", "rise_in"],
+                "properties": {
+                  "min_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+                  "max_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+                  "ridge": {"enum": ["east_west", "north_south"]},
+                  "rise_in": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          }
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["gutters", "foundation_vents"],
+          "properties": {
+            "chimney": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["side", "along_in", "size_in"],
+              "properties": {
+                "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+                "along_in": {"type": "integer", "minimum": 0},
+                "size_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 1}}
+              }
+            },
+            "gutters": {"type": "boolean"},
+            "skirting": {"type": "boolean"},
+            "foundation_vents": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["side", "along_in", "width_in", "height_in", "elevation_in"],
+                "properties": {
+                  "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+                  "along_in": {"type": "integer", "minimum": 0},
+                  "width_in": {"type": "integer", "minimum": 1},
+                  "height_in": {"type": "integer", "minimum": 1},
+                  "elevation_in": {"type": "integer", "minimum": 0}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "footprint": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["side", "start_in"],
+        "properties": {
+          "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+          "start_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}
+        }
+      }
+    },
+    "sides": {"type": "object"},
+    "front_door": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "along_in", "width_in", "height_in"],
+      "properties": {
+        "side": {"const": "front"},
+        "along_in": {"type": "integer", "minimum": 0},
+        "width_in": {"type": "integer", "minimum": 24},
+        "height_in": {"type": "integer", "minimum": 72}
+      }
+    },
+    "back_door": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "along_in", "width_in", "height_in"],
+      "properties": {
+        "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+        "along_in": {"type": "integer", "minimum": 0},
+        "width_in": {"type": "integer", "minimum": 24},
+        "height_in": {"type": "integer", "minimum": 72}
+      }
+    },
+    "structures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "material", "min_in", "max_in", "height_in"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "kind": {"enum": ["porch", "deck", "landing", "balcony", "steps", "walkway", "driveway", "road", "carport"]},
+          "material": {"enum": ["concrete", "asphalt", "gravel", "masonry", "metal", "wood", "composite"]},
+          "min_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+          "max_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+          "height_in": {"type": "integer", "minimum": 0, "maximum": 144}
+        }
+      }
+    },
+    "trees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "asset", "at_in", "trunk_in", "canopy_in", "height_in", "branches"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "asset": {"type": "string", "minLength": 1},
+          "at_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+          "trunk_in": {"type": "integer", "minimum": 4, "maximum": 120},
+          "canopy_in": {"type": "integer", "minimum": 4, "maximum": 1200},
+          "height_in": {"type": "integer", "minimum": 120, "maximum": 2400},
+          "branches": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}}
+        }
+      }
+    },
+    "lot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_in", "max_in"],
+      "properties": {
+        "min_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}},
+        "max_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer"}}
+      }
+    },
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["siding", "trim", "roof", "ground", "light"],
+      "properties": {
+        "siding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "colour", "tint"],
+          "properties": {
+            "material": {"type": "string", "minLength": 1},
+            "colour": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+          }
+        },
+        "trim": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["colour"],
+          "properties": {"colour": {"type": "string", "pattern": "^#[0-9a-f]{6}$"}}
+        },
+        "roof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "colour", "tint"],
+          "properties": {
+            "material": {"type": "string", "minLength": 1},
+            "colour": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+          }
+        },
+        "ground": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "tint"],
+          "properties": {
+            "material": {"type": "string", "minLength": 1},
+            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+          }
+        },
+        "light": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hdri", "rotation_deg"],
+          "properties": {
+            "hdri": {"type": "string", "minLength": 1},
+            "rotation_deg": {"type": "number", "minimum": -360, "maximum": 360}
+          }
+        }
+      }
+    },
+    "hazards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "concept", "asset", "side", "distance_in", "along_in", "size_in", "elevation_in", "band", "contact", "label", "rule", "rule_id"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "concept": {"enum": [
+            "dry brush", "wood pile", "wooden fence", "roof debris", "foundation vent",
+            "tree branch over roof", "shrub", "tree", "dry grass", "propane tank", "shed",
+            "trash can", "patio furniture"
+          ]},
+          "asset": {"type": "string", "minLength": 1},
+          "side": {"type": "string", "minLength": 1},
+          "distance_in": {"type": "integer"},
+          "along_in": {"type": "integer", "minimum": 0},
+          "size_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 1}},
+          "elevation_in": {"type": "integer", "minimum": 0},
+          "band": {"enum": ["0_5", "5_30", "30_100"]},
+          "contact": {"type": "boolean"},
+          "label": {"enum": ["required_now", "recommended"]},
+          "rule": {"type": "string", "minLength": 3},
+          "rule_id": {"type": "string", "minLength": 3}
+        }
+      }
+    },
+    "fixed": {
+      "description": "after spec only: objects that were hazards in the before scene and were moved or resized so they no longer are; the scene builder still builds them",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "concept", "asset", "side", "distance_in", "along_in", "size_in", "elevation_in", "contact"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "concept": {"type": "string", "minLength": 1},
+          "asset": {"type": "string", "minLength": 1},
+          "side": {"type": "string", "minLength": 1},
+          "distance_in": {"type": "integer"},
+          "along_in": {"type": "integer", "minimum": 0},
+          "size_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 1}},
+          "elevation_in": {"type": "integer", "minimum": 0},
+          "contact": {"type": "boolean"}
+        }
+      }
+    },
+    "route": {
+      "description": "The walk's settings, read by ewscene/route.py; a setting left out takes its default there, and {\"placeholder\": true} takes every default. The loop runs clockwise from the front door at standoff_in from every wall and stops for a pan of pan_s at each corner and each side's middle.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "placeholder": {"const": true},
+        "standoff_in": {"type": "integer", "minimum": 120, "maximum": 144},
+        "height_in": {"type": "integer", "minimum": 36, "maximum": 72},
+        "tilt_deg": {"type": "number", "minimum": -30, "maximum": 45},
+        "pan_tilt_deg": {"type": "number", "minimum": -30, "maximum": 45},
+        "speed_in_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
+        "pan_s": {"type": "number", "minimum": 10, "maximum": 20},
+        "fps": {"enum": [24, 25, 30, 60]},
+        "width_px": {"type": "integer", "minimum": 1},
+        "height_px": {"type": "integer", "minimum": 1},
+        "focal_mm": {"type": "number", "exclusiveMinimum": 0},
+        "sensor_width_mm": {"type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  }
+}

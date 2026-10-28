@@ -1,23 +1,22 @@
+import type { WalkPart } from "@emberwalk/shared";
 import { useEffect, useState } from "react";
 import { copy } from "./copy.ts";
 import { DepsContext } from "./deps.ts";
 import type { Deps } from "./deps.ts";
-import { findingIdsIn, resultsIdIn, routeFor, takeIdIn } from "./router.ts";
+import { findingIdsIn, recordPartIn, resultsIdIn, routeFor, takeIdIn } from "./router.ts";
 import type { FindingIds, Route } from "./router.ts";
 import { Finding } from "./screens/Finding.tsx";
 import { Home } from "./screens/Home.tsx";
 import { How } from "./screens/How.tsx";
 import { Record } from "./screens/Record.tsx";
 import { Results } from "./screens/Results.tsx";
-import { Rules } from "./screens/Rules.tsx";
 import { Send } from "./screens/Send.tsx";
 
-type ScreenProps = { takeId: string | null; resultsId: string | null; findingIds: FindingIds | null };
+type ScreenProps = { takeId: string | null; resultsId: string | null; findingIds: FindingIds | null; part: WalkPart | null };
 
 const SCREENS: Record<Route, (props: ScreenProps) => React.JSX.Element | null> = {
   home: Home,
   how: How,
-  rules: Rules,
   record: Record,
   send: Send,
   results: Results,
@@ -62,7 +61,13 @@ export const App = ({ deps }: { deps: Deps }) => {
             {copy.app.offline}
           </p>
         )}
-        <Screen key={hash} takeId={takeIdIn(hash)} resultsId={resultsIdIn(hash)} findingIds={findingIdsIn(hash)} />
+        <Screen
+          key={hash}
+          takeId={takeIdIn(hash)}
+          resultsId={resultsIdIn(hash)}
+          findingIds={findingIdsIn(hash)}
+          part={recordPartIn(hash)}
+        />
       </div>
     </DepsContext.Provider>
   );

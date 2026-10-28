@@ -6,3 +6,4 @@ export * from "./rank.ts";
 export * from "./score.ts";
 export * from "./ground.ts";
 export * from "./observe.ts";
+export * from "./coverage.ts";

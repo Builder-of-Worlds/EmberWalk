@@ -68,13 +68,38 @@ describe("take store", () => {
     const idb = new IDBFactory();
     const take = await (await openTakeStore(idb)).create("video/mp4", 1);
     expect(take.tags ?? null).toBeNull();
-    const tags = { id: "7a0d3f1e-5a64-4c0e-9d57-000000000001", sent: false, refusal: "server_error" as const };
+    const tags = { ids: ["7a0d3f1e-5a64-4c0e-9d57-000000000001", "7a0d3f1e-5a64-4c0e-9d57-000000000002"], sent: false, refusal: "server_error" as const };
     expect((await (await openTakeStore(idb)).saveTags(take.id, tags)).tags).toEqual(tags);
     expect((await (await openTakeStore(idb)).get(take.id)).tags).toEqual(tags);
   });
 
   it("refuses to save tags for a take that is not on this phone", async () => {
-    await expect((await fresh()).saveTags("nope", { id: "t", sent: true, refusal: null })).rejects.toThrow(/no take/);
+    await expect((await fresh()).saveTags("nope", { ids: ["t"], sent: true, refusal: null })).rejects.toThrow(/no take/);
+  });
+
+  it("sets a take's fire rules key and nothing else, across a new store on the same storage", async () => {
+    const idb = new IDBFactory();
+    const take = await (await openTakeStore(idb)).create("video/mp4", 1, { jurisdiction: null, sound: false, device: null });
+    expect((await (await openTakeStore(idb)).setJurisdiction(take.id, "ca")).jurisdiction).toBe("ca");
+    expect(await (await openTakeStore(idb)).get(take.id)).toEqual({ ...take, jurisdiction: "ca" });
+  });
+
+  it("keeps the walk and side a take of one side belongs to, across a new store on the same storage", async () => {
+    const idb = new IDBFactory();
+    const partOf = { walkId: "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01", side: "back" } as const;
+    const take = await (await openTakeStore(idb)).create("video/mp4", 1, { jurisdiction: "ca", sound: true, partOf });
+    expect(take.partOf).toEqual(partOf);
+    expect((await (await openTakeStore(idb)).get(take.id)).partOf).toEqual(partOf);
+  });
+
+  it("makes a take of the whole walk when no side is given", async () => {
+    const takes = await fresh();
+    expect((await takes.create("video/mp4", 1)).partOf).toBeNull();
+    expect((await takes.create("video/mp4", 2, { jurisdiction: null, sound: true, partOf: null })).partOf).toBeNull();
+  });
+
+  it("refuses to set the fire rules key of a take that is not on this phone", async () => {
+    await expect((await fresh()).setJurisdiction("nope", "ca")).rejects.toThrow(/no take nope/);
   });
 
   it("removes a take and only its own chunks", async () => {

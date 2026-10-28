@@ -59,4 +59,22 @@ export const inside = (spot: Spot, polygon: readonly (readonly [number, number])
   return crossings % 2 === 1;
 };
 
-export const jurisdictionFor = (spot: Spot): Jurisdiction | null => (inside(spot, CALIFORNIA) ? "ca" : null);
+export type RuleArea = { key: Jurisdiction; polygon: readonly (readonly [number, number])[] };
+
+// Rows go most specific first.
+export const RULE_AREAS: readonly RuleArea[] = [{ key: "ca", polygon: CALIFORNIA }];
+
+const isCoordinate = ({ latitude, longitude }: Spot): boolean => Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+
+export const jurisdictionAt = (spot: Spot, areas: readonly RuleArea[] = RULE_AREAS): Jurisdiction | null =>
+  isCoordinate(spot) ? (areas.find((area) => inside(spot, area.polygon))?.key ?? null) : null;
+
+export type RulesAnswer = Jurisdiction | "outside" | "refused";
+
+export const locateRules = (locate: Locate): Promise<RulesAnswer> =>
+  Promise.resolve()
+    .then(locate)
+    .then(
+      (answer) => ("refusal" in answer || !isCoordinate(answer) ? "refused" : (jurisdictionAt(answer) ?? "outside")),
+      () => "refused" as const,
+    );

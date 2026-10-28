@@ -1,11 +1,11 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
 import { createContext, useContext } from "react";
 import { uploadApi, walkApi } from "./api.ts";
-import type { Fetch } from "./api.ts";
+import type { Fetch, WalkApi } from "./api.ts";
 import { storageFindingMarks } from "./finding-marks.ts";
 import type { FindingMarks } from "./finding-marks.ts";
-import { apiResults, apiStills, samplesThenApi } from "./live-results.ts";
-import type { Stills } from "./live-results.ts";
+import { apiResults, apiStills, samplesThenApi } from "./live-api.ts";
+import type { Stills } from "./live-api.ts";
 import { browserLocate } from "./location.ts";
 import type { Locate } from "./location.ts";
 import { browserMotion } from "./motion.ts";
@@ -20,6 +20,11 @@ import { walkSender } from "./sender.ts";
 import type { Sender } from "./sender.ts";
 import { openTakeStore } from "./take-store.ts";
 import type { TakeStore } from "./take-store.ts";
+import type { WalkStatus } from "./watch.ts";
+
+declare const __EMBERWALK_BUILD__: string;
+
+export const BUILD = typeof __EMBERWALK_BUILD__ === "string" ? __EMBERWALK_BUILD__ : "dev";
 
 export type Deps = {
   media: MediaEnv;
@@ -31,6 +36,9 @@ export type Deps = {
   motion: MotionEnv | null;
   locate: Locate;
   results: LoadResults;
+  walkStatus: WalkStatus;
+  reportFault: WalkApi["reportFault"];
+  build: string;
   stills: Stills;
   marks: FindingMarks;
 };
@@ -55,6 +63,7 @@ export const browserDeps = (): Deps => {
   const prefs = storagePrefs(() => localStorage);
   const put: Fetch = (request) => fetch(request);
   const base = window.location.origin;
+  const read = walkApi(base, put, prefs.visitorId);
   return {
     media: { mediaDevices: navigator.mediaDevices, MediaRecorder: globalThis.MediaRecorder },
     takes,
@@ -64,7 +73,10 @@ export const browserDeps = (): Deps => {
     prefs,
     motion: browserMotion(window),
     locate: browserLocate(navigator.geolocation),
-    results: keptResults(once(() => openResultsStore(indexedDB)), samplesThenApi(sampleResults, apiResults(walkApi(base, put, prefs.visitorId), base)), realClock),
+    results: keptResults(once(() => openResultsStore(indexedDB)), samplesThenApi(sampleResults, apiResults(read, base)), realClock),
+    walkStatus: read.status,
+    reportFault: read.reportFault,
+    build: BUILD,
     stills: apiStills(put, prefs.visitorId),
     marks: storageFindingMarks(() => localStorage),
   };

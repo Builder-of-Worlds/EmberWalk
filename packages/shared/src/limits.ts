@@ -17,6 +17,9 @@ export const Limits = z
     uploadSessionTtlSeconds: count,
     uploadMaxTriesPerPart: count,
     maxObjectsPerFrame: count,
+    faultCountMost: count,
+    faultKeepDays: count,
+    faultRowsADay: count,
   })
   .refine((l) => l.defaultFps <= l.maxFps, { message: "defaultFps must not pass maxFps", path: ["defaultFps"] })
   .refine((l) => l.uploadMinPartBytes <= l.uploadPartBytes, {
@@ -43,6 +46,9 @@ export const DEFAULT_LIMITS: Limits = Limits.parse({
   uploadSessionTtlSeconds: 2 * 60 * 60,
   uploadMaxTriesPerPart: 3,
   maxObjectsPerFrame: 16,
+  faultCountMost: 1000,
+  faultKeepDays: 30,
+  faultRowsADay: 500,
 });
 
 export const maxWalkBytes = (l: Limits): number => Math.ceil((l.maxWalkSeconds * l.maxVideoBitsPerSecond) / 8);

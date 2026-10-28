@@ -12,4 +12,6 @@ export type Env = {
   META_API_KEY?: string;
   META_BASE_URL: string;
   META_BILLING: string;
+  SWEEP_AFTER_HOURS?: string;
+  VOICE_NOTES?: string;
 };

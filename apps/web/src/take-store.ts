@@ -1,4 +1,4 @@
-import type { CompletedPart, Device, MotionSample } from "@emberwalk/shared";
+import type { CompletedPart, Device, MotionSample, WalkPart } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
 import type { Jurisdiction } from "./location.ts";
 
@@ -12,7 +12,9 @@ export type UploadState = {
   parts: CompletedPart[];
 };
 
-export type TagsSent = { id: string; sent: boolean; refusal: Failure | null };
+export type TagsSent = { ids: string[]; sent: boolean; refusal: Failure | null };
+
+export type OneTagSent = { id: string; sent: boolean; refusal: Failure | null };
 
 export type Pause = { atMs: number; forMs: number };
 
@@ -25,7 +27,7 @@ export type WalkMarks = {
 
 export const NO_MARKS: WalkMarks = { soundOffAtMs: null, pauses: [], propertyLines: [], motion: [] };
 
-export type TakeSetup = { jurisdiction: Jurisdiction | null; sound: boolean; device?: Device | null };
+export type TakeSetup = { jurisdiction: Jurisdiction | null; sound: boolean; device?: Device | null; partOf?: WalkPart | null };
 
 const DEFAULT_SETUP: TakeSetup = { jurisdiction: null, sound: true, device: null };
 
@@ -41,8 +43,9 @@ export type Take = {
   jurisdiction: Jurisdiction | null;
   sound: boolean;
   device?: Device | null;
+  partOf?: WalkPart | null;
   marks: WalkMarks;
-  tags?: TagsSent | null;
+  tags?: TagsSent | OneTagSent | null;
 };
 
 export type TakeStore = {
@@ -56,6 +59,7 @@ export type TakeStore = {
   blob(id: string): Promise<Blob>;
   saveUpload(id: string, upload: UploadState | null): Promise<Take>;
   saveTags(id: string, tags: TagsSent): Promise<Take>;
+  setJurisdiction(id: string, jurisdiction: Jurisdiction): Promise<Take>;
   remove(id: string): Promise<void>;
 };
 
@@ -124,6 +128,7 @@ export const openTakeStore = async (idb: IDBFactory, name = "emberwalk"): Promis
         jurisdiction: setup.jurisdiction,
         sound: setup.sound,
         device: setup.device ?? null,
+        partOf: setup.partOf ?? null,
         marks: NO_MARKS,
       };
       const tx = db.transaction(TAKES, "readwrite");
@@ -159,6 +164,7 @@ export const openTakeStore = async (idb: IDBFactory, name = "emberwalk"): Promis
     },
     saveUpload: (id, upload) => update(id, (take) => ({ ...take, upload })),
     saveTags: (id, tags) => update(id, (take) => ({ ...take, tags })),
+    setJurisdiction: (id, jurisdiction) => update(id, (take) => ({ ...take, jurisdiction })),
     async remove(id) {
       const tx = db.transaction([TAKES, CHUNKS], "readwrite");
       tx.objectStore(TAKES).delete(id);

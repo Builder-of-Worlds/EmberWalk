@@ -1,10 +1,12 @@
 export const SAM_MODEL = "sam-3.1";
 export const SPARK_MODELS = ["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1"] as const;
 export const SPARK_MODEL = SPARK_MODELS[0];
+export const TRANSCRIBE_MODEL = "muse-voice-transcribe-1.0";
 
 export type SamModel = typeof SAM_MODEL;
 export type SparkModel = (typeof SPARK_MODELS)[number];
-export type Model = SamModel | SparkModel;
+export type TranscribeModel = typeof TRANSCRIBE_MODEL;
+export type Model = SamModel | SparkModel | TranscribeModel;
 
 const NANO = 1_000_000_000;
 
@@ -14,12 +16,13 @@ export const PRICE_NANO_USD = {
   sparkInputToken: 1_250,
   sparkCachedInputToken: 150,
   sparkOutputToken: 4_250,
+  transcribeSecond: 50_000,
 } as const;
 
 export const SAM_MIN_FRAMES = 50;
 
 export const isStandardModel = (model: string): model is Model =>
-  model === SAM_MODEL || (SPARK_MODELS as readonly string[]).includes(model);
+  model === SAM_MODEL || model === TRANSCRIBE_MODEL || (SPARK_MODELS as readonly string[]).includes(model);
 
 export const toUsd = (nano: number): number => nano / NANO;
 export const toNano = (usd: number): number => Math.round(usd * NANO);

@@ -127,10 +127,9 @@ describe("How Your Walk Works", () => {
     await view.unmount();
   });
 
-  it("keeps the location lines off screen while no step in the walk asks for location", () => {
-    for (const line of [copy.how.asks, copy.how.location]) expect(HOW_LINES).not.toContain(line);
-    expect(HOW_LINES).toEqual([copy.how.walk, copy.how.camera, copy.how.microphone, copy.how.motion]);
-    expect(WALK_START).not.toBe(ROUTES.rules);
+  it("names all four things the walk asks for, location last", () => {
+    expect(HOW_LINES).toEqual([copy.how.walk, copy.how.asks, copy.how.camera, copy.how.microphone, copy.how.motion, copy.how.location]);
+    expect(HOW_LINES.slice(HOW_LINES.indexOf(copy.how.asks) + 1)).toHaveLength(4);
   });
 
   it("comes before the first walk, once, then Walk My House goes straight to the walk", async () => {

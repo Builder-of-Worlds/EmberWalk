@@ -20,6 +20,13 @@ describe("the Worker routes", () => {
     expect([missing.status, missing.json.error.code]).toEqual([404, "not_found"]);
   });
 
+  it("routes /api/faults and answers a path under it with a plain 404", async () => {
+    const taken = await call("/api/faults", { walkId: WALK, code: "invalid_request", build: "dev" });
+    expect(taken.status).toBe(200);
+    const missing = await call("/api/faults/x", { walkId: WALK, code: "invalid_request", build: "dev" });
+    expect([missing.status, missing.json.error.code]).toEqual([404, "not_found"]);
+  });
+
   it("answers an unknown path under the upload prefix with a 404, not a crash", async () => {
     const reply = await call("/api/uploads/nowhere", {});
     expect([reply.status, reply.json.error.code]).toEqual([404, "not_found"]);

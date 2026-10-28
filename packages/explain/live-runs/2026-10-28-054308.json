@@ -1,0 +1,68 @@
+{
+  "at": "2026-10-28T05:43:08.201Z",
+  "yard": "Synthetic sample house",
+  "run": {
+    "label": "frames and spoken turns",
+    "language": "en",
+    "turns": [
+      {
+        "t": 4.5,
+        "text": "That is our firewood pile. I cover it with a tarp every night, but it sits right against the wall."
+      },
+      {
+        "t": 11,
+        "text": "The brush is what I cut last weekend. I have not hauled it away yet, it is still green."
+      },
+      {
+        "t": 16,
+        "text": "This fence is old cedar. It was here when we bought the place."
+      }
+    ],
+    "frameSeconds": [
+      5,
+      11,
+      16
+    ]
+  },
+  "models": [
+    "muse-spark-1.3"
+  ],
+  "requests": 1,
+  "costUsd": 0.03058625,
+  "refused": null,
+  "entries": [
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.02331875,
+      "cached": false
+    },
+    {
+      "model": "muse-spark-1.3",
+      "totalUsd": 0.0072675,
+      "cached": false
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "00000000-0000-4000-8000-000000000100",
+      "wording": "model",
+      "instruction": "A nighttime tarp is not enough, so move the pile more than 30 feet from the house or cover it fully with sheet metal.",
+      "verdict": "keep",
+      "reason": "The first frame shows the uncovered wood pile stacked against the house wall, and you said it sits right against the wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000101",
+      "wording": "model",
+      "instruction": "Even though the old cedar came with the place, swap the 5 feet near the house for metal or brick that will not burn.",
+      "verdict": "keep",
+      "reason": "The third frame shows the old cedar fence meeting the house wall."
+    },
+    {
+      "findingId": "00000000-0000-4000-8000-000000000102",
+      "wording": "model",
+      "instruction": "Haul the cut brush you left last weekend to yard waste pickup, even while green, to clear within 30 feet.",
+      "verdict": "keep",
+      "reason": "The second frame shows the cut brush piled on the ground by the house, and you said you have not hauled it away yet."
+    }
+  ]
+}

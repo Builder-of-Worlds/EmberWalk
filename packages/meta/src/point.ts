@@ -77,11 +77,11 @@ export const INSTRUCTIONS = [
   "The box is the tightest rectangle round the whole object and nothing else.",
 ].join("\n");
 
-export type SparkBoxRequest = { concept: string; jpeg: Uint8Array; content: ContentKind; step?: Step; walkId?: string | null };
+export type SparkBoxRequest = { concept: string; target?: string; jpeg: Uint8Array; content: ContentKind; step?: Step; walkId?: string | null };
 
 export function sparkBoxCall(r: SparkBoxRequest): Call<SparkBox> {
-  const target = Object.hasOwn(POINT_TARGETS, r.concept) ? POINT_TARGETS[r.concept] : undefined;
-  if (target === undefined) throw new TypeError(`no pointing prompt for ${r.concept}`);
+  const target = r.target ?? (Object.hasOwn(POINT_TARGETS, r.concept) ? POINT_TARGETS[r.concept] : undefined);
+  if (target === undefined || target.trim() === "") throw new TypeError(`no pointing prompt for ${r.concept}`);
   const image = `data:image/jpeg;base64,${toBase64(r.jpeg)}`;
   return sparkCall(
     {

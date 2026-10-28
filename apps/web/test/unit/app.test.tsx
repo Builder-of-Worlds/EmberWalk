@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
 import { copy } from "../../src/copy.ts";
-import { findingFor, findingIdsIn, resultsFor, routeFor, ROUTES, sendFor } from "../../src/router.ts";
+import { findingFor, findingIdsIn, recordPartFor, recordPartIn, resultsFor, routeFor, ROUTES, sendFor } from "../../src/router.ts";
 import { testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
 
@@ -23,7 +23,7 @@ describe("routeFor", () => {
     expect(routeFor("#/results")).toBe("results");
     expect(routeFor(sendFor("walk"))).toBe("send");
     expect(routeFor(resultsFor("walk"))).toBe("results");
-    expect(routeFor("#/record/walk")).toBe("home");
+    expect(routeFor("#/record/walk")).toBe("record");
   });
 
   it("sends an empty or unknown hash home", () => {
@@ -49,6 +49,26 @@ describe("findingFor and findingIdsIn", () => {
     }
     expect(findingIdsIn(ROUTES.finding)).toBeNull();
     expect(routeFor(ROUTES.finding)).toBe("finding");
+  });
+});
+
+describe("recordPartFor and recordPartIn", () => {
+  const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
+
+  it("round trip a walk and one of its sides onto the record screen", () => {
+    for (const side of ["front", "right", "back", "left"] as const) {
+      const hash = recordPartFor(WALK, side);
+      expect(hash).toBe(`#/record/${WALK}/${side}`);
+      expect(recordPartIn(hash)).toEqual({ walkId: WALK, side });
+      expect(routeFor(hash)).toBe("record");
+    }
+  });
+
+  it("open the whole walk for an unknown side, a malformed walk id, or anything extra", () => {
+    for (const hash of [`#/record/${WALK}/roof`, `#/record/${WALK}/Back`, "#/record/walk-1/back", `#/record/${WALK}`, `#/record/${WALK}/`, `#/record/${WALK}/back/x`, "#/record/%E0%A4%A/back", ROUTES.record]) {
+      expect(recordPartIn(hash), hash).toBeNull();
+      expect(routeFor(hash), hash).toBe("record");
+    }
   });
 });
 
@@ -85,6 +105,15 @@ describe("App", () => {
     expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.app.offline);
     await settle(() => setOnline(true));
     expect(view.text()).not.toContain(copy.app.offline);
+    await view.unmount();
+  });
+
+  it("asks no rules question: the old rules hash opens the home screen", async () => {
+    expect(routeFor("#/rules")).toBe("home");
+    window.location.hash = "#/rules";
+    const view = await render(<App deps={testDeps()} />);
+    expect(view.host.querySelector("h1")?.textContent).toBe(copy.home.title);
+    expect(view.host.querySelector("input[type=radio]")).toBeNull();
     await view.unmount();
   });
 });

@@ -1,7 +1,7 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
-import type { Concept } from "@emberwalk/shared";
+import type { Concept, WalkState } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
-import type { Jurisdiction } from "./location.ts";
+import type { FeetSaid } from "./distance.ts";
 import type { StatusKind } from "./finding-marks.ts";
 import type { Gap, Label, Side } from "./results.ts";
 
@@ -43,24 +43,19 @@ const GAP_LINES: Record<Gap["kind"], (side: Side) => string> = {
   missing: (side) => `The ${side} side isn't in your video yet.`,
   dark: (side) => `The ${side} side is too dark to check.`,
   first_five_feet: (side) => `The first five feet on the ${side} side isn't in view yet.`,
+  not_checked: (side) => `The ${side} side still needs checking.`,
+};
+
+const titled = (side: Side): string => `${side[0]!.toUpperCase()}${side.slice(1)}`;
+
+const stepLine = (state: WalkState): string => {
+  if (state.name !== "processing" || state.step === "prepare") return "Getting your walk ready to check.";
+  if (state.step === "explain") return "Writing down what to do about each thing found.";
+  return "Looking for what needs clearing.";
 };
 
 export const draft = {
   home: { lead: "Film one walk around your house. EmberWalk checks what could carry fire to it." },
-  how: { asks: "It will ask for three things, each only when it's needed:" },
-  rules: {
-    title: "Which Fire Rules Apply",
-    finding: "Finding the fire rules for your house.",
-    found: "Your phone's location is in California. Check the rules below, then tap Use These Rules.",
-    outside: "Your phone's location is outside California. EmberWalk knows California's rules only. Pick one if your house is in California.",
-    refused: "EmberWalk could not use your location. Pick the fire rules for your house.",
-    choices: {
-      ca: "California: both State Responsibility Area and Very High Fire Hazard Severity Zone rules. Pick this if you are not sure.",
-      ca_sra: "California State Responsibility Area (PRC 4291)",
-      ca_vhfhsz: "California Very High Fire Hazard Severity Zone, local rules (Gov. Code 51182)",
-    } satisfies Record<Jurisdiction, string>,
-    confirm: "Use These Rules",
-  },
   record: {
     corners: ["Start at the front door.", "Turn the first corner.", "Turn the next corner.", "One corner to go.", "Back at the front. Tap Stop Recording."],
     propertyLine: "Point the phone at your property line, then tap Property Line.",
@@ -89,12 +84,31 @@ const CONCEPT_WORDS: Record<Concept, string> = {
   patio_furniture: "patio furniture",
 };
 
+const distanceLine = (said: FeetSaid): string => {
+  switch (said.kind) {
+    case "against":
+      return "Against the house.";
+    case "within":
+      return `Within ${said.high} ${said.high === 1 ? "foot" : "feet"} of the house.`;
+    case "about":
+      return `About ${said.feet} feet from the house.`;
+    case "range":
+      return `About ${said.low} to ${said.high} feet from the house.`;
+  }
+};
+
+const thingsToClear = (count: number): string => (count === 0 ? "nothing found." : `${count} ${count === 1 ? "thing" : "things"} to clear.`);
+
 export const unbacked = {
-  results: { notChecked: (concept: Concept) => `Not checked on this walk: ${CONCEPT_WORDS[concept]}.` },
   leaves: {
-    kept: "Kept: blurred photos and short blurred clips of what was found. Your original video is deleted as soon as it's checked.",
     location:
       "Location: used on your phone to find your fire rules and help nearby. To show the aerial photo, the map point of your house is sent to Esri, the map provider. Your address is never sent.",
+  },
+  results: {
+    lead: "Start here: closest to your home first, out to 30 feet.",
+    distance: distanceLine,
+    inside: (count: number) => `Inside 5 feet: ${thingsToClear(count)}`,
+    out: (count: number) => `From 5 to 30 feet: ${thingsToClear(count)}`,
   },
 } as const;
 
@@ -113,15 +127,22 @@ export const copy = {
     insurance: "California requires insurers to offer discounts for some of this work. Ask yours what proof they need.",
     incomplete: "Walk Incomplete",
     gap: ({ side, kind }: Gap) => GAP_LINES[kind](side),
+    hint: {
+      walk_side: (side) => `Walk the ${side} side, from one corner to the next.`,
+      more_light: (side) => `Walk the ${side} side again when there's more daylight.`,
+      tilt_down: (side) => `Walk the ${side} side again with the phone tipped down a little, so the ground by the wall shows.`,
+      step_back: (side) => `Walk the ${side} side again one step further from the wall, so the ground by the wall shows.`,
+      again: (side) => `Walk the ${side} side once more. Your video was fine; EmberWalk needs another look.`,
+    } satisfies Record<Gap["hint"], (side: Side) => string>,
     walkAgain: "Walk Again",
+    walkSide: (side: Side) => `Walk the ${titled(side)} Side`,
     soFar: "What We Found So Far",
     fixFirst: (count: number) => (count === 1 ? "Fix This First" : `Fix These ${count} First`),
-    startHere: "Start here: closest to your house, and required by your rules or inside the first 5 feet.",
+    notChecked: (concept: Concept) => `Not checked on this walk: ${CONCEPT_WORDS[concept]}.`,
     bands: { zone_0: "First 5 Feet", zone_1: "5 to 30 Feet", zone_2: "30 to 100 Feet" },
     simple: "Simple",
     detailed: "Detailed",
     views: "Simple · Detailed",
-    sample: "Synthetic sample house",
     walked: (day: Date) => `Walked ${longDate(day)}.`,
     old: "Over a year old. Walk again to update.",
     label: { required_now: "Required Now", recommended: "Recommended" } satisfies Record<Label, string>,
@@ -137,6 +158,7 @@ export const copy = {
   finding: {
     more: "More",
     source: "Where This Comes From",
+    said: "What You Said",
     notRight: "This Isn't Right",
     removed: "Removed from your list.",
     undo: "Undo",
@@ -148,16 +170,23 @@ export const copy = {
     camera: "Camera, to film your walk.",
     microphone: "Microphone, so you can say what you see. You can turn sound off anytime.",
     motion: "Motion, to keep track of where you are on your walk.",
-    location: "Location, to find the fire rules for your house and help nearby.",
+    location: "Location, so EmberWalk knows which fire rules apply to your house.",
     continue: "Continue",
   },
   record: {
     title: "Record Your Walk",
     back: "Back",
     ready: "Start at your front door, about three big steps from the wall. Walk all the way around the house.",
+    oneSide: (side: Side) => `Stand at the corner where the ${side} side starts. Walk to the next corner, then tap Stop Recording.`,
     limit: `A walk can be up to ${LIMIT_MINUTES} minutes long.`,
     start: "Start Recording",
     opening: "Opening the camera.",
+    location: {
+      finding: "Looking up where your house is.",
+      found: "Your house is in California, so EmberWalk uses the state's fire rules.",
+      outside: "EmberWalk covers California's fire rules today, and checks your walk against them. More states are on the way.",
+      refused: "Your walk is checked against California's fire rules.",
+    },
     stop: "Stop Recording",
     soundOff: "Sound Off",
     pause: "Pause",
@@ -192,10 +221,14 @@ export const copy = {
     sending: (sentBytes: number, totalBytes: number) =>
       `Sending your walk. ${totalBytes > 0 ? Math.floor((100 * sentBytes) / totalBytes) : 0}% sent.`,
     sent: "Your walk was sent.",
+    lost: "EmberWalk can no longer find this walk. Please record the walk again.",
+    held: "EmberWalk is still working on your walk. This page updates by itself.",
+    reported: "EmberWalk was told about the problem. This page updates by itself.",
+    step: (state: WalkState) => stepLine(state),
     savedMinutes: (minutes: number) =>
       `${minutes} ${minutes === 1 ? "minute" : "minutes"} saved on this phone.`,
     refused: {
-      offline: "Waiting for signal.",
+      offline: "Waiting for Signal.",
       invalid_size: "This walk has no video in it. Record the walk again.",
       too_large: "This walk is longer than a walk may be. Record a shorter walk.",
       too_many_parts: "This walk is longer than a walk may be. Record a shorter walk.",

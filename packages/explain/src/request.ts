@@ -6,6 +6,7 @@ import { Id, Language, PlantState, RuleId, Spacing } from "@emberwalk/shared";
 type Json = Parameters<typeof sparkJsonCall>[0]["input"];
 
 export const MAX_FRAMES = 10;
+export const MAX_FRAME_CHARACTERS = 1_500_000;
 export const MAX_FINDINGS = 40;
 export const MAX_TURNS = 200;
 export const MAX_PROBLEMS = MAX_FINDINGS * 4;
@@ -20,10 +21,16 @@ export const INSTRUCTIONS = [
   "You check a wildfire defensible space walk around one house.",
   "The first message is the rule table for this jurisdiction. The second gives the ranked findings, what the homeowner said and the proof frames.",
   "Answer every finding once, by its findingId, as JSON matching the schema.",
-  "verdict: keep, or veto when the frames show the finding is wrong; reason: one plain sentence.",
+  "verdict: keep, or veto only when a frame shows the place of the finding and what is there is not what the finding says. A frame that does not show the finding's object proves nothing, because the frames are a sample of the walk. What the homeowner says never vetoes a finding.",
+  "reason: one plain sentence saying what the frames show or what the homeowner said that matters.",
+  "The homeowner's spoken words are context. When they say what they already do or why something is there, word the instruction so it answers them, in plain words, without changing the rule.",
   "plantState: dead, alive or unsure for plants only, else null. spacing: ok, too_close or not_checked for trees and shrubs only, else null.",
   "bandCheck: same, closer or farther than the band given. Never change the band yourself.",
-  "instruction: one plain sentence of 25 words or fewer telling the homeowner what to do, in the walk's language.",
+  "instruction: one calm, plain sentence of 25 words or fewer, in the walk's language, telling the homeowner what to do about this finding and one concrete way to do it: a material, a tool, or where to put things (for a fence near the house: metal, brick or another material that will not burn).",
+  "Keep every distance the rule's plain text names, in feet. Use the homeowner's everyday words, never words from the law such as woody, combustible, fuels, aerial or vegetation, and never fire resistant as the only advice.",
+  "No urgency or fear words such as now, right away, immediately, soon, urgent, at all times or danger: the app shows urgency by colour.",
+  "The homeowner reads one finding after another: never open two sentences the same way or repeat a stock phrase, and name a distance only where it is the point. The rule table says what is true; never copy its wording.",
+  "Write only about what the walk found. Never say that something was not seen or that no work is needed; a vetoed finding's instruction is never shown.",
   "ruleIds: only ids from the rule table that fit the finding's concept and band.",
 ].join("\n");
 
@@ -46,7 +53,7 @@ export type FindingAnswer = z.infer<typeof FindingAnswer>;
 export const ExplainAnswer = z.strictObject({ findings: z.array(FindingAnswer).max(MAX_FINDINGS) });
 export type ExplainAnswer = z.infer<typeof ExplainAnswer>;
 
-export type ExplainFinding = RankedFinding & { findingId: string; observation: Observation };
+export type ExplainFinding = RankedFinding & { findingId: string; observation: Observation; proofFrame?: string };
 
 export type ExplainInput = {
   walkId: string;
@@ -59,6 +66,11 @@ export type ExplainInput = {
   problems?: string[];
 };
 
+const Frame = z.union([
+  z.url({ protocol: /^https$/ }),
+  z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).max(MAX_FRAME_CHARACTERS),
+]);
+
 const Input = z.strictObject({
   walkId: Id,
   jurisdiction: CaJurisdiction,
@@ -67,14 +79,14 @@ const Input = z.strictObject({
   findings: z
     .array(
       z
-        .looseObject({ findingId: Id, observationId: z.string(), observation: Observation })
+        .looseObject({ findingId: Id, observationId: z.string(), observation: Observation, proofFrame: Frame.optional() })
         .refine((f) => f.observation.id === f.observationId, "a finding's observation must be the observation it came from"),
     )
     .min(1, "a walk with no findings has nothing to explain")
     .max(MAX_FINDINGS)
     .refine((list) => new Set(list.map((f) => f.findingId)).size === list.length, "every finding needs its own findingId"),
   turns: z.array(Turn).max(MAX_TURNS),
-  frames: z.array(z.url({ protocol: /^https$/ })).max(MAX_FRAMES, `at most ${MAX_FRAMES} proof frames`),
+  frames: z.array(Frame).max(MAX_FRAMES, `at most ${MAX_FRAMES} proof frames`),
   problems: z.array(z.string().trim().min(1).max(MAX_PROBLEM_CHARACTERS)).max(MAX_PROBLEMS).optional(),
 });
 

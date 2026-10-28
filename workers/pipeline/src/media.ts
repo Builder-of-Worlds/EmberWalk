@@ -7,11 +7,14 @@ export type MediaClip = { bytes: number; frames: number; fps: number; durationSe
 export type ClipRequest = { input: string; output: string; start: number; end: number; fps: number; maxHeight: number };
 export type StillsRequest = { input: string; stills: { time: number; output: string; regions: Region[] }[] };
 export type MediaStills = { stills: { time: number; bytes: number; width: number; height: number }[] };
+export type AudioRequest = { input: string; output: string; start: number; end: number };
+export type MediaAudio = { bytes: number; sampleRate: number; channels: number; durationSeconds: number };
 
 export type Media = {
   probe(input: string): Promise<Outcome<MediaProbe>>;
   clip(request: ClipRequest): Promise<Outcome<MediaClip>>;
   stills(request: StillsRequest): Promise<Outcome<MediaStills>>;
+  audio(request: AudioRequest): Promise<Outcome<MediaAudio>>;
 };
 
 const ProbeAnswer = z.object({ bytes: z.number(), durationSeconds: z.number(), isMp4: z.boolean() });
@@ -26,7 +29,8 @@ const ClipAnswer = z.object({
 const StillsAnswer = z.object({
   stills: z.array(z.object({ time: z.number(), bytes: z.number(), width: z.number(), height: z.number() })),
 });
-const ErrorAnswer = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
+const AudioAnswer = z.object({ bytes: z.number(), sampleRate: z.number(), channels: z.number(), durationSeconds: z.number() });
+const ErrorAnswer =z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
 const REFUSED_STATUSES = new Set([400, 404, 405, 413, 422]);
 
@@ -50,6 +54,7 @@ export const containerMedia = (container: Fetcher): Media => {
     probe: (input) => post("/probe", { input }, ProbeAnswer),
     clip: (request) => post("/clip", request, ClipAnswer),
     stills: (request) => post("/stills", request, StillsAnswer),
+    audio: (request) => post("/audio", request, AudioAnswer),
   };
 };
 

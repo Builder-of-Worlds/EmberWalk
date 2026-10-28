@@ -1,15 +1,19 @@
+import type { FaultReportRequest, WalkState, WalkStatusResponse } from "@emberwalk/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Answer, Failure } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
 import { copy, unbacked } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
-import { ROUTES, sendFor } from "../../src/router.ts";
-import { Send, SIGNAL_RETRY_MS } from "../../src/screens/Send.tsx";
+import { resultsFor, ROUTES, sendFor } from "../../src/router.ts";
+import { Send } from "../../src/screens/Send.tsx";
 import type { Sender } from "../../src/sender.ts";
 import type { Progress, SendResult } from "../../src/uploader.ts";
+import { HELD_RETRY_MS, POLL_MS, SIGNAL_RETRY_MS } from "../../src/watch.ts";
+import type { WalkStatus } from "../../src/watch.ts";
 import { fakeClock, testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
-import { SEND_REWRITES, SETTLED_LEAVES, shownLines } from "./settled.ts";
+import { SEND_AFTER, SEND_REWRITES, SETTLED_LEAVES, shownLines } from "./settled.ts";
 
 const withTake = async (deps: Deps, endedBy: "stopped" | "time_limit" = "stopped", durationMs: number | null = 1000) => {
   const takes = await deps.takes();
@@ -88,12 +92,18 @@ describe("What Leaves Your Phone", () => {
     expect(view.host.querySelector(`a[href="${ROUTES.home}"]`)?.textContent).toBe(copy.leaves.notNow);
   });
 
-  it("keeps the Kept and Location lines off screen while nothing on the server backs them", async () => {
+  it("keeps the Location line off screen while nothing on the server backs it", async () => {
     const view = await show(await withTake(testDeps()));
     for (const line of Object.values(unbacked.leaves)) {
       expect(SETTLED_LEAVES).toContain(line);
       expect(view.text()).not.toContain(line);
     }
+  });
+
+  it("never says what is kept, or that the original video is deleted", async () => {
+    const view = await show(await withTake(testDeps()));
+    expect(view.text()).not.toMatch(/Kept|original video/);
+    expect(Object.keys(unbacked.leaves)).toEqual(["location"]);
   });
 
   it("still says why a walk stopped early", async () => {
@@ -125,7 +135,7 @@ describe("Send Your Walk", () => {
     const view = await show(await withTake(testDeps({ send: sender.send })));
     await settle(() => button(view.host)?.click());
     await settle(() => sender.finish({ code: "offline" }));
-    expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for signal.");
+    expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
     expect(view.text()).toContain(copy.send.saved);
     expect(view.text()).toContain(copy.leaves.later);
     await settle(() => button(view.host)?.click());
@@ -279,6 +289,256 @@ describe("Send Your Walk", () => {
     await until(() => view.text().includes(copy.send.none));
     expect(heading(view.host)).toBe(copy.send.title);
     expect(button(view.host)).toBeUndefined();
+  });
+});
+
+describe("after the walk is sent", () => {
+  const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b01";
+
+  const sentWith = async (answers: Answer<WalkStatusResponse>[], overrides: Partial<Deps> = {}) => {
+    const time = fakeClock();
+    const asked: string[] = [];
+    const walkStatus: WalkStatus = async (walkId) => {
+      asked.push(walkId);
+      return answers.shift() ?? { code: "server_error" };
+    };
+    const sender = controlled();
+    const deps = await withTake(testDeps({ send: sender.send, clock: time.clock, walkStatus, ...overrides }));
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: WALK }));
+    const tick = () => settle(() => time.advance(POLL_MS));
+    const kept = async () => (await (await deps.takes()).all()).length;
+    return { view, asked, time, tick, kept };
+  };
+
+  const state = (s: WalkState, message: string | null = null): Answer<WalkStatusResponse> => ({
+    value: { walkId: WALK, state: s, failure: message === null ? null : { code: "pipeline_failed", message } },
+  });
+
+  it("says the walk is still being checked with a plain step line, then opens its results at done", async () => {
+    const { view, asked, tick } = await sentWith([state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "processing", step: "explain" }), state({ name: "done" })]);
+    expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
+    expect(view.text()).toContain("This walk is still being checked.");
+    expect(view.text()).toContain("Getting your walk ready to check.");
+    await tick();
+    expect(view.text()).toContain("Looking for what needs clearing.");
+    await tick();
+    expect(view.text()).toContain("Writing down what to do about each thing found.");
+    expect(window.location.hash).not.toBe(resultsFor(WALK));
+    await tick();
+    expect(window.location.hash).toBe(resultsFor(WALK));
+    expect(asked).toEqual([WALK, WALK, WALK, WALK]);
+  });
+
+  it("watches a walk of one side by its own id, then opens the results of the walk it is part of", async () => {
+    const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
+    const time = fakeClock();
+    const asked: string[] = [];
+    const answers = [state({ name: "processing", step: "segment" }), state({ name: "done" })];
+    const walkStatus: WalkStatus = async (walkId) => {
+      asked.push(walkId);
+      return answers.shift() ?? { code: "server_error" };
+    };
+    const sender = controlled();
+    const deps = testDeps({ send: sender.send, clock: time.clock, walkStatus });
+    const takes = await deps.takes();
+    const take = await takes.create("video/mp4", 1, { jurisdiction: "ca", sound: true, partOf: { walkId: PARENT, side: "back" } });
+    await takes.append(take.id, new Blob(["0123456789"]));
+    await takes.finish(take.id, 1000, "stopped");
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: WALK }));
+    expect(window.location.hash).not.toBe(resultsFor(PARENT));
+    await settle(() => time.advance(POLL_MS));
+    expect(window.location.hash).toBe(resultsFor(PARENT));
+    expect(asked).toEqual([WALK, WALK]);
+    await view.unmount();
+  });
+
+  it("shows a failed walk's own message with Record a Walk, and opens no results", async () => {
+    const { view } = await sentWith([state({ name: "failed", step: "score" }, "Something went wrong while checking this walk.")]);
+    expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Something went wrong while checking this walk.");
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+    expect(view.text()).not.toContain(copy.send.refused.walk_not_done);
+    expect(window.location.hash).not.toBe(resultsFor(WALK));
+  });
+
+  it("says a walk the API no longer finds in Deacon's words (D-165), with Record a Walk", async () => {
+    const { view } = await sentWith([{ code: "unknown_walk" }]);
+    expect(view.host.querySelector("[role=alert]")?.textContent).toBe(SEND_AFTER.lost);
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+  });
+
+  it.each(["invalid_request", "not_found", "method_not_allowed", "body_too_large"] as const)(
+    "never asks for a new walk after a %s answer: it keeps asking quietly and carries on when the API answers",
+    async (code) => {
+      const { view, asked, time } = await sentWith([{ code }, state({ name: "processing", step: "segment" })]);
+      expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
+      expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+      expect(view.host.querySelector("[role=alert]")).toBeNull();
+      expect(button(view.host)).toBeUndefined();
+      expect(view.text()).not.toContain(copy.leaves.send);
+      expect(view.text()).toContain(SEND_AFTER.held);
+      await settle(() => time.advance(HELD_RETRY_MS));
+      await until(() => asked.length === 2);
+      await until(() => view.text().includes("Looking for what needs clearing."));
+    },
+  );
+
+  describe("when a status ask is refused", () => {
+    const BUILD_ID = "a1b2c3d4e5f6";
+    const received: ReturnType<Deps["reportFault"]> = Promise.resolve({ value: { received: true } });
+
+    const reporter = (answer: () => ReturnType<Deps["reportFault"]> = () => received) => {
+      const reports: FaultReportRequest[] = [];
+      const reportFault: Deps["reportFault"] = (report) => {
+        reports.push(report);
+        return answer();
+      };
+      return { reports, overrides: { reportFault, build: BUILD_ID } };
+    };
+
+    const heldTimes = async (n: number, code: Failure) => {
+      const sent = reporter();
+      const flow = await sentWith(Array.from({ length: n }, () => ({ code })), sent.overrides);
+      for (let i = 1; i < n; i += 1) await settle(() => flow.time.advance(HELD_RETRY_MS));
+      return { ...flow, reports: sent.reports };
+    };
+
+    it("sends one report with the walk id, the code and the build", async () => {
+      const sent = reporter();
+      await sentWith([{ code: "invalid_request" }], sent.overrides);
+      await until(() => sent.reports.length === 1);
+      expect(sent.reports).toEqual([{ walkId: WALK, code: "invalid_request", build: BUILD_ID }]);
+    });
+
+    it("sends one report for ten held answers with the same code", async () => {
+      const { asked, reports, view } = await heldTimes(10, "invalid_request");
+      expect(asked).toHaveLength(10);
+      expect(reports).toHaveLength(1);
+      await view.unmount();
+    });
+
+    it("sends one more when a different code holds the walk", async () => {
+      const sent = reporter();
+      const { time } = await sentWith([{ code: "invalid_request" }, { code: "invalid_request" }, { code: "not_found" }, { code: "not_found" }], sent.overrides);
+      for (let i = 0; i < 3; i += 1) await settle(() => time.advance(HELD_RETRY_MS));
+      expect(sent.reports.map((r) => r.code)).toEqual(["invalid_request", "not_found"]);
+    });
+
+    it.each(["unknown_walk", "server_error", "rate_limited", "offline"] as const)("never reports a %s answer, and never says it was reported", async (code) => {
+      const sent = reporter();
+      const { time, view } = await sentWith([{ code }, { code }, { code }], sent.overrides);
+      for (let i = 0; i < 3; i += 1) await settle(() => time.advance(HELD_RETRY_MS));
+      expect(sent.reports).toEqual([]);
+      expect(view.text()).not.toContain(SEND_AFTER.reported);
+    });
+
+    it.each([
+      ["offline", () => Promise.resolve({ code: "offline" as const })],
+      ["refused", () => Promise.resolve({ code: "rate_limited" as const })],
+      ["thrown", () => Promise.reject(new Error("no network"))],
+    ])("leaves the screen as it was, and asks no second time, when the report is %s", async (_name, answer) => {
+      const sent = reporter(answer);
+      const { view, time, asked } = await sentWith([{ code: "invalid_request" }, { code: "invalid_request" }], sent.overrides);
+      await until(() => sent.reports.length === 1);
+      expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
+      expect(view.text()).toContain(SEND_AFTER.held);
+      expect(view.host.querySelector("[role=alert]")).toBeNull();
+      await settle(() => time.advance(HELD_RETRY_MS));
+      expect(asked).toHaveLength(2);
+      expect(sent.reports).toHaveLength(1);
+      expect(view.text()).toContain(SEND_AFTER.held);
+      expect(view.text()).not.toContain(SEND_AFTER.reported);
+    });
+
+    it("shows the held line until the report is received, then the reported line in its place, word for word (D-182)", async () => {
+      let answer: (value: Awaited<ReturnType<Deps["reportFault"]>>) => void = () => undefined;
+      const sent = reporter(() => new Promise((resolve) => (answer = resolve)));
+      const { view } = await sentWith([{ code: "invalid_request" }], sent.overrides);
+      await until(() => sent.reports.length === 1);
+      expect(view.text()).toContain(SEND_AFTER.held);
+      expect(view.text()).not.toContain(SEND_AFTER.reported);
+      await settle(() => answer({ value: { received: true } }));
+      await until(() => view.text().includes(SEND_AFTER.reported));
+      expect(copy.send.reported).toBe(SEND_AFTER.reported);
+      expect(view.text()).not.toContain(SEND_AFTER.held);
+      expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
+      expect(view.host.querySelector("[role=alert]")).toBeNull();
+      expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+      expect(shownLines(view.host)).toEqual([copy.send.title, copy.send.sent, SEND_AFTER.reported]);
+    });
+
+    it("keeps the reported line while the walk stays held, and shows the walk's step once it moves on", async () => {
+      const sent = reporter();
+      const { view, time } = await sentWith([{ code: "invalid_request" }, { code: "invalid_request" }, state({ name: "processing", step: "segment" })], sent.overrides);
+      await until(() => view.text().includes(SEND_AFTER.reported));
+      await settle(() => time.advance(HELD_RETRY_MS));
+      expect(view.text()).toContain(SEND_AFTER.reported);
+      await settle(() => time.advance(HELD_RETRY_MS));
+      await until(() => view.text().includes("Looking for what needs clearing."));
+      expect(view.text()).not.toContain(SEND_AFTER.reported);
+    });
+
+    it("has no send line left waiting for approval", () => {
+      expect(Object.keys(unbacked)).not.toContain("send");
+    });
+  });
+
+  it("shows Record a Walk and no empty alert for a failed walk that carries no message", async () => {
+    const { view } = await sentWith([state({ name: "failed", step: "score" })]);
+    expect(view.host.querySelector("[role=alert]")).toBeNull();
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+    expect(window.location.hash).not.toBe(resultsFor(WALK));
+  });
+
+  it("waits for signal while checking, then carries on when signal returns", async () => {
+    const { view, asked, tick } = await sentWith([{ code: "offline" }, state({ name: "processing", step: "segment" })]);
+    expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
+    await tick();
+    expect(asked).toHaveLength(1);
+    await goOnline();
+    await until(() => asked.length === 2);
+    await until(() => view.text().includes("Looking for what needs clearing."));
+    expect(view.host.querySelector("[role=alert]")).toBeNull();
+  });
+
+  it("keeps the walk on the phone until the server answers for it, then lets it go", async () => {
+    for (const answer of [state({ name: "queued" }), state({ name: "done" }), state({ name: "failed", step: "score" }), { code: "unknown_walk" as const }]) {
+      const { view, kept } = await sentWith([answer]);
+      await until(() => view.host.querySelector("h1") !== null);
+      expect(await kept()).toBe(0);
+      await view.unmount();
+    }
+  });
+
+  it("lets the walk go once, not again at every answer after", async () => {
+    const time = fakeClock();
+    const answers = [state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "processing", step: "explain" })];
+    const sender = controlled();
+    const deps = await withTake(testDeps({ send: sender.send, clock: time.clock, walkStatus: async () => answers.shift() ?? state({ name: "queued" }) }));
+    const remove = vi.spyOn(await deps.takes(), "remove");
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: WALK }));
+    for (let i = 0; i < 3; i += 1) await settle(() => time.advance(POLL_MS));
+    expect(remove).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it.each(["invalid_request", "offline"] as const)("keeps the walk on the phone while a %s answer holds it", async (code) => {
+    const { view, kept } = await sentWith([{ code }]);
+    expect(await kept()).toBe(1);
+    await view.unmount();
+  });
+
+  it("asks nothing more once the screen is gone", async () => {
+    const { view, asked, time, tick } = await sentWith([state({ name: "queued" })]);
+    await view.unmount();
+    await tick();
+    expect(asked).toHaveLength(1);
+    expect(time.pending()).toBe(0);
   });
 });
 

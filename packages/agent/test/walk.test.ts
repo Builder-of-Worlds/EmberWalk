@@ -109,6 +109,25 @@ describe("runWalk on test yard 2", () => {
     expect(outbox.sent).toEqual([[first!.id, first!.crewId]]);
     expect(await getMessage(env.DB, first!.id)).toMatchObject({ status: "sent", sentAt: NOW.toISOString() });
   });
+
+  it("sends an approved text to a crew that has only a phone and marks it sent", async () => {
+    const findings = await seedWalk({ synthetic: true, findings: yardTwo().filter((f) => f.concept === "dry_brush") });
+    const crews = [41, 42, 43].map((n) => crew(n, { email: null, phone: `+153055500${n}` }));
+    const answers = [
+      toolAnswer({ name: "find_crews", args: { trade: "brush_clearing", zip: ZIP } }),
+      toolAnswer(...crews.map((c) => ({ name: "draft_request", args: { crewId: c.id, findingIds: idsOf(findings, "dry_brush"), channel: "text", subject: null, body: `Hello ${c.name}, could you quote clearing dry brush at a synthetic sample house?` } }))),
+      finalAnswer("Drafted a text to each crew."),
+    ];
+    await runWalk(agentDeps({ answers, crews }).deps, WALK, ZIP);
+    const messages = await allMessages();
+    expect(messages.map((m) => [m.channel, m.status])).toEqual(crews.map(() => ["text", "draft"]));
+    const [first] = messages;
+    await approveMessage(env.DB, first!.id, NOW.toISOString());
+    const outbox = spyOutbox();
+    await sendApproved({ db: env.DB, outbox, now: () => NOW }, first!.id);
+    expect(outbox.sent).toEqual([[first!.id, first!.crewId]]);
+    expect(await getMessage(env.DB, first!.id)).toMatchObject({ status: "sent", sentAt: NOW.toISOString() });
+  });
 });
 
 describe("planJobs with findings that make no job", () => {
@@ -144,6 +163,16 @@ describe("planJobs with findings that make no job", () => {
     const { plan } = await runWalk(deps, WALK, ZIP);
     expect(plan.jobs.map((j) => [j.trade, j.findingIds])).toEqual([["debris_hauling", idsOf(findings, "wood_pile")]]);
     expect(requests).toHaveLength(3);
+  });
+
+  it("keeps one job per trade when the same walk is planned twice", async () => {
+    await seedWalk({ synthetic: true, findings: yardTwo() });
+    const { deps, requests } = agentDeps({ answers: [], crews: CREWS });
+    const first = await planJobs(deps, WALK, ZIP);
+    const second = await planJobs(deps, WALK, ZIP);
+    expect(second.jobs).toEqual(first.jobs);
+    expect((await jobsForWalk(env.DB, WALK)).map((j) => j.trade).sort()).toEqual([...TRADES]);
+    expect(requests).toEqual([]);
   });
 
   it("refuses with AgentOff before planning when the flag is off", async () => {
@@ -184,6 +213,20 @@ describe("TRADE_FOR", () => {
     ]);
     expect(homeowner).toEqual([]);
     expect(requests).toEqual([]);
+  });
+
+  it("sends a shed and a propane tank to brush clearing, in one job", async () => {
+    const [shed, propane] = await seedWalk({
+      synthetic: true,
+      findings: [
+        { concept: "shed", band: "zone_1", ruleIds: ["ca-shed-clearance-ccr-z1"], plantState: null },
+        { concept: "propane_tank", band: "zone_1", ruleIds: ["ca-propane-clearance-ccr-z1"], plantState: null },
+      ],
+    });
+    const { deps } = agentDeps({ answers: [], crews: CREWS });
+    const { jobs, homeowner } = await planJobs(deps, WALK, ZIP);
+    expect(jobs.map((j) => [j.trade, j.findingIds])).toEqual([["brush_clearing", [shed!.id, propane!.id]]]);
+    expect(homeowner).toEqual([]);
   });
 
   it("makes no job for a vent finding that cites neither the screen rule nor the debris rule", async () => {
