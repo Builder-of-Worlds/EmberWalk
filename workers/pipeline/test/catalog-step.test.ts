@@ -97,10 +97,10 @@ describe("segmentClip over the whole catalog", () => {
     const { walkId, clip } = await setup();
     stageCatalogYard(harness);
 
-    await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    await segmentClip(deps(), walkId, clip, "file-1");
 
     const samPhrases = harness.asked.filter((text) => !text.startsWith("Find the"));
-    const expected = rowsForClip("loop", "catalog").filter((r) => r.point === null).map(samPhraseOf);
+    const expected = rowsForClip("loop").filter((r) => r.point === null).map(samPhraseOf);
     expect([...samPhrases].sort()).toEqual([...expected].sort());
     expect(new Set(samPhrases).size).toBe(samPhrases.length);
     expect(requestsTo("/responses")).toHaveLength(expected.length + 2 * POINT_LOOKS);
@@ -110,17 +110,17 @@ describe("segmentClip over the whole catalog", () => {
     const { walkId, clip } = await setup({ kind: "pan" });
     stageCatalogYard(harness);
 
-    await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    await segmentClip(deps(), walkId, clip, "file-1");
 
     for (const row of pendingRows) expect(harness.asked).toContain(samPhraseOf(row));
-    expect(requestsTo("/responses")).toHaveLength(rowsForClip("pan", "catalog").length - 1 + POINT_LOOKS);
+    expect(requestsTo("/responses")).toHaveLength(rowsForClip("pan").length - 1 + POINT_LOOKS);
   });
 
   it("returns pending objects in the tally and stores tracks only for existing concepts", async () => {
     const { walkId, clip } = await setup();
     stageCatalogYard(harness);
 
-    const result = await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    const result = await segmentClip(deps(), walkId, clip, "file-1");
 
     expect(result).toMatchObject({ ok: true, value: { clipId: clip.id, found: 1, notChecked: 0 } });
     const value = (result as { value: { pending: ReturnType<typeof tallyFrames>[] } }).value;
@@ -137,22 +137,12 @@ describe("segmentClip over the whole catalog", () => {
     expect(rows?.n ?? 0).toBe(0);
   });
 
-  it("keeps today's behaviour, and today's result, when no scope is given", async () => {
-    const { walkId, clip } = await setup();
-    stageCatalogYard(harness);
-
-    const result = await segmentClip(deps(), walkId, clip, "file-1");
-
-    expect(result).toEqual({ ok: true, value: { clipId: clip.id, found: 1, notChecked: 0 } });
-    for (const row of pendingRows) expect(harness.asked).not.toContain(samPhraseOf(row));
-  });
-
   it("refuses a malformed answer for one object and still returns the others", async () => {
     const { walkId, clip } = await setup();
     stageCatalogYard(harness);
     harness.answers["gas can"] = [{ text: "<1f>this is not a SAM record" }];
 
-    const result = await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    const result = await segmentClip(deps(), walkId, clip, "file-1");
 
     const pending = (result as { value: { pending: ReturnType<typeof tallyFrames>[] } }).value.pending;
     const byObject = Object.fromEntries(pending.map((t) => [t.object, t]));
@@ -168,7 +158,7 @@ describe("segmentClip over the whole catalog", () => {
     const estimate = walkCost([clip]).nano;
     harness.capUsd = (estimate - 1) / 1e9;
 
-    const result = await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    const result = await segmentClip(deps(), walkId, clip, "file-1");
 
     expect(result).toMatchObject({ ok: false, failure: { code: "spend_limit" } });
     expect(requestsTo("/responses")).toHaveLength(0);
@@ -182,7 +172,7 @@ describe("segmentClip over the whole catalog", () => {
     const estimate = walkCost([clip]).nano;
     harness.capUsd = estimate / 1e9;
 
-    const result = await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    const result = await segmentClip(deps(), walkId, clip, "file-1");
 
     expect(result).toMatchObject({ ok: true });
     expect(await spentNano()).toBeGreaterThan(0);
@@ -192,7 +182,7 @@ describe("segmentClip over the whole catalog", () => {
   it("refuses real footage on free credits as it does today", async () => {
     const { walkId, clip } = await setup({ synthetic: false });
 
-    const result = await segmentClip(deps(), walkId, clip, "file-1", "catalog");
+    const result = await segmentClip(deps(), walkId, clip, "file-1");
 
     expect(result).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
     expect(requestsTo("/responses")).toHaveLength(0);

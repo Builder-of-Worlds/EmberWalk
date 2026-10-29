@@ -9,7 +9,7 @@ from ewscene import openart
 
 def main(argv):
     parser = argparse.ArgumentParser(prog="check_openart.py", description="Check the OpenArt look file of a synthetic sample house and print its credit total.")
-    parser.add_argument("--look", required=True, help="look.json: every OpenArt still, its credits and Deacon's picks")
+    parser.add_argument("--look", required=True, help="look.json: every OpenArt still, its credits and the owner's picks")
     args = parser.parse_args(argv)
     try:
         doc = openart.validate_look(openart.load_json(args.look))

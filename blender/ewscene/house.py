@@ -253,10 +253,28 @@ def _footprint(doc):
             _on_side("chimney", features["chimney"], features["chimney"]["size_in"][0], sides)
         for i, vent in enumerate(features["foundation_vents"]):
             _on_side("foundation_vents[%d]" % i, vent, vent["width_in"], sides)
+        _openings(doc, sides)
         _lot_and_structures(doc, eds)
         if "roof" in doc["house"]:
             _roof(doc, eds)
     return eds
+
+
+def _openings(doc, sides):
+    features = doc["house"]["features"]
+    placed = [(key, doc[key]["side"], doc[key]["along_in"], doc[key]["along_in"] + doc[key]["width_in"], 0, math.inf)
+              for key in ("front_door", "back_door") if key in doc]
+    asked = [("garage_door", features["garage_door"], 0)] if "garage_door" in features else []
+    asked += [("windows[%d]" % i, w, w["sill_in"]) for i, w in enumerate(features.get("windows", []))]
+    for where, item, low in asked:
+        _on_side(where, item, item["width_in"], sides)
+        a0, a1, top = item["along_in"], item["along_in"] + item["width_in"], low + item["height_in"]
+        if top > sides[item["side"]]["height_in"]:
+            raise HouseError("refused", "%s: its top at %d in passes the wall height %d in" % (where, top, sides[item["side"]]["height_in"]))
+        for name, side, b0, b1, z0, z1 in placed:
+            if side == item["side"] and a0 < b1 and b0 < a1 and low < z1 and z0 < top:
+                raise HouseError("refused", "%s: overlaps %s" % (where, name))
+        placed.append((where, item["side"], a0, a1, low, top))
 
 
 def _roof(doc, eds):
@@ -322,6 +340,8 @@ def _look(doc, catalog):
     _asset(catalog, look["roof"]["material"], ("texture",), "look.roof.material")
     _asset(catalog, look["ground"]["material"], ("texture",), "look.ground.material")
     _asset(catalog, look["light"]["hdri"], ("hdri",), "look.light.hdri")
+    if "concrete" in look:
+        _asset(catalog, look["concrete"]["material"], ("texture",), "look.concrete.material")
 
 
 def _placed(where, item, doc, catalog, eds):
@@ -710,6 +730,8 @@ def gutter_runs(doc):
 def used_assets(doc, catalog):
     look = doc["look"]
     ids = [look["siding"]["material"], look["roof"]["material"], look["ground"]["material"], look["light"]["hdri"]]
+    if "concrete" in look:
+        ids.append(look["concrete"]["material"])
     for item in doc["hazards"] + doc.get("fixed", []) + doc.get("trees", []):
         ids.append(item["asset"])
         if "material" in catalog[item["asset"]]:

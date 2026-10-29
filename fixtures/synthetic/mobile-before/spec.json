@@ -15,6 +15,16 @@
     "area": "State Responsibility Area",
     "features": {
       "gutters": false,
+      "windows": [
+        {"side": "front", "along_in": 60, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "front", "along_in": 300, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "front", "along_in": 600, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "back", "along_in": 60, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "back", "along_in": 300, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "back", "along_in": 520, "width_in": 36, "height_in": 40, "sill_in": 44},
+        {"side": "left", "along_in": 120, "width_in": 48, "height_in": 40, "sill_in": 44},
+        {"side": "right", "along_in": 120, "width_in": 48, "height_in": 40, "sill_in": 44}
+      ],
       "skirting": true,
       "foundation_vents": [
         {

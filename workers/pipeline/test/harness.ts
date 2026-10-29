@@ -44,6 +44,7 @@ export type Harness = {
   voiceNotes: boolean;
   answers: Record<string, Reply[]>;
   requests: HttpRequest[];
+  onRequest: ((req: HttpRequest) => Promise<void>) | null;
   asked: string[];
   uploads: number;
   billing: Billing;
@@ -70,6 +71,7 @@ export const freshHarness = (): Harness => ({
   voiceNotes: false,
   answers: {},
   requests: [],
+  onRequest: null,
   asked: [],
   uploads: 0,
   billing: "free_credits",
@@ -155,6 +157,7 @@ export const fakeTransport =
   (h: Harness): Transport =>
   async (req) => {
     h.requests.push(req);
+    await h.onRequest?.(req);
     if (req.method === "POST" && req.path === "/files") return json(200, { id: `file-${++h.uploads}` });
     if (req.method === "DELETE") return json(200, {});
     if (req.method === "POST" && req.path === "/asr/transcribe") return json(200, h.transcribed);

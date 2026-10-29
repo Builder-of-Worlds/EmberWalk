@@ -1,7 +1,5 @@
 import type { Message } from "./types";
 
-export const POSTAL_FOOTER = "EmberWalk, Deacon Roswell, 732 S 6th Street #5709, Las Vegas, NV 89101";
-
 export function welcomeMessage(to: string, unsubscribeUrl: string): Message {
   return {
     to,
@@ -19,12 +17,14 @@ export function welcomeMessage(to: string, unsubscribeUrl: string): Message {
   };
 }
 
-export function finishEmail(message: Message): string {
+export function finishEmail(message: Message, postalFooter: string | undefined): string {
+  const footer = postalFooter?.trim();
+  if (!footer) throw new Error("no postal address is set, so no email is sent");
   return [
     message.body,
     "",
     `To be taken off the list, use this link, or reply to this email and say so: ${message.unsubscribeUrl}`,
     "",
-    POSTAL_FOOTER,
+    footer,
   ].join("\n");
 }

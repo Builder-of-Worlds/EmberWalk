@@ -1,4 +1,4 @@
-import { type CatalogRow, type DetectionScope, POINT_LOOKS, rowsForClip } from "@emberwalk/catalog";
+import { type CatalogRow, POINT_LOOKS, rowsForClip } from "@emberwalk/catalog";
 import { gridToPixels, type Rect, samBoxVideoCall, type SparkBox, sparkBoxCall } from "@emberwalk/meta";
 import type { Clip, Concept } from "@emberwalk/shared";
 import { type PendingTally, type Settled, settleFrames, settleUnseen, storedConcept } from "./catalog-step.ts";
@@ -7,7 +7,7 @@ import { isWholeStepRefusal, retrying, whyNotChecked } from "./tracks.ts";
 
 export { POINT_LOOKS };
 
-export const POINT_CONCEPTS: readonly Concept[] = rowsForClip("loop", "stored")
+export const POINT_CONCEPTS: readonly Concept[] = rowsForClip("loop")
   .filter((row) => row.point !== null)
   .map(storedConcept);
 
@@ -29,7 +29,7 @@ const pointKey = (walkId: string, clipId: string, frame: number): string => `cli
 
 const area = (box: Rect): number => (box.right - box.left) * (box.bottom - box.top);
 
-const pointingRows = (clip: Clip, scope: DetectionScope): Pointing[] => rowsForClip(clip.kind, scope).filter((row): row is Pointing => row.point !== null);
+const pointingRows = (clip: Clip): Pointing[] => rowsForClip(clip.kind).filter((row): row is Pointing => row.point !== null);
 
 const readLook = async (deps: Deps, frame: number, key: string): Promise<Look> => {
   const stored = await deps.bucket.get(key);
@@ -91,9 +91,8 @@ export const pointAndTrack = async (
   clip: Clip,
   fileId: string,
   content: "synthetic" | "real",
-  scope: DetectionScope = "stored",
 ): Promise<PointResult> => {
-  const rows = pointingRows(clip, scope);
+  const rows = pointingRows(clip);
   if (rows.length === 0) return { runs: [], tracks: [] };
 
   const frames = lookFrames(clip.frameCount);

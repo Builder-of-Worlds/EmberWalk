@@ -3,29 +3,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mediaSuite } from "../test/support/media-suite.ts";
 import type { Target } from "../test/support/media-suite.ts";
+import { waitForHealth } from "../test/support/server-process.ts";
+import { timeLimits } from "../test/support/time-limits.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const image = "emberwalk-media:test";
 const leftoverLabel = "emberwalk.test=media-image";
 
-const docker = (args: string[], timeout = 600_000): string => {
+const docker = (args: string[], timeout = timeLimits.imageBuildMs): string => {
   const run = spawnSync("docker", args, { encoding: "utf8", timeout });
   if (run.status !== 0) {
     throw new Error(`docker ${args[0]} failed: ${run.stderr || run.error?.message}`);
   }
   return run.stdout.trim();
-};
-
-const waitForHealth = async (baseUrl: string): Promise<void> => {
-  for (let i = 0; i < 60; i += 1) {
-    try {
-      if ((await fetch(`${baseUrl}/health`)).ok) return;
-    } catch {
-      // the server is still starting
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error("the container never became healthy");
 };
 
 mediaSuite("media container image", async (): Promise<Target> => {

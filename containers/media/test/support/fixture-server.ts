@@ -10,6 +10,7 @@ export type FixtureServer = {
   delays: Map<string, number>;
   chunked: Set<string>;
   requested: (path: string) => Promise<void>;
+  hold: (path: string) => () => void;
   close: () => Promise<void>;
 };
 
@@ -20,6 +21,7 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
   const delays = new Map<string, number>();
   const chunked = new Set<string>();
   const waiting = new Map<string, (() => void)[]>();
+  const holds = new Map<string, Promise<void>>();
 
   const server: Server = createServer((req, res) => {
     const path = req.url ?? "/";
@@ -52,6 +54,11 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
       }
       res.writeHead(200, { "content-length": file.length }).end(file);
     };
+    const held = holds.get(path);
+    if (held !== undefined) {
+      void held.then(respond);
+      return;
+    }
     const delay = delays.get(path);
     if (delay === undefined) respond();
     else setTimeout(respond, delay);
@@ -69,6 +76,14 @@ export const startFixtureServer = async (): Promise<FixtureServer> => {
       new Promise<void>((resolve) => {
         waiting.set(path, [...(waiting.get(path) ?? []), resolve]);
       }),
+    hold: (path) => {
+      let release = (): void => undefined;
+      holds.set(path, new Promise<void>((resolve) => (release = resolve)));
+      return () => {
+        holds.delete(path);
+        release();
+      };
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 };

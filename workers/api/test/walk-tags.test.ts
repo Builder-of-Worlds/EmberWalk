@@ -4,6 +4,7 @@ import { ErrorBody, StartWalkResponse } from "@emberwalk/shared";
 import type { Tag } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { MAX_BODY_BYTES, MAX_TAGS_PER_WALK, handleAddTags } from "../src/walk-tags.ts";
+import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
 import { call } from "./route.ts";
 import { clearWalks, seedWalk, walkState } from "./seed.ts";
 
@@ -54,6 +55,16 @@ describe("adding tags to a walk", () => {
     expect(reply.status).toBe(200);
     expect(reply.json).toEqual({ walkId: WALK, tags: 2 });
     expect(await tagsForWalk(env.DB, WALK)).toEqual([sent[1], sent[0]]);
+  });
+
+  it("stores the synthetic sample walk's side tags, loop then pans, with the light on every sample", async () => {
+    const sent = sideWalk.tags.map((t) => ({ ...t, walkId: WALK })) as Tag[];
+    const reply = await post(WALK, { tags: sent });
+    expect(reply.json).toEqual({ walkId: WALK, tags: sent.length });
+    const kept = await tagsForWalk(env.DB, WALK);
+    expect(kept).toEqual(sent);
+    expect(kept.map((t) => `${t.kind} ${t.label}`).slice(-4)).toEqual(["pan front", "pan left", "pan back", "pan right"]);
+    expect(kept.every((t) => t.samples.every((s) => typeof s.light === "number"))).toBe(true);
   });
 
   it("leaves the walk waiting for its video", async () => {
@@ -118,6 +129,7 @@ describe("refusing a bad tags request", () => {
     ["a tag that ends before it starts", { tags: [tag(1, { startSeconds: 5, endSeconds: 5 })] }],
     ["a property line on a loop tag", { tags: [tag(1, { propertyLine: { t: 1, at: { x: 0.1, y: 0.1 } } })] }],
     ["a tilt out of range", { tags: [tag(1, { samples: [{ t: 0, tiltDegrees: 200, headingDegrees: 0 }] })] }],
+    ["a light reading out of range", { tags: [tag(1, { samples: [{ t: 0, tiltDegrees: 0, headingDegrees: 0, light: 256 }] })] }],
     ["a tag id that is not an id", { tags: [tag(1, { id: "tag-1" })] }],
     ["a tag with an unknown field", { tags: [{ ...tag(1), note: "x" }] }],
     ["a tag that belongs to another walk", { tags: [tag(1), tag(2, { walkId: OTHER })] }],

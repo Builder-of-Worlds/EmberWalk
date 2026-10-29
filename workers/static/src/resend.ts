@@ -4,9 +4,10 @@ import type { Mailer } from "./types";
 const SEND_URL = "https://api.resend.com/emails";
 const SENDER = "hello@emberwalk.app";
 
-export function createResendMailer(apiKey: string, fetchImpl: typeof fetch): Mailer {
+export function createResendMailer(apiKey: string, postalFooter: string | undefined, fetchImpl: typeof fetch): Mailer {
   return {
     async send(message) {
+      const text = finishEmail(message, postalFooter);
       const response = await fetchImpl(SEND_URL, {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
@@ -15,7 +16,7 @@ export function createResendMailer(apiKey: string, fetchImpl: typeof fetch): Mai
           reply_to: SENDER,
           to: [message.to],
           subject: message.subject,
-          text: finishEmail(message),
+          text,
           headers: {
             "List-Unsubscribe": `<${message.unsubscribeUrl}>`,
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

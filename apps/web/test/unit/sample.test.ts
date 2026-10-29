@@ -82,7 +82,7 @@ afterEach(() => {
 });
 
 describe("every bundled sample", () => {
-  it("is marked synthetic in its data, and its results and finding screens never say so, in both views (D-177)", async () => {
+  it("is marked synthetic in its data, and its results and finding screens never say so, in both views", async () => {
     expect(SAMPLES.length).toBeGreaterThan(0);
     for (const sample of SAMPLES) {
       expect(sample.synthetic).toBe(true);

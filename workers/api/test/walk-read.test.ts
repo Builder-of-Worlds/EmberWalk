@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { ErrorBody, stillPath, VISITOR_HEADER, WalkResultsResponse, WalkStatusResponse } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { coverageKey } from "@emberwalk/rules";
-import { setVoiceNotes } from "@emberwalk/db";
+import { completeWalk, setVoiceNotes, setWalkProgress } from "@emberwalk/db";
 import { handleWalkRead, READ_PATH } from "../src/walk-read.ts";
 import { emptyBucket } from "./route.ts";
 import { clearWalks, type DoneWalk, OWNER, seedCoverage, seedDonePart, seedDoneWalk, seedGap, seedWalk } from "./seed.ts";
@@ -58,6 +58,16 @@ describe("GET /api/walks/{walkId}", () => {
     await env.DB.prepare("UPDATE walks SET failure_code = 'segment_failed', failure_message = 'Something went wrong.' WHERE id = ?").bind(failed).run();
     expect(await (await get(`/api/walks/${failed}`)).json()).toMatchObject({ failure: { code: "segment_failed", message: "Something went wrong." } });
     expect(await (await get(`/api/walks/${WALK}`)).json()).toEqual({ walkId: WALK, state: { name: "done" }, failure: null });
+  });
+
+  it("carries the count of a processing stage, and none once the walk is done", async () => {
+    const counting = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d10";
+    await seedWalk(counting, "processing", "segment");
+    await setWalkProgress(env.DB, counting, 9, 13);
+    const body = WalkStatusResponse.parse(await (await get(`/api/walks/${counting}`)).json());
+    expect(body.state).toEqual({ name: "processing", step: "segment", progress: { done: 9, total: 13 } });
+    await completeWalk(env.DB, counting);
+    expect(await (await get(`/api/walks/${counting}`)).json()).toEqual({ walkId: counting, state: { name: "done" }, failure: null });
   });
 });
 

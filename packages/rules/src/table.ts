@@ -1,5 +1,6 @@
-import type { z } from "zod";
-import type { Band, Concept, Contact, PlantState as PlantStates, Rule, Spacing } from "@emberwalk/shared";
+import { z } from "zod";
+import { BAND_FEET, type Band, type Concept, type Contact, type PlantState as PlantStates, type Rule, type Spacing } from "@emberwalk/shared";
+import type { StateFileInput } from "./state.ts";
 
 type PlantState = z.infer<typeof PlantStates>;
 
@@ -9,14 +10,18 @@ export type Flag = (typeof FLAGS)[number];
 export type Statute = "sra" | "vhfhsz";
 
 export type When = {
-  contact?: z.infer<typeof Contact>[];
-  plant?: (PlantState | null)[];
-  spacing?: z.infer<typeof Spacing>[];
-  flags?: Flag[];
-  unless?: Flag[];
+  contact?: z.infer<typeof Contact>[] | undefined;
+  plant?: (PlantState | null)[] | undefined;
+  spacing?: z.infer<typeof Spacing>[] | undefined;
+  flags?: Flag[] | undefined;
+  unless?: Flag[] | undefined;
 };
 
-export type RuleRow = Rule & { key: string; code: string; section: string; statute: Statute | null; when: When; unsure: string | null };
+export type RuleRow = Rule & { key: string; code: string; section: string; statute: string | null; when: When; unsure: string | null };
+
+export const JURISDICTIONS = { ca: ["sra", "vhfhsz"], ca_sra: ["sra"], ca_vhfhsz: ["vhfhsz"] } as const satisfies Record<string, Statute[]>;
+export const CaJurisdiction = z.enum(Object.keys(JURISDICTIONS) as [keyof typeof JURISDICTIONS]);
+export type CaJurisdiction = z.infer<typeof CaJurisdiction>;
 
 const SOURCES = {
   prc: { url: "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=PRC&sectionNum=4291", on: "2026-10-25" },
@@ -232,6 +237,7 @@ const SPECS: Spec[] = [
     },
   },
   zone0("foundation_vent", CITES.zone0),
+  zone0("house_wall", CITES.zone0),
   {
     key: "branch-dead",
     concept: "tree_branch_over_roof",
@@ -248,6 +254,15 @@ const SPECS: Spec[] = [
   {
     key: "branch-chimney",
     concept: "tree_branch_over_roof",
+    zones: NEAR,
+    cites: [CITES.ccrA2Chimney, CITES.prcA2, CITES.govA2],
+    when: { flags: ["near_chimney"] },
+    condition: "A branch within 10 feet of a chimney or stovepipe outlet",
+    plain: CHIMNEY,
+  },
+  {
+    key: "chimney-branches",
+    concept: "chimney",
     zones: NEAR,
     cites: [CITES.ccrA2Chimney, CITES.prcA2, CITES.govA2],
     when: { flags: ["near_chimney"] },
@@ -486,6 +501,17 @@ export const RULES: RuleRow[] = SPECS.flatMap((spec) =>
     })),
   ),
 );
+
+const tagOf = (url: string) => Object.entries(SOURCES).find(([, source]) => source.url === url)![0];
+
+export const CALIFORNIA = {
+  format: 1,
+  state: "CA",
+  bands: { zone_0: [...BAND_FEET.zone_0], zone_1: [...BAND_FEET.zone_1], zone_2: [...BAND_FEET.zone_2] },
+  jurisdictions: Object.fromEntries(Object.entries(JURISDICTIONS).map(([code, statutes]) => [code, [...statutes]])),
+  sources: Object.fromEntries(Object.entries(SOURCES).map(([tag, source]) => [tag, { ...source }])),
+  rules: RULES.map(({ state: _state, citation: _citation, sourceUrl, retrievedOn: _on, ...row }) => ({ ...row, source: tagOf(sourceUrl) })),
+} satisfies StateFileInput;
 
 export function toRule({ key: _key, code: _code, section: _section, statute: _statute, when: _when, unsure: _unsure, ...rule }: RuleRow): Rule {
   return rule;

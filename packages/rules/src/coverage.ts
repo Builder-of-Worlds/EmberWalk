@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Id, SIDES, Timestamp, type Concept, type Gap, type MotionSample, type Side } from "@emberwalk/shared";
+import { Id, Side, SIDES, Timestamp, type Concept, type Gap, type MotionSample } from "@emberwalk/shared";
 import { EDGE_MARGIN, MIN_CONFIDENCE, MIN_FRAMES } from "./observe.ts";
 
 export const SIDE_GAP_KINDS = ["missing", "dark", "first_five_feet"] as const;
@@ -53,6 +53,8 @@ export type CoverageGap = z.infer<typeof CoverageGap>;
 
 const Verdict = z.enum(["checked", "not_checked"]);
 const LoopVerdict = z.enum(["closed", "open", "not_checked"]);
+export const SideState = z.enum(["checked", "partly_checked", "not_checked"]);
+export type SideState = z.infer<typeof SideState>;
 
 export const CoverageRecord = z
   .strictObject({
@@ -65,10 +67,15 @@ export const CoverageRecord = z
       z.strictObject({ same: z.boolean(), confidence: z.number().min(0).max(1) }),
       z.strictObject({ notChecked: z.string().min(1).max(300) }),
     ]),
+    sides: z.record(Side, SideState).optional(),
   })
   .refine((record) => record.coverage !== "checked" || (record.gaps.length === 0 && record.loop === "closed"), {
     message: "a checked walk has no gap and a closed loop",
     path: ["coverage"],
+  })
+  .refine((record) => record.coverage !== "checked" || Object.values(record.sides ?? {}).every((state) => state === "checked"), {
+    message: "a checked walk has every side checked",
+    path: ["sides"],
   });
 export type CoverageRecord = z.infer<typeof CoverageRecord>;
 

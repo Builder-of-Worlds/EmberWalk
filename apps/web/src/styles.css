@@ -42,6 +42,7 @@ h1 {
   line-height: 1.2;
   margin: 0.5rem 0 0;
   color: var(--bark);
+  text-align: center;
 }
 
 .lead {
@@ -53,6 +54,7 @@ h2 {
   line-height: 1.25;
   margin: 0.5rem 0 0;
   color: var(--bark);
+  text-align: center;
 }
 
 .lines,
@@ -78,6 +80,7 @@ h2 {
   padding: 0.75rem;
   border-radius: 0.75rem;
   background: var(--stone);
+  text-align: center;
 }
 
 .banner {
@@ -166,6 +169,19 @@ h2 {
   stroke: var(--leaf-dark);
 }
 
+.outline line {
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.outline line.panning {
+  stroke: var(--bark);
+}
+
+.outline line.panned {
+  stroke: var(--leaf);
+}
+
 .choices {
   margin: 0;
   padding: 0;
@@ -238,6 +254,12 @@ h2 {
 
 .finding p {
   margin: 0;
+  text-align: center;
+}
+
+.finding .status,
+.status-picker .status {
+  justify-content: center;
 }
 
 .proof {
@@ -285,6 +307,11 @@ h2 {
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.3;
+}
+
+.one-finding .label,
+.one-finding .sentence {
+  text-align: center;
 }
 
 .status {
@@ -356,6 +383,7 @@ h3 {
   font-size: 1.25rem;
   margin: 0.25rem 0 0;
   color: var(--bark);
+  text-align: center;
 }
 
 .button:disabled {
@@ -366,4 +394,129 @@ h3 {
 .button:focus-visible {
   outline: 3px solid var(--soil);
   outline-offset: 2px;
+}
+
+.trail {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trail li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  min-height: 2rem;
+  padding-bottom: 1rem;
+  color: var(--soil);
+}
+
+.trail li:last-child {
+  padding-bottom: 0;
+}
+
+.trail li::after {
+  content: "";
+  position: absolute;
+  left: calc(1rem - 2px);
+  top: 2rem;
+  bottom: 0;
+  width: 4px;
+  background: var(--stone);
+  transition: background-color 0.4s ease;
+}
+
+.trail li:last-child::after {
+  display: none;
+}
+
+.trail li.behind::after {
+  background: var(--leaf);
+}
+
+.trail .mark {
+  grid-row: 1 / span 2;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--stone);
+  border-radius: 50%;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  color: var(--paper);
+  font-size: 1rem;
+  font-weight: 700;
+  transition: background-color 0.4s ease, border-color 0.4s ease;
+}
+
+.trail .behind .mark {
+  background: var(--leaf);
+  border-color: var(--leaf-dark);
+}
+
+.trail .behind .mark::before {
+  content: "\2713";
+}
+
+.trail .current .mark {
+  border: 4px solid var(--leaf-dark);
+}
+
+.trail .current .mark::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--leaf-dark);
+}
+
+.trail .label {
+  align-self: center;
+}
+
+.trail .behind .label {
+  color: var(--ink);
+}
+
+.trail .current .label {
+  color: var(--bark);
+  font-weight: 700;
+}
+
+.trail p {
+  grid-column: 2;
+  margin: 0.25rem 0 0;
+  color: var(--ink);
+}
+
+.trail .count {
+  grid-column: 2;
+  margin-top: 0.25rem;
+  color: var(--soil);
+  font-variant-numeric: tabular-nums;
+}
+
+.trail .bar {
+  grid-column: 2;
+  height: 0.75rem;
+  margin-top: 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--stone);
+  overflow: hidden;
+}
+
+.trail .bar span {
+  display: block;
+  height: 100%;
+  background: var(--leaf);
+  transition: width 0.6s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail li::after,
+  .trail .mark,
+  .trail .bar span {
+    transition: none;
+  }
 }

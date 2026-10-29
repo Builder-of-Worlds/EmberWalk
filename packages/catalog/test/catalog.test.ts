@@ -4,7 +4,7 @@ import { RULES } from "@emberwalk/rules";
 import { LOOP_CONCEPTS } from "@emberwalk/shared";
 import { checkCatalog, type CatalogRow } from "../src/check.ts";
 
-const D134_OBJECTS = [
+const HOUSE_OBJECTS = [
   "gas_can",
   "stored_fuel",
   "lawn_mower",
@@ -53,11 +53,11 @@ describe("the shipped catalog", () => {
     expect(() => checkCatalog(CATALOG)).not.toThrow();
   });
 
-  it("covers every concept and the D-134 objects", async () => {
+  it("covers every concept and the house objects", async () => {
     const CATALOG = await shipped();
     const concepts = CATALOG.map((r) => r.concept);
     for (const concept of LOOP_CONCEPTS) expect(concepts).toContain(concept);
-    for (const concept of D134_OBJECTS) expect(concepts).toContain(concept);
+    for (const concept of HOUSE_OBJECTS) expect(concepts).toContain(concept);
     expect(CATALOG.filter((r) => r.pending === "shared").length).toBeGreaterThanOrEqual(10);
   });
 
@@ -85,14 +85,24 @@ describe("the shipped catalog", () => {
     }
   });
 
-  it("marks house_wall and chimney as context only, since no rule makes a finding for them (D-118, D-158)", async () => {
+  it('chimney and wall get a rule that makes findings for them: chimney and house wall map to their rule rows', async () => {
     const CATALOG = await shipped();
+    for (const [concept, ruleKey] of [
+      ["house_wall", "house-wall-zone-0"],
+      ["chimney", "chimney-branches"],
+    ]) {
+      const r = byConcept(CATALOG, concept!);
+      expect([r.ruleKey, r.context, r.pending], concept).toEqual([ruleKey, undefined, undefined]);
+      expect(RULES.some((rule) => rule.concept === concept && rule.key === ruleKey), concept).toBe(true);
+    }
+    expect(CATALOG.filter((r) => r.context === true)).toEqual([]);
+  });
+
+  it("a context row for a concept with a rule row is refused", () => {
     for (const concept of ["house_wall", "chimney"]) {
-      const r = byConcept(CATALOG, concept);
-      expect(r.context).toBe(true);
-      expect(r.ruleKey).toBeUndefined();
-      expect(r.pending).toBeUndefined();
-      expect(RULES.some((rule) => rule.concept === concept)).toBe(false);
+      expect(() => checkCatalog([{ ...unmapped(), concept, phrases: [concept], context: true }])).toThrow(
+        new RegExp(`${concept}: context row for a concept that has rules`),
+      );
     }
   });
 
@@ -137,7 +147,7 @@ describe("the shipped catalog", () => {
   it("gives every new object a pending row that names a rule key no rule has yet", async () => {
     const CATALOG = await shipped();
     const ruleKeys = new Set(RULES.map((rule) => rule.key));
-    for (const concept of D134_OBJECTS) {
+    for (const concept of HOUSE_OBJECTS) {
       const r = byConcept(CATALOG, concept);
       expect(r.pending, concept).toBe("shared");
       expect(r.proposedKey, concept).toBeTruthy();

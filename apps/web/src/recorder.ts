@@ -1,7 +1,9 @@
 import { Device } from "@emberwalk/shared";
-import type { MotionSample } from "@emberwalk/shared";
+import type { MotionSample, Side } from "@emberwalk/shared";
+import type { LightMeter } from "./light.ts";
 import type { Motion } from "./motion.ts";
-import type { StopReason, WalkMarks } from "./take-store.ts";
+import { walkOrder } from "./parts.ts";
+import type { Pan, StopReason, WalkMarks } from "./take-store.ts";
 
 export const MP4_TYPES = ["video/mp4;codecs=avc1,mp4a", "video/mp4"] as const;
 export const VIDEO_BITS_PER_SECOND = 4_000_000;
@@ -85,11 +87,28 @@ export type Recording = {
   resume(): void;
   soundOff(): void;
   propertyLine(): void;
+  pan(): void;
+  panning(): Side | null;
+  pansLeft(): number;
   videoMs(): number;
   done: Promise<StopReason>;
 };
 
-export const startRecording = (camera: Camera, sink: Sink, clock: Clock, maxMs: number, motion: Motion = null): Recording => {
+export type Sensors = { light?: LightMeter | null; part?: Side | null };
+
+const MAX_PANS = 4;
+
+const endPan = (pans: Pan[] | undefined, atMs: number): Pan[] =>
+  (pans ?? []).map((pan, i, all) => (i === all.length - 1 && pan.endMs === null ? { ...pan, endMs: atMs } : pan));
+
+export const startRecording = (
+  camera: Camera,
+  sink: Sink,
+  clock: Clock,
+  maxMs: number,
+  motion: Motion = null,
+  { light = null, part = null }: Sensors = {},
+): Recording => {
   const recorder = new camera.Recorder(camera.stream, {
     mimeType: camera.mimeType,
     videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
@@ -101,8 +120,10 @@ export const startRecording = (camera: Camera, sink: Sink, clock: Clock, maxMs: 
   let pausedMs = 0;
   let soundOffAtMs: number | null = null;
   let samples: MotionSample[] = [];
-  let sampled = 0;
+  const taken: MotionSample[] = [];
   let lastSampleMs = -Infinity;
+  let panSide: Side | null = null;
+  let pansTaken = 0;
 
   const videoMs = () => (pausedAt ?? clock.now()) - startedAt - pausedMs;
   const queue = (work: () => Promise<unknown>) => {
@@ -131,13 +152,22 @@ export const startRecording = (camera: Camera, sink: Sink, clock: Clock, maxMs: 
   };
   const stopListening =
     motion?.listen((bearing) => {
-      if (pausedAt !== null || recorder.state !== "recording" || sampled >= MAX_MOTION_SAMPLES) return;
+      if (pausedAt !== null || recorder.state !== "recording" || taken.length >= MAX_MOTION_SAMPLES) return;
       const at = videoMs();
       if (at - lastSampleMs < MOTION_EVERY_MS) return;
       lastSampleMs = at;
-      sampled += 1;
-      samples.push({ t: at / 1000, ...bearing });
+      const lux = light?.read() ?? null;
+      const sample = { t: at / 1000, ...bearing, ...(lux === null ? {} : { light: lux }) };
+      taken.push(sample);
+      samples.push(sample);
     }) ?? (() => undefined);
+
+  const panSides = (): readonly Side[] => (part === null ? walkOrder(taken).slice(0, MAX_PANS) : [part]);
+  const closePan = (atMs: number) => {
+    if (panSide === null) return;
+    panSide = null;
+    mark((marks) => ({ ...marks, pans: endPan(marks.pans, atMs) }));
+  };
 
   const endPause = () => {
     if (pausedAt === null) return;
@@ -158,8 +188,10 @@ export const startRecording = (camera: Camera, sink: Sink, clock: Clock, maxMs: 
     recorder.onstop = () => {
       cancelLimit();
       stopListening();
+      light?.stop();
       endPause();
       flushMotion();
+      closePan(videoMs());
       stopTracks(camera.stream);
       const durationMs = videoMs();
       writes
@@ -195,6 +227,18 @@ export const startRecording = (camera: Camera, sink: Sink, clock: Clock, maxMs: 
       const atMs = videoMs();
       mark((marks) => ({ ...marks, propertyLines: [...marks.propertyLines, atMs] }));
     },
+    pan: () => {
+      if (recorder.state !== "recording") return;
+      const atMs = videoMs();
+      if (panSide !== null) return closePan(atMs);
+      const side = panSides()[pansTaken];
+      if (side === undefined) return;
+      panSide = side;
+      pansTaken += 1;
+      mark((marks) => ({ ...marks, pans: [...(marks.pans ?? []), { side, startMs: atMs, endMs: null }] }));
+    },
+    panning: () => panSide,
+    pansLeft: () => panSides().length - pansTaken,
     videoMs,
     done,
   };

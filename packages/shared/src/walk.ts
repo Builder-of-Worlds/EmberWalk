@@ -37,11 +37,15 @@ export const PipelineStep = z.enum([
   "recheck",
 ]);
 
+export const StageProgress = z
+  .strictObject({ done: z.int().min(0), total: z.int().min(1) })
+  .refine((count) => count.done <= count.total, { message: "done is above total" });
+
 export const WalkState = z.discriminatedUnion("name", [
   z.strictObject({ name: z.literal("recording") }),
   z.strictObject({ name: z.literal("uploading") }),
   z.strictObject({ name: z.literal("queued") }),
-  z.strictObject({ name: z.literal("processing"), step: PipelineStep }),
+  z.strictObject({ name: z.literal("processing"), step: PipelineStep, progress: StageProgress.nullable().optional() }),
   z.strictObject({ name: z.literal("done") }),
   z.strictObject({ name: z.literal("failed"), step: PipelineStep }),
 ]);
@@ -77,10 +81,13 @@ export const Walk = z.strictObject({
 
 const Seconds = z.number().nonnegative();
 
+export const Light = z.number().min(0).max(255);
+
 export const MotionSample = z.strictObject({
   t: Seconds,
   tiltDegrees: z.number().min(-180).max(180),
   headingDegrees: z.number().min(0).lt(360),
+  light: Light.optional(),
 });
 
 export const Tag = z
@@ -124,6 +131,11 @@ export const HINTS_FOR: Record<(typeof GAP_KINDS)[number], readonly (typeof GAP_
 
 export const Side = z.enum(SIDES);
 
+export const tagSide = (tag: Pick<Tag, "label">): Side | null => {
+  const side = Side.safeParse(tag.label);
+  return side.success ? side.data : null;
+};
+
 export const Gap = z
   .strictObject({ side: Side, kind: z.enum(GAP_KINDS), hint: z.enum(GAP_HINTS) })
   .refine((gap) => HINTS_FOR[gap.kind].includes(gap.hint), { message: "a gap's hint must suit its kind", path: ["hint"] });
@@ -151,6 +163,7 @@ export type Concept = z.infer<typeof Concept>;
 export type ClipKind = z.infer<typeof ClipKind>;
 export type PipelineStep = z.infer<typeof PipelineStep>;
 export type WalkState = z.infer<typeof WalkState>;
+export type StageProgress = z.infer<typeof StageProgress>;
 export type Device = z.infer<typeof Device>;
 export type Visitor = z.infer<typeof Visitor>;
 export type Walk = z.infer<typeof Walk>;

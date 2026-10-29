@@ -22,6 +22,12 @@ export const SETTLED_LEAVES = [
   "Your walk stays on this phone. You can send it later from Your Walks.",
 ];
 
+export const SETTLED_CHECKING = {
+  stages: ["Sent", "Ready", "Looking", "Writing", "Done"],
+  counted: "7 of 14 steps done",
+  checked: "Checked. Opening what EmberWalk found.",
+};
+
 export const SEND_REWRITES = {
   tryAgain: "Sending paused. Your walk is still saved on this phone. Tap Send My Walk to try again.",
   unknownWalk: "This walk can't be sent anymore. Record the walk again.",
@@ -50,6 +56,14 @@ export const SETTLED_RESULTS = [
   "Fix This First",
   "Fix These 2 First",
   "Fix These 3 First",
+  "Start closest to your home: the first 5 feet matter most, then out to 30 feet, then 100.",
+  "Inside 5 feet: nothing found.",
+  "Inside 5 feet: 1 thing to clear.",
+  "Inside 5 feet: 2 things to clear.",
+  "From 5 to 30 feet: nothing found.",
+  "From 5 to 30 feet: 1 thing to clear.",
+  "From 5 to 30 feet: 2 things to clear.",
+  "From 5 to 30 feet: 3 things to clear.",
   "First 5 Feet",
   "5 to 30 Feet",
   "30 to 100 Feet",
@@ -59,6 +73,16 @@ export const SETTLED_RESULTS = [
   "Over a year old. Walk again to update.",
   "Required Now",
   "Recommended",
+];
+
+export const SETTLED_DISTANCE = [
+  "Against the house.",
+  "Within 1 foot of the house.",
+  "Within 3 feet of the house.",
+  "About 1 foot from the house.",
+  "About 2 feet from the house.",
+  "About 12 feet from the house.",
+  "About 12 to 19 feet from the house.",
 ];
 
 export const SETTLED_NOT_CHECKED = {

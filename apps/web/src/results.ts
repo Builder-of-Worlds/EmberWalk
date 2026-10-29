@@ -41,8 +41,6 @@ export type WalkResults = {
 
 export const BANDS: Band[] = ["zone_0", "zone_1", "zone_2"];
 
-export const FIX_FIRST_MOST = 3;
-
 export const FIX_FIRST_FEET = 30;
 
 export const blocksGreen = (f: ResultFinding): boolean => f.label === "required_now" || f.band === "zone_0";
@@ -71,15 +69,12 @@ export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => b
   const blocking = results.findings.filter((f) => blocksGreen(f) && !cleared(f));
   if (blocking.length > 0) {
     const near = fixFirstOf(results.findings, cleared);
-    return { kind: "fix", first: (near.length > 0 ? near : blocking.sort(nearOrder)).slice(0, FIX_FIRST_MOST) };
+    return { kind: "fix", first: near.length > 0 ? near : blocking.sort(nearOrder) };
   }
   return results.coverage === "checked" ? { kind: "ready" } : { kind: "so_far" };
 };
 
-export const sidesToWalk = (gaps: readonly Gap[]): Side[] => {
-  const gapped = SIDES.filter((side) => gaps.some((gap) => gap.side === side));
-  return gapped.length === SIDES.length ? [] : gapped;
-};
+export const sidesToWalk = (gaps: readonly Gap[]): Side[] => SIDES.filter((side) => gaps.some((gap) => gap.side === side));
 
 export const withoutRemoved =(results: WalkResults, removed: Removal[]): WalkResults => {
   const gone = new Set(removed.map((r) => r.findingId));

@@ -79,6 +79,32 @@
                   "elevation_in": {"type": "integer", "minimum": 0}
                 }
               }
+            },
+            "windows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["side", "along_in", "width_in", "height_in", "sill_in"],
+                "properties": {
+                  "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+                  "along_in": {"type": "integer", "minimum": 0},
+                  "width_in": {"type": "integer", "minimum": 1},
+                  "height_in": {"type": "integer", "minimum": 1},
+                  "sill_in": {"type": "integer", "minimum": 0}
+                }
+              }
+            },
+            "garage_door": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["side", "along_in", "width_in", "height_in"],
+              "properties": {
+                "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+                "along_in": {"type": "integer", "minimum": 0},
+                "width_in": {"type": "integer", "minimum": 1},
+                "height_in": {"type": "integer", "minimum": 1}
+              }
             }
           }
         }
@@ -203,13 +229,43 @@
             "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
           }
         },
+        "concrete": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "tint"],
+          "properties": {
+            "material": {"type": "string", "minLength": 1},
+            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+          }
+        },
         "light": {
           "type": "object",
           "additionalProperties": false,
           "required": ["hdri", "rotation_deg"],
           "properties": {
             "hdri": {"type": "string", "minLength": 1},
-            "rotation_deg": {"type": "number", "minimum": -360, "maximum": 360}
+            "rotation_deg": {"type": "number", "minimum": -360, "maximum": 360},
+            "sky": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["horizon", "zenith", "strength"],
+              "properties": {
+                "horizon": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+                "zenith": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+                "strength": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+                "zenith_at": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                "clouds": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["colour", "cover", "scale"],
+                  "properties": {
+                    "colour": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+                    "cover": {"type": "number", "minimum": 0, "maximum": 1},
+                    "scale": {"type": "number", "exclusiveMinimum": 0, "maximum": 50}
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -273,7 +329,7 @@
         "pan_tilt_deg": {"type": "number", "minimum": -30, "maximum": 45},
         "speed_in_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
         "pan_s": {"type": "number", "minimum": 10, "maximum": 20},
-        "fps": {"enum": [24, 25, 30, 60]},
+        "fps": {"enum": [15, 24, 25, 30, 60]},
         "width_px": {"type": "integer", "minimum": 1},
         "height_px": {"type": "integer", "minimum": 1},
         "focal_mm": {"type": "number", "exclusiveMinimum": 0},

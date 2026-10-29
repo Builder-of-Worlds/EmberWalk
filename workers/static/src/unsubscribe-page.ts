@@ -34,14 +34,14 @@ export function unsubscribePage(outcome: UnsubscribeOutcome): Response {
   <script type="module" src="/site.js"></script>
 </head>
 <body>
-  <header class="masthead">
+  <header class="topbar">
     <a class="wordmark" href="/">EmberWalk</a>
   </header>
   <main>
     <section class="block">
-      <div class="column">
-        <h1 class="focus-in">${heading}</h1>
-        <p class="lead focus-in">${text}</p>
+      <div class="column card">
+        <h1 class="rise">${heading}</h1>
+        <p class="lead rise">${text}</p>
       </div>
     </section>
   </main>

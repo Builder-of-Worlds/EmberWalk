@@ -70,7 +70,7 @@ def toward_wall(doc, p):
 class Normal(unittest.TestCase):
     def test_the_hero_route_reads_from_its_spec(self):
         p = route.params(spec())
-        self.assertEqual((p["standoff_in"], p["height_in"], p["fps"], p["width_px"], p["height_px"]), (132, 54, 30, 1920, 1080))
+        self.assertEqual((p["standoff_in"], p["height_in"], p["fps"], p["width_px"], p["height_px"]), (132, 54, 15, 1920, 1080))
         self.assertTrue(10 <= p["pan_s"] <= 20)
 
     def test_one_sample_per_frame_in_order(self):
@@ -79,9 +79,30 @@ class Normal(unittest.TestCase):
         self.assertEqual(len(motion["samples"]), n)
         self.assertEqual([s["frame"] for s in motion["samples"]], list(range(1, n + 1)))
         for s in motion["samples"][:: 97]:
-            self.assertAlmostEqual(s["t"], (s["frame"] - 1) / 30.0, places=5)
-        self.assertAlmostEqual(motion["duration_s"], n / 30.0, places=6)
-        self.assertEqual((parts["frame_count"], parts["fps"], parts["scene"]), (n, 30, motion["scene"]))
+            self.assertAlmostEqual(s["t"], (s["frame"] - 1) / 15.0, places=5)
+        self.assertAlmostEqual(motion["duration_s"], n / 15.0, places=6)
+        self.assertEqual((parts["frame_count"], parts["fps"], parts["scene"]), (n, 15, motion["scene"]))
+
+    def test_the_hero_walk_at_15_fps_keeps_its_length_in_seconds_with_half_the_frames(self):
+        doc = spec()
+        doc["route"]["fps"] = 30
+        at_30, _ = route.build(doc)
+        at_15, parts = built()
+        self.assertEqual(at_15["fps"], 15)
+        self.assertLess(abs(at_15["duration_s"] - at_30["duration_s"]), 1 / 15.0)
+        self.assertLessEqual(abs(at_15["frame_count"] - at_30["frame_count"] / 2.0), 1.0)
+        self.assertEqual(parts["parts"][-1]["end_frame"], at_15["frame_count"])
+        self.assertEqual([p["kind"] for p in parts["parts"]], [p["kind"] for p in route.build(doc)[1]["parts"]])
+
+    def test_a_15_fps_motion_file_and_spec_pass_their_schemas(self):
+        motion, _ = built()
+        self.assertEqual(motion["fps"], 15)
+        self.assertEqual(schema.errors(motion, schema.load("motion")), [])
+        self.assertEqual(schema.errors(spec(), schema.load("house-spec")), [])
+        for bad in (12, 29.97):
+            doc = spec()
+            doc["route"]["fps"] = bad
+            self.assertTrue(schema.errors(doc, schema.load("house-spec")), bad)
 
     def test_the_whole_walk_is_330_s_or_less(self):
         for name in SPECS:
@@ -147,7 +168,7 @@ class Normal(unittest.TestCase):
                 checked += 1
                 self.assertAlmostEqual(wall_dist(doc, xy), 132, delta=1.0)
                 self.assertLess(turn(s["heading_deg"], face), 2.5, f)
-        self.assertGreater(checked, 400)
+        self.assertGreater(checked * 7, 90 * route.params(doc)["fps"])
 
     def test_each_pan_looks_out_along_its_bearing_at_its_middle(self):
         motion, parts = built()
@@ -202,15 +223,15 @@ class Deck(unittest.TestCase):
             elif not any(inside(p, st, -stride / 2 - 1) for st in doc["structures"] if st["kind"] in route.WALKABLE):
                 off += 1
                 self.assertAlmostEqual(p[2], 54, delta=0.8)
-        self.assertGreater(on, 300)
-        self.assertGreater(off, 3000)
+        self.assertGreater(on, 10 * route.params(doc)["fps"])
+        self.assertGreater(off, 100 * route.params(doc)["fps"])
 
     def test_the_rise_is_eased_over_one_stride_with_no_jump(self):
         doc = spec()
         motion, _ = built()
         zs = [s["pos_in"][2] for s in motion["samples"]]
-        self.assertLess(max(abs(b - a) for a, b in zip(zs, zs[1:])), 2.0)
         p = route.params(doc)
+        self.assertLess(max(abs(b - a) for a, b in zip(zs, zs[1:])) * p["fps"], 60)
         rising = [s for s in motion["samples"] if 56 < s["pos_in"][2] < 76]
         self.assertGreaterEqual(len(rising), 2 * 0.6 * route.stride_in(p) / p["speed_in_s"] * p["fps"])
 

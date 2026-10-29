@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { Clip as ClipSchema, Tag as TagSchema, Track as TrackSchema, type Clip, type Concept, type Contact, type Tag, type Track } from "@emberwalk/shared";
-import { CAMERA_HEIGHT_FEET, feetFromWall, groundFeet, LONG_SIDE_FOV_DEGREES, sampleNear, verticalFov, type FeetRange, type View } from "./ground.ts";
+import { CAMERA_HEIGHT_FEET, feetFromWall, groundFeet, sampleNear, verticalFov, type FeetRange, type View } from "./ground.ts";
 import { bandFor } from "./lookup.ts";
 import { Observation } from "./evaluate.ts";
 import type { Flag } from "./table.ts";
@@ -80,10 +80,7 @@ export const contactOf = (concept: Concept, frames: Frame[], walls: Map<number, 
   return "no";
 };
 
-const horizontalFov = (clip: Clip) =>
-  clip.width >= clip.height
-    ? LONG_SIDE_FOV_DEGREES
-    : (2 * Math.atan(Math.tan((LONG_SIDE_FOV_DEGREES * Math.PI) / 360) * (clip.width / clip.height)) * 180) / Math.PI;
+const horizontalFov = (clip: Clip) => verticalFov({ width: clip.height, height: clip.width });
 
 export function observe(input: ObserveInput): Observed {
   const clips = new Map(input.clips.map((c) => [c.id, ClipSchema.parse(c)]));
@@ -98,7 +95,7 @@ export function observe(input: ObserveInput): Observed {
   const timeOf = (clip: Clip, frame: number) => input.startByClip[clip.id]! + frame / clip.fps;
   const viewAtTime = (clip: Clip, t: number): View | null => {
     const sample = sampleNear(samples, t);
-    if (sample === null || !(sample.tiltDegrees >= -90 && sample.tiltDegrees <= 90)) return null;
+    if (sample === null || !(Math.abs(sample.tiltDegrees) <= 90)) return null;
     return { tiltBelowHorizonDegrees: sample.tiltDegrees, verticalFovDegrees: verticalFov(clip), cameraHeightFeet: CAMERA_HEIGHT_FEET };
   };
   const viewAt = (clip: Clip, frame: number) => viewAtTime(clip, timeOf(clip, frame));
@@ -197,7 +194,7 @@ export function observe(input: ObserveInput): Observed {
     pan.distanceFeet.low <= loop.distanceFeet.high &&
     loop.headingDegrees !== null &&
     pan.headingDegrees !== null &&
-    turn(loop.headingDegrees + 180, pan.headingDegrees) <= MERGE_HEADING_DEGREES;
+    turn(180 + loop.headingDegrees, pan.headingDegrees) <= MERGE_HEADING_DEGREES;
   for (const pan of candidates.filter((c) => c.clip.kind === "pan"))
     for (const loop of candidates.filter((c) => c.clip.kind === "loop")) {
       if (!joins(loop, pan)) continue;

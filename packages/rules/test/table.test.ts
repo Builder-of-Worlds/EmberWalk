@@ -80,15 +80,46 @@ describe("the California rule table", () => {
     }
   });
 
-  it("covers every concept but the house wall and chimney with Zone 0 guidance", () => {
+  it("covers every concept but the chimney with Zone 0 guidance", () => {
     for (const concept of LOOP_CONCEPTS) {
       const guided = RULES.some((r) => r.concept === concept && r.zone === "zone_0" && r.citation === "CAL FIRE Zone 0 guidance");
-      expect(guided, concept).toBe(concept !== "house_wall" && concept !== "chimney");
+      expect(guided, concept).toBe(concept !== "chimney");
     }
   });
 });
 
-describe("the plain wording a homeowner reads (D-183)", () => {
+describe('chimney and wall get a rule that makes findings for them', () => {
+  const cited = (q: Parameters<typeof lookup>[0], jurisdiction: Parameters<typeof lookup>[1]) => lookup(q, jurisdiction).map((r) => r.citation);
+
+  it("answers the chimney and house_wall keys under ca, ca_sra and ca_vhfhsz", () => {
+    const chimney = query({ concept: "chimney", flags: ["near_chimney"] }, 0);
+    expect(cited(chimney, "ca")).toEqual(["14 CCR 1299.03(a)(2)", "PRC 4291(a)(2)", "Gov. Code 51182(a)(2)"]);
+    expect(cited(chimney, "ca_sra")).toEqual(["14 CCR 1299.03(a)(2)", "PRC 4291(a)(2)"]);
+    expect(cited(chimney, "ca_vhfhsz")).toEqual(["14 CCR 1299.03(a)(2)", "Gov. Code 51182(a)(2)"]);
+    for (const jurisdiction of ["ca", "ca_sra", "ca_vhfhsz"] as const) {
+      expect(ids(lookup(query({ concept: "chimney", flags: ["near_chimney"] }, 17), jurisdiction))[0], jurisdiction).toBe("ca-chimney-branches-ccr-z1");
+      expect(ids(lookup(query({ concept: "house_wall" }, 0), jurisdiction)), jurisdiction).toEqual(["ca-house-wall-zone-0-calfire-z0"]);
+    }
+  });
+
+  it("quotes the rule text the table already cites for each, with its date read", () => {
+    const [chimney] = lookup(query({ concept: "chimney", flags: ["near_chimney"] }, 0), "ca");
+    expect([chimney!.requirement, chimney!.status, chimney!.retrievedOn]).toEqual([
+      "keep all branches a minimum of ten feet (10 ft.) away from chimney and stovepipe outlets",
+      "in_force",
+      "2026-10-25",
+    ]);
+    const [wall] = lookup(query({ concept: "house_wall" }, 0), "ca");
+    expect([wall!.requirement, wall!.status, wall!.retrievedOn]).toEqual(["extends 5 feet from buildings, structures, decks, etc.", "recommended", "2026-10-24"]);
+  });
+
+  it("finds nothing for a chimney with no branch near it, or a wall past 5 feet", () => {
+    for (const feet of [0, 10, 50]) expect(lookup(query({ concept: "chimney" }, feet), "ca"), String(feet)).toEqual([]);
+    for (const feet of [5.01, 10, 50]) expect(lookup(query({ concept: "house_wall" }, feet), "ca"), String(feet)).toEqual([]);
+  });
+});
+
+describe("the plain wording a homeowner reads", () => {
   const CODE = {
     en: ["woody", "combustible", "fuel", "fuels", "aerial", "vegetation", "forbs", "flammable", "fire resistant", "fire-resistant"],
     es: ["leñoso", "leñosa", "combustible", "combustibles", "aéreo", "aérea", "vegetación", "inflamable", "resistente al fuego"],

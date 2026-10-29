@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clip, Tag, Track } from "@emberwalk/shared";
-import { bandFor, CONTACT_MARGIN, contactOf, MAX_TRACKS, MIN_CONFIDENCE, observe } from "../src/index.ts";
+import { bandFor, CONTACT_MARGIN, contactOf, EDGE_MARGIN, MAX_TRACKS, MIN_CONFIDENCE, observe, type ObserveInput } from "../src/index.ts";
 import { HAZARDS, hazardTrack, inside, LOOP_CLIP, LOOP_TAG, trackId, wallTrack, yardTracks } from "./yard.ts";
 
 const yard = (tracks: Track[], extra: { clips?: Clip[]; tags?: Tag[]; startByClip?: Record<string, number> } = {}) =>
@@ -16,9 +16,11 @@ const UNMEASURED = "no wall, no tilt or only the horizon on its frames, so its d
 const TRUTH_CONTACT = { "wood-pile-1": "yes", "dry-brush-1": "not_checked", "fence-joint-1": "yes" } as const;
 
 describe("observe on test yard 2", () => {
-  const { kept, dropped } = yard(yardTracks());
+  let observed: ReturnType<typeof observe> | undefined;
+  const result = () => (observed ??= yard(yardTracks()));
 
   it("gives one observation per hazard with its truth band", () => {
+    const { kept } = result();
     expect(kept.map((k) => k.observation.concept).sort()).toEqual(HAZARDS.map((h) => h.concept).sort());
     for (const hazard of HAZARDS) {
       const found = kept.find((k) => k.observation.concept === hazard.concept)!;
@@ -31,6 +33,7 @@ describe("observe on test yard 2", () => {
   });
 
   it("finds the wood pile and the fence touching the wall, and leaves the dry brush in front of it not checked", () => {
+    const { kept } = result();
     for (const hazard of HAZARDS) {
       const found = kept.find((k) => k.observation.concept === hazard.concept)!;
       expect(found.observation.contact, hazard.id).toBe(TRUTH_CONTACT[hazard.id as keyof typeof TRUTH_CONTACT]);
@@ -41,13 +44,13 @@ describe("observe on test yard 2", () => {
   });
 
   it("keeps the dry brush at its measured distance, not pulled to the wall", () => {
-    const brush = kept.find((k) => k.observation.concept === "dry_brush")!;
+    const brush = result().kept.find((k) => k.observation.concept === "dry_brush")!;
     expect(brush.observation.distanceFeet.low).toBeGreaterThan(5);
     expect(brush.observation.distanceFeet.high).toBeLessThan(30);
   });
 
   it("picks a proof frame inside the picture, and its share of the picture", () => {
-    for (const { proof, observation, notes } of kept) {
+    for (const { proof, observation, notes } of result().kept) {
       expect(proof.inside).toBe(true);
       expect(inside(proof.box)).toBe(true);
       expect(proof.clipId).toBe(LOOP_CLIP.id);
@@ -59,7 +62,7 @@ describe("observe on test yard 2", () => {
   });
 
   it("drops the wall with its reason", () => {
-    expect(dropped).toEqual([{ trackIds: [trackId(99)], reason: "a house_wall places other objects and is never a finding" }]);
+    expect(result().dropped).toEqual([{ trackIds: [trackId(99)], reason: "a house_wall places other objects and is never a finding" }]);
   });
 });
 
@@ -93,6 +96,25 @@ describe("contactOf", () => {
   it("needs two touching frames, not one", () => {
     const frames = [...at([1], [0.2, 0.2, 0.4, 0.5]), ...at([2], [0.2, 0.6, 0.4, 0.9])];
     expect(contactOf("wood_pile", frames, walls([1, 2]))).toBe("no");
+  });
+
+  it("is yes for a bottom exactly the contact margin from the wall's base", () => {
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.5 - CONTACT_MARGIN]), walls([1, 2]))).toBe("yes");
+  });
+
+  it("does not count a fence whose top sits exactly on the base as spanning it", () => {
+    expect(contactOf("wooden_fence", at([1, 2], [0.2, 0.5, 0.4, 0.9]), walls([1, 2]))).toBe("no");
+  });
+
+  it("needs two frames of one kind: one frame on the base and one spanning it is no", () => {
+    const frames = [...at([1], [0.2, 0.2, 0.4, 0.5]), ...at([2], [0.2, 0.2, 0.4, 0.9])];
+    expect(contactOf("wooden_fence", frames, walls([1, 2]))).toBe("no");
+  });
+
+  it("does not count a box that only touches the wall's side edge as beside it", () => {
+    const narrow = new Map([1, 2].map((f) => [f, [0.4, 0.3, 0.9, 0.5] as [number, number, number, number]]));
+    expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.5]), narrow)).toBe("not_checked");
+    expect(contactOf("wood_pile", at([1, 2], [0.9, 0.2, 1, 0.5]), narrow)).toBe("not_checked");
   });
 });
 
@@ -172,24 +194,30 @@ const flatTrack = (n: number, kind: "loop" | "pan", concept: Track["concept"], b
   frames: frames.map((frame) => ({ frame, box, mask: null, confidence: 0.8 })),
 });
 const wall = (box: Box = FAR_WALL) => flatTrack(99, "loop", "house_wall", box);
-const flat = (o: { tracks: Track[]; loopTilt?: number; panTilt?: number; panHeading?: number; line?: number | null }) =>
-  observe({
-    clips: [loop, pan],
-    tracks: o.tracks,
-    tags: [
-      { ...LOOP_TAG, startSeconds: 0, endSeconds: 2, samples: samples(0, o.loopTilt ?? 10, 180) },
-      {
-        ...LOOP_TAG,
-        id: "00000000-0000-4000-8000-0000000000a2",
-        kind: "pan",
-        startSeconds: 10,
-        endSeconds: 12,
-        samples: samples(10, o.panTilt ?? 10, o.panHeading ?? 0),
-        propertyLine: o.line === undefined || o.line === null ? null : { t: 10.5, at: { x: 0.5, y: o.line } },
-      },
-    ],
-    startByClip: { [loop.id]: 0, [pan.id]: 10 },
-  });
+type Flat = { tracks: Track[]; loopTilt?: number; loopHeading?: number; panTilt?: number; panHeading?: number; line?: number | null; lineT?: number; panClip?: Clip };
+const flatInput = (o: Flat): ObserveInput => ({
+  clips: [loop, o.panClip ?? pan],
+  tracks: o.tracks,
+  tags: [
+    { ...LOOP_TAG, startSeconds: 0, endSeconds: 2, samples: samples(0, o.loopTilt ?? 10, o.loopHeading ?? 180) },
+    {
+      ...LOOP_TAG,
+      id: "00000000-0000-4000-8000-0000000000a2",
+      kind: "pan",
+      startSeconds: 10,
+      endSeconds: 12,
+      samples: samples(10, o.panTilt ?? 10, o.panHeading ?? 0),
+      propertyLine: o.line === undefined || o.line === null ? null : { t: o.lineT ?? 10.5, at: { x: 0.5, y: o.line } },
+    },
+  ],
+  startByClip: { [loop.id]: 0, [pan.id]: 10 },
+});
+const flat = (o: Flat) => observe(flatInput(o));
+const framed = (n: number, concept: Track["concept"], boxes: [number, Box, number?][]): Track => ({
+  ...flatTrack(n, "loop", concept, OUT),
+  frames: boxes.map(([frame, box, confidence]) => ({ frame, box, mask: null, confidence: confidence ?? 0.8 })),
+});
+const distanceAt = (y: number, frames = FRAMES) => flat({ tracks: [wall(), flatTrack(1, "loop", "shed", [0.3, 0.4, 0.5, y], frames)] }).kept[0]!.observation.distanceFeet;
 
 describe("observe merges a loop and a pan sighting", () => {
   it("joins the same concept with overlapping distances, the pan looking back the other way", () => {
@@ -281,5 +309,134 @@ describe("observe flags and proof frames", () => {
     const { proof, notes } = flat({ tracks: [wall(), track] }).kept[0]!;
     expect(proof).toMatchObject({ frame: 2, inside: false });
     expect(notes).toEqual(["placed on frames cut off by the picture's edge", "the proof frame touches the picture's edge"]);
+  });
+
+  it("counts a box exactly at the edge margin, on any of its four sides, as touching the edge", () => {
+    const edges: Box[] = [
+      [EDGE_MARGIN, 0.4, 0.2, 0.5],
+      [0.3, EDGE_MARGIN, 0.5, 0.5],
+      [0.8, 0.4, 1 - EDGE_MARGIN, 0.5],
+      [0.3, 0.4, 0.5, 1 - EDGE_MARGIN],
+    ];
+    for (const box of edges) expect(flat({ tracks: [wall(), flatTrack(1, "loop", "shed", box)] }).kept[0]!.proof.inside, String(box)).toBe(false);
+  });
+
+  it("keeps the first of equally good frames, and never trades confidence for a bigger box", () => {
+    const track = framed(1, "shed", [
+      [0, OUT, 0.9],
+      [1, [0.1, 0.3, 0.6, 0.5], 0.8],
+      [2, OUT, 0.9],
+      [3, [0.3, 0.45, 0.4, 0.5], 0.9],
+    ]);
+    expect(flat({ tracks: [wall(), track] }).kept[0]!.proof.frame).toBe(0);
+  });
+
+  it("flags a branch near the chimney on exactly two frames", () => {
+    const twice = flatTrack(5, "loop", "chimney", [0.5, 0.1, 0.6, 0.3], [0, 1]);
+    expect(flat({ tracks: [wall(WALL), branch([0.1, 0.45, 0.3, 0.55]), twice] }).kept[0]!.observation.flags).toEqual(["near_chimney"]);
+  });
+
+  it("flags a branch at exactly 10 feet from the chimney, and not one a step past it", () => {
+    const beside = (x: number) => flat({ tracks: [wall(WALL), branch([0.1, 0.45, 0.3, 0.55]), chimney([x, 0.1, 0.999, 0.3])] }).kept[0]!.observation.flags;
+    expect(beside(0.8161503025716126)).toEqual(["near_chimney"]);
+    expect(beside(0.8161503025716127)).toEqual([]);
+  });
+
+  it("does not count a chimney beside the branch on frames where no wall gives the scale", () => {
+    const wallTwice = flatTrack(99, "loop", "house_wall", WALL, [0, 1]);
+    const late = flatTrack(5, "loop", "chimney", [0.5, 0.1, 0.6, 0.3], [1, 2, 3]);
+    expect(flat({ tracks: [wallTwice, branch([0.1, 0.45, 0.3, 0.55]), late] }).kept[0]!.observation.flags).toEqual([]);
+  });
+});
+
+describe("observe measures each object by the median of its frames", () => {
+  it("takes the middle frame's distance from three frames given out of order", () => {
+    const track = framed(1, "shed", [
+      [0, [0.3, 0.4, 0.5, 0.5]],
+      [1, [0.3, 0.4, 0.5, 0.45]],
+      [2, [0.3, 0.4, 0.5, 0.55]],
+    ]);
+    expect(flat({ tracks: [wall(), track] }).kept[0]!.observation.distanceFeet).toEqual(distanceAt(0.5));
+  });
+
+  it("puts an object seen on two frames halfway between them", () => {
+    const near = distanceAt(0.55, [0, 1]);
+    const far = distanceAt(0.45, [0, 1]);
+    const track = framed(1, "shed", [
+      [0, [0.3, 0.4, 0.5, 0.45]],
+      [1, [0.3, 0.4, 0.5, 0.55]],
+    ]);
+    expect(flat({ tracks: [wall(), track] }).kept[0]!.observation.distanceFeet).toEqual({ low: (far.low + near.low) / 2, high: (far.high + near.high) / 2 });
+  });
+
+  it("keeps a track seen on exactly two confident frames", () => {
+    expect(flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT, [0, 1])] }).kept).toHaveLength(1);
+  });
+
+  it("gives each frame the same motion sample whatever order the tags arrive in, the earlier sample winning a tie", () => {
+    const tag = (t: number, tiltDegrees: number): Tag => ({ ...LOOP_TAG, startSeconds: 0, endSeconds: 2, samples: [{ t, tiltDegrees, headingDegrees: 180 }] });
+    const run = (tags: Tag[]) =>
+      observe({ clips: [loop], tracks: [flatTrack(99, "loop", "house_wall", FAR_WALL, [0, 1]), flatTrack(1, "loop", "shed", OUT, [0, 1])], tags, startByClip: { [loop.id]: 0.75 } });
+    const early = tag(0.5, 10);
+    const late = tag(1, 20);
+    expect(run([early, late]).kept).toHaveLength(1);
+    expect(run([late, early])).toEqual(run([early, late]));
+  });
+
+  it("places an object filmed straight down, and drops one whose tilt reads past straight down", () => {
+    expect(flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT)], loopTilt: 90 }).kept).toHaveLength(1);
+    const past = flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT)], loopTilt: 120 });
+    expect(past.kept).toEqual([]);
+    expect(past.dropped).toContainEqual({ trackIds: [trackId(1)], reason: UNMEASURED });
+  });
+});
+
+describe("observe joins at the edges of its rules", () => {
+  const STRAIGHT_DOWN: Box = [0.3, 0.4, 0.5, 0.9];
+
+  it("joins a loop facing east with a pan facing west", () => {
+    const tracks = [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)];
+    expect(flat({ tracks, panTilt: 60, loopHeading: 90, panHeading: 270 }).kept).toHaveLength(1);
+  });
+
+  it("joins at exactly 30 degrees off facing each other", () => {
+    const tracks = [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)];
+    expect(flat({ tracks, panTilt: 60, panHeading: 30 }).kept).toHaveLength(1);
+  });
+
+  it("joins a loop and a pan sighting whose distances only touch, both at zero feet straight down", () => {
+    const tracks = [wall([0, 0.1, 1, 0.9]), flatTrack(1, "loop", "shed", STRAIGHT_DOWN), flatTrack(2, "pan", "shed", STRAIGHT_DOWN)];
+    const { kept } = flat({ tracks, loopTilt: 90, panTilt: 90 });
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.observation.distanceFeet).toEqual({ low: 0, high: 0 });
+  });
+
+  it("keeps a pan object exactly at the property line's distance", () => {
+    const tracks = [wall([0, 0.1, 1, 0.9]), flatTrack(2, "pan", "shed", STRAIGHT_DOWN)];
+    expect(flat({ tracks, loopTilt: 90, panTilt: 90, line: 0.9 }).kept).toHaveLength(1);
+  });
+});
+
+describe("observe reads the property line", () => {
+  const tracks = () => [wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", OUT)];
+
+  it("from whichever pan tag carries it", () => {
+    const input = flatInput({ tracks: tracks(), line: 0.95 });
+    const [loopTag, panTag] = input.tags;
+    const result = observe({ ...input, tags: [loopTag!, { ...panTag!, propertyLine: null }, panTag!] });
+    expect(result.dropped).toContainEqual({ trackIds: [trackId(2)], reason: "past the property line" });
+  });
+
+  it("with the pan clip's own field of view when the pan is filmed upright", () => {
+    const upright: Clip = { ...pan, width: LOOP_CLIP.height, height: LOOP_CLIP.width };
+    const high: Box = [0.3, 0.1, 0.5, 0.2];
+    const result = flat({ tracks: [wall([0, 0.1, 1, 0.6]), flatTrack(2, "pan", "shed", high)], panClip: upright, panTilt: 40, line: 0.2 });
+    expect(result.kept).toHaveLength(1);
+  });
+
+  it("and ignores a line tapped where no motion sample is near, keeping the pan object", () => {
+    const { kept } = flat({ tracks: tracks(), line: 0.95, lineT: 30 });
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.notes).toEqual([]);
   });
 });

@@ -1,11 +1,15 @@
+import type { MotionSample } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { uploadApi, walkApi } from "../../src/api.ts";
 import type { Fetch } from "../../src/api.ts";
 import { once } from "../../src/deps.ts";
 import { FALLBACK_RULES, walkRequest, walkSender } from "../../src/sender.ts";
 import { openTakeStore } from "../../src/take-store.ts";
-import type { Take, TagsSent, TakeSetup } from "../../src/take-store.ts";import { IDBFactory } from "fake-indexeddb";
+import type { Pan, Take, TagsSent, TakeSetup } from "../../src/take-store.ts";
+import { IDBFactory } from "fake-indexeddb";
+import sideWalk from "../../../../fixtures/synthetic/side-walk/walk.json";
 import "./fakes.ts";
+import { sideWalkTake } from "./side-walk.ts";
 
 const BASE = "https://app.test";
 const PART_HOST = "https://storage.test";
@@ -55,12 +59,24 @@ const SAMPLES = [
 
 const FOUR_SIDES = Array.from({ length: 41 }, (_, t) => ({ t, tiltDegrees: -5, headingDegrees: (360 - 90 * Math.min(4, Math.floor(t / 10))) % 360 }));
 
-const setup = async (server: ReturnType<typeof fakeServer>, take: Partial<TakeSetup> = {}, motion = SAMPLES, durationMs = 1000) => {
+const countedIds = () => {
+  let n = 0;
+  return () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
+};
+
+const setup = async (
+  server: ReturnType<typeof fakeServer>,
+  take: Partial<TakeSetup> = {},
+  motion: MotionSample[] = SAMPLES,
+  durationMs = 1000,
+  pans: Pan[] = [],
+  newId?: () => string,
+) => {
   const takes = once(() => openTakeStore(new IDBFactory()));
   const store = await takes();
   const created = await store.create("video/mp4", 1, { jurisdiction: null, sound: true, device: DEVICE, ...take });
   await store.append(created.id, new Blob(["0123456789"]));
-  await store.mark(created.id, (marks) => ({ ...marks, motion }));
+  await store.mark(created.id, (marks) => ({ ...marks, motion, pans }));
   const recorded = await store.finish(created.id, durationMs, "stopped");
   const send = walkSender({
     walks: walkApi(BASE, server.fetch),
@@ -68,6 +84,7 @@ const setup = async (server: ReturnType<typeof fakeServer>, take: Partial<TakeSe
     put: server.fetch,
     takes,
     visitorId: () => VISITOR,
+    ...(newId === undefined ? {} : { newId }),
   });
   return { send, store, take: recorded };
 };
@@ -256,6 +273,77 @@ describe("the walk's tag", () => {
     expect((server.seen.find((r) => r.url === `${BASE}/api/walks`)?.body as { partOf: unknown }).partOf).toEqual({ walkId: PARENT, side: "back" });
     expect((server.tagRequests()[0]?.body as { tags: unknown[] }).tags).toEqual([
       expect.objectContaining({ walkId: WALK, kind: "loop", startSeconds: 0, endSeconds: 45, label: "back", samples: FOUR_SIDES }),
+    ]);
+  });
+
+  type SentTag = { id: string; kind: string; label: string; startSeconds: number; endSeconds: number; samples: MotionSample[] };
+  const sentTags = (server: ReturnType<typeof fakeServer>) => (server.tagRequests()[0]?.body as { tags: SentTag[] }).tags;
+
+  it("sends the synthetic sample walk as its loop, one tag per side, then one pan per side, in walk order, each with light", async () => {
+    const walk = sideWalkTake();
+    expect({ durationMs: sideWalk.durationMs, motion: sideWalk.motion, pans: sideWalk.pans }).toEqual(walk);
+    const server = fakeServer();
+    const { send, take } = await setup(server, {}, walk.motion, walk.durationMs, walk.pans, countedIds());
+    await send(take, () => undefined);
+    const tags = sentTags(server);
+    expect(tags.map(({ kind, label }) => `${kind} ${label}`)).toEqual([
+      "loop front",
+      "loop left",
+      "loop back",
+      "loop right",
+      "pan front",
+      "pan left",
+      "pan back",
+      "pan right",
+    ]);
+    expect(tags.find((t) => t.kind === "pan")?.startSeconds).toBe(tags.filter((t) => t.kind === "loop").at(-1)?.endSeconds);
+    for (const tag of tags) {
+      expect(tag.samples.length).toBeGreaterThan(0);
+      for (const sample of tag.samples) expect(sample.light).toEqual(expect.any(Number));
+    }
+    expect(tags).toEqual(sideWalk.tags);
+  });
+
+  it("ends the loop where the first pan starts, keeps a sample at that moment for the pan alone, and ends an open pan with the take", async () => {
+    const server = fakeServer();
+    const pans: Pan[] = [
+      { side: "front", startMs: 20_000, endMs: 25_000 },
+      { side: "right", startMs: 30_000, endMs: 30_000 },
+      { side: "back", startMs: 33_000, endMs: null },
+    ];
+    const { send, take } = await setup(server, {}, FOUR_SIDES, 45_000, pans);
+    await send(take, () => undefined);
+    const tags = sentTags(server);
+    expect(tags.map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([
+      ["loop", "front", 0, 10],
+      ["loop", "right", 10, 20],
+      ["pan", "front", 20, 25],
+      ["pan", "back", 33, 45],
+    ]);
+    expect(tags[1]?.samples.at(-1)?.t).toBe(19);
+    expect(tags[2]?.samples[0]?.t).toBe(20);
+    expect(tags[3]?.samples.at(-1)?.t).toBe(40);
+  });
+
+  it("sends a sample the camera gave no light for without light, beside samples that carry it", async () => {
+    const server = fakeServer();
+    const motion = [
+      { t: 0.2, tiltDegrees: 5, headingDegrees: 10, light: 80 },
+      { t: 0.6, tiltDegrees: 5, headingDegrees: 12 },
+    ];
+    const { send, take } = await setup(server, {}, motion, 1000);
+    await send(take, () => undefined);
+    expect(sentTags(server)[0]?.samples).toEqual(motion);
+  });
+
+  it("sends a take of one side with its pan as one loop tag and one pan tag of that side", async () => {
+    const server = fakeServer();
+    const pans: Pan[] = [{ side: "back", startMs: 30_000, endMs: 38_000 }];
+    const { send, take } = await setup(server, { partOf: { walkId: PARENT, side: "back" } }, FOUR_SIDES, 45_000, pans);
+    await send(take, () => undefined);
+    expect(sentTags(server).map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([
+      ["loop", "back", 0, 30],
+      ["pan", "back", 30, 38],
     ]);
   });
 

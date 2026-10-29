@@ -27,13 +27,15 @@ export async function settle(page: Page) {
     await page.evaluate((top) => window.scrollTo(0, top), y);
     await page.waitForTimeout(60);
   }
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForFunction(() =>
-    [...document.querySelectorAll(".focus-in")].every((element) => {
+    [...document.querySelectorAll(".rise")].every((element) => {
+      const box = element.getBoundingClientRect();
+      if (box.bottom < innerHeight * 0.12 || box.top > innerHeight * 0.88) return true;
       const style = getComputedStyle(element);
       return style.opacity === "1" && style.filter === "none";
     }),
   );
-  await page.evaluate(() => window.scrollTo(0, 0));
 }
 
 export function screenshotPath(info: TestInfo, name: string) {

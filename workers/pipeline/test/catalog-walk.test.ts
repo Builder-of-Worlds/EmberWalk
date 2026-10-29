@@ -22,7 +22,7 @@ const walkOnTheYard = async () => {
   const tallies: PendingTally[] = [];
   const stored: Stored[] = [];
   for (const clip of clips) {
-    const result = await segmentClip(deps(), walkId, clip, `file-${clip.kind}`, "catalog");
+    const result = await segmentClip(deps(), walkId, clip, `file-${clip.kind}`);
     if (!result.ok) throw new Error(`segment refused: ${result.failure.code}`);
     tallies.push(...(result.value as { pending: PendingTally[] }).pending);
     stored.push((await (await env.MEDIA.get(detectionsKey(walkId, clip.id)))!.json()) as Stored);

@@ -43,8 +43,24 @@ export const glyphCell = (digit: number): Buffer => {
   return cell;
 };
 
-export const clipOfDigits = (digits: string, box: Box, seconds = 2): Buffer => {
+const TEXTURE_CELL = 2;
+const TEXTURE_SWING = 40;
+
+const textured = (pixels: Buffer, clear: Box): void => {
+  for (let y = 0; y < FRAME.height; y += 1) {
+    for (let x = 0; x < FRAME.width; x += 1) {
+      if (x >= clear.x0 && x < clear.x1 && y >= clear.y0 && y < clear.y1) continue;
+      const dark = (Math.floor(x / TEXTURE_CELL) + Math.floor(y / TEXTURE_CELL)) % 2 === 0;
+      pixels[y * FRAME.width + x] = PAPER + (dark ? -TEXTURE_SWING : TEXTURE_SWING);
+    }
+  }
+};
+
+const grownBox = (box: Box, pad: number): Box => ({ x0: box.x0 - pad, y0: box.y0 - pad, x1: box.x1 + pad, y1: box.y1 + pad });
+
+export const clipOfDigits = (digits: string, box: Box, clearPad: number, seconds = 2): Buffer => {
   const pixels = Buffer.alloc(FRAME.width * FRAME.height, PAPER);
+  textured(pixels, grownBox(box, clearPad));
   [...digits].forEach((char, i) => {
     const left = box.x0 + i * (CELL.width + GAP);
     for (let y = 0; y < CELL.height; y += 1) {
@@ -123,12 +139,16 @@ export const edgeEnergy = (frame: Buffer, box: Box): number => {
   return total / ((box.x1 - box.x0 - 1) * (box.y1 - box.y0));
 };
 
-export const meanAbsDiffOutside = (a: Buffer, b: Buffer, keep: Box, pad: number): number => {
+const inside = (box: Box, x: number, y: number): boolean => x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1;
+
+export const meanAbsDiffInBand = (a: Buffer, b: Buffer, box: Box, from: number, to: number): number => {
+  const near = grownBox(box, from);
+  const far = grownBox(box, to);
   let total = 0;
   let count = 0;
   for (let y = 0; y < FRAME.height; y += 1) {
     for (let x = 0; x < FRAME.width; x += 1) {
-      if (x >= keep.x0 - pad && x < keep.x1 + pad && y >= keep.y0 - pad && y < keep.y1 + pad) continue;
+      if (inside(near, x, y) || !inside(far, x, y)) continue;
       total += Math.abs((a[y * FRAME.width + x] as number) - (b[y * FRAME.width + x] as number));
       count += 1;
     }

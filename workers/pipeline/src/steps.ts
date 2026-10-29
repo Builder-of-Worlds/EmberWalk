@@ -18,11 +18,10 @@ export const STEP = {
   deleteUploads: "delete uploads",
   fail: "fail walk",
   deleteVideo: "delete walk video",
+  count: (after: string) => `count ${after}`,
 } as const;
 
-export const stepsFor = (kinds: string[]): string[] => [
-  STEP.claim,
-  STEP.prepare,
+export const lookingSteps = (kinds: string[]): string[] => [
   STEP.enterSegment,
   ...kinds.flatMap((kind) => [STEP.upload(kind), STEP.segment(kind), STEP.privacy(kind)]),
   STEP.store,
@@ -32,8 +31,17 @@ export const stepsFor = (kinds: string[]): string[] => [
   STEP.voiceNotes,
   STEP.blur,
   STEP.coverage,
-  STEP.enterExplain,
-  STEP.explain,
+];
+
+export const WRITING_STEPS: readonly string[] = [STEP.enterExplain, STEP.explain];
+
+const withCounts = (names: readonly string[]): string[] => names.flatMap((name) => [name, STEP.count(name)]);
+
+export const stepsFor = (kinds: string[]): string[] => [
+  STEP.claim,
+  STEP.prepare,
+  ...withCounts(lookingSteps(kinds)),
+  ...withCounts(WRITING_STEPS),
   STEP.complete,
   STEP.deleteUploads,
   STEP.deleteVideo,
@@ -41,12 +49,18 @@ export const stepsFor = (kinds: string[]): string[] => [
 
 export const orderProblems = (names: string[], kinds: string[]): string[] => {
   const expected = stepsFor(kinds);
+  const counted = [...lookingSteps(kinds), ...WRITING_STEPS];
+  const counts = new Set(counted.map(STEP.count));
   const problems = [
     ...expected.filter((name) => !names.includes(name)).map((name) => `${name} is missing`),
     ...names.filter((name) => !expected.includes(name)).map((name) => `${name} is not a step of a finished walk`),
   ];
   if (names.includes(STEP.deleteVideo) && names.at(-1) !== STEP.deleteVideo) problems.push(`${STEP.deleteVideo} is not last`);
-  const ran = expected.filter((name) => names.includes(name));
+  for (const name of counted) {
+    const at = names.indexOf(STEP.count(name));
+    if (at !== -1 && at < names.indexOf(name)) problems.push(`${STEP.count(name)} ran before ${name}`);
+  }
+  const ran = expected.filter((name) => names.includes(name) && !counts.has(name));
   for (const [i, later] of ran.entries()) {
     for (const earlier of ran.slice(0, i)) {
       if (names.indexOf(later) < names.indexOf(earlier)) problems.push(`${later} ran before ${earlier}`);

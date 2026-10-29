@@ -1,4 +1,4 @@
-import { Id, PipelineStep, Text, Walk, WalkPart } from "@emberwalk/shared";
+import { Id, PipelineStep, StageProgress, Text, Walk, WalkPart } from "@emberwalk/shared";
 import { z } from "zod";
 import { DbRefused } from "./errors.ts";
 
@@ -22,8 +22,16 @@ type WalkRow = {
   device_height: number;
   synthetic: number;
   motion_file: string | null;
+  progress_done: number | null;
+  progress_total: number | null;
   failure_code: string | null;
   failure_message: string | null;
+};
+
+const stateOf = (row: WalkRow) => {
+  if (row.step === null) return { name: row.state };
+  if (row.progress_total === null) return { name: row.state, step: row.step };
+  return { name: row.state, step: row.step, progress: { done: row.progress_done, total: row.progress_total } };
 };
 
 const toRecord = (row: WalkRow): WalkRecord => ({
@@ -31,7 +39,7 @@ const toRecord = (row: WalkRow): WalkRecord => ({
     id: row.id,
     visitorId: row.visitor_id,
     createdAt: row.created_at,
-    state: row.step === null ? { name: row.state } : { name: row.state, step: row.step },
+    state: stateOf(row),
     lengthSeconds: row.length_seconds,
     language: row.language,
     jurisdiction: row.jurisdiction,
@@ -93,15 +101,24 @@ const requireOne = (changes: number, walkId: string, wanted: string): void => {
 
 export const moveWalkStep = async (db: D1Database, walkId: string, step: PipelineStep): Promise<void> => {
   const result = await db
-    .prepare("UPDATE walks SET step = ? WHERE id = ? AND state = 'processing'")
+    .prepare("UPDATE walks SET step = ?, progress_done = NULL, progress_total = NULL WHERE id = ? AND state = 'processing'")
     .bind(PipelineStep.parse(step), Id.parse(walkId))
+    .run();
+  requireOne(result.meta.changes, walkId, "processing");
+};
+
+export const setWalkProgress = async (db: D1Database, walkId: string, done: number, total: number): Promise<void> => {
+  const count = StageProgress.parse({ done, total });
+  const result = await db
+    .prepare("UPDATE walks SET progress_done = ?, progress_total = ? WHERE id = ? AND state = 'processing'")
+    .bind(count.done, count.total, Id.parse(walkId))
     .run();
   requireOne(result.meta.changes, walkId, "processing");
 };
 
 export const completeWalk = async (db: D1Database, walkId: string): Promise<void> => {
   const result = await db
-    .prepare("UPDATE walks SET state = 'done', step = NULL WHERE id = ? AND state = 'processing'")
+    .prepare("UPDATE walks SET state = 'done', step = NULL, progress_done = NULL, progress_total = NULL WHERE id = ? AND state = 'processing'")
     .bind(Id.parse(walkId))
     .run();
   requireOne(result.meta.changes, walkId, "processing");
@@ -110,7 +127,7 @@ export const completeWalk = async (db: D1Database, walkId: string): Promise<void
 export const failWalk = async (db: D1Database, walkId: string, step: PipelineStep, failure: Failure): Promise<void> => {
   const { code, message } = Failure.parse(failure);
   const result = await db
-    .prepare("UPDATE walks SET state = 'failed', step = ?, failure_code = ?, failure_message = ? WHERE id = ? AND state = 'processing'")
+    .prepare("UPDATE walks SET state = 'failed', step = ?, failure_code = ?, failure_message = ?, progress_done = NULL, progress_total = NULL WHERE id = ? AND state = 'processing'")
     .bind(PipelineStep.parse(step), code, message, Id.parse(walkId))
     .run();
   requireOne(result.meta.changes, walkId, "processing");

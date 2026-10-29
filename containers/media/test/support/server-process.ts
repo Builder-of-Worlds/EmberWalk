@@ -3,6 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { timeLimits } from "./time-limits.ts";
 
 export const serverEntry = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "server.ts");
 
@@ -22,14 +23,24 @@ export const spawnServer = (port: number, env: Record<string, string> = {}): Chi
     stdio: ["ignore", "inherit", "inherit", "ipc"],
   });
 
-export const waitForHealth = async (baseUrl: string, label = "the media server"): Promise<void> => {
-  for (let i = 0; i < 60; i += 1) {
+const pollHealth = async (baseUrl: string, ready: (health: { jobs?: number }) => boolean): Promise<boolean> => {
+  const until = Date.now() + timeLimits.readyMs;
+  while (Date.now() < until) {
     try {
-      if ((await fetch(`${baseUrl}/health`)).ok) return;
+      const res = await fetch(`${baseUrl}/health`);
+      if (res.ok && ready((await res.json()) as { jobs?: number })) return true;
     } catch {
       // the server is still starting
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, timeLimits.pollMs));
   }
-  throw new Error(`${label} never became healthy`);
+  return false;
+};
+
+export const waitForHealth = async (baseUrl: string, label = "the media server"): Promise<void> => {
+  if (!(await pollHealth(baseUrl, () => true))) throw new Error(`${label} never became healthy`);
+};
+
+export const waitForIdle = async (baseUrl: string): Promise<void> => {
+  if (!(await pollHealth(baseUrl, (health) => health.jobs === 0))) throw new Error("the media server never became idle");
 };

@@ -1,70 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error the page script is plain JavaScript
-import { MESSAGES, revealOnScroll, setupSignup, start, startTurnstile } from "../public/site.js";
+import { MESSAGES, setupSignup, startTurnstile } from "../public/site.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-function item() {
-  const classes = new Set<string>();
-  const vars = new Map<string, string>();
-  return { classes, vars, classList: { add: (name: string) => classes.add(name) }, style: { setProperty: (key: string, value: string) => vars.set(key, value) } };
-}
-
-function observerWindow() {
-  const seen: { options: unknown; observed: unknown[]; unobserved: unknown[]; notify: (entries: unknown[]) => void } = {
-    options: null,
-    observed: [],
-    unobserved: [],
-    notify: () => {},
-  };
-  class FakeObserver {
-    constructor(callback: (entries: unknown[]) => void, options: unknown) {
-      seen.options = options;
-      seen.notify = callback;
-    }
-    observe(target: unknown) {
-      seen.observed.push(target);
-    }
-    unobserve(target: unknown) {
-      seen.unobserved.push(target);
-    }
-  }
-  return { seen, win: { IntersectionObserver: FakeObserver } as Record<string, unknown> };
-}
-
-describe("revealOnScroll", () => {
-  it("alternates a delay step across the items", () => {
-    const items = [item(), item(), item()];
-    revealOnScroll({ querySelectorAll: () => items }, {});
-    expect(items.map((entry) => entry.vars.get("--i"))).toEqual(["0", "1", "0"]);
-  });
-
-  it("shows every item at once when the browser cannot watch scrolling", () => {
-    const items = [item(), item()];
-    revealOnScroll({ querySelectorAll: () => items }, {});
-    expect(items.map((entry) => [...entry.classes])).toEqual([["in"], ["in"]]);
-  });
-
-  it("watches every item and reveals each one only when it comes into view, once", () => {
-    const items = [item(), item()];
-    const { seen, win } = observerWindow();
-    revealOnScroll({ querySelectorAll: () => items }, win);
-    expect(seen.options).toEqual({ threshold: 0.15, rootMargin: "0px 0px -6% 0px" });
-    expect(seen.observed).toEqual(items);
-    expect(items.every((entry) => entry.classes.size === 0)).toBe(true);
-
-    seen.notify([{ isIntersecting: false, target: items[0] }, { isIntersecting: true, target: items[1] }]);
-    expect([...items[0].classes]).toEqual([]);
-    expect([...items[1].classes]).toEqual(["in"]);
-    expect(seen.unobserved).toEqual([items[1]]);
-  });
-
-  it("looks for the focus-in items", () => {
-    const asked: string[] = [];
-    revealOnScroll({ querySelectorAll: (selector: string) => (asked.push(selector), []) }, {});
-    expect(asked).toEqual([".focus-in"]);
-  });
-});
 
 function turnstileRig(config: () => Promise<Response> = async () => Response.json({ turnstileSiteKey: "SITE-KEY" })) {
   const tokens: string[] = [];
@@ -165,7 +103,7 @@ async function signupRig(answer: () => Promise<Response> = async () => Response.
   const form = {
     elements: { email, role },
     querySelector: () => button,
-    querySelectorAll: () => fields,
+    querySelectorAll: (selector: string) => (selector === ".field, .button, .turnstile-box" ? fields : []),
     addEventListener: (type: string, fn: typeof handler) => {
       if (type === "submit") handler = fn;
     },
@@ -265,7 +203,7 @@ describe("setupSignup", () => {
 });
 
 describe("the messages", () => {
-  it("are the ones Deacon approved", () => {
+  it("are the approved ones", () => {
     expect(MESSAGES).toEqual({
       success: "You're on the list. We'll email you when EmberWalk launches.",
       invalid_email: "That email address doesn't look right. Please check it and try again.",
@@ -275,19 +213,5 @@ describe("the messages", () => {
       server: "Something went wrong on our end. Please try again, or write to hello@emberwalk.app.",
       network: "We couldn't reach the server. Please check your connection and try again.",
     });
-  });
-});
-
-describe("start", () => {
-  it("reveals the items and sets up the form", async () => {
-    const items = [item()];
-    const asked: string[] = [];
-    const doc = {
-      querySelectorAll: () => items,
-      getElementById: (id: string) => (asked.push(id), null),
-    };
-    start(doc, {}, () => Promise.reject(new Error("no")));
-    expect([...items[0].classes]).toEqual(["in"]);
-    expect(asked).toEqual(["signup"]);
   });
 });

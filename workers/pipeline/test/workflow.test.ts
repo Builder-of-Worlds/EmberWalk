@@ -1,9 +1,10 @@
+import { CATALOG, isPending, samPhraseOf } from "@emberwalk/catalog";
 import { addTag, clipsForWalk, detectionsForClip, findingsForWalk, getWalk } from "@emberwalk/db";
 import { LOOP_CONCEPTS, PAN_CONCEPTS } from "@emberwalk/shared";
 import { env, introspectWorkflowInstance } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PRIVACY_PHRASES, type PrivacyRecord, privacyKey } from "../src/privacy.ts";
-import { orderProblems, STEP } from "../src/steps.ts";
+import { lookingSteps, orderProblems, STEP, WRITING_STEPS } from "../src/steps.ts";
 import { coverageKey } from "@emberwalk/rules";
 import { clipKey, detectionsKey, originalKey } from "../src/storage.ts";
 import { CLEAN_PHRASE } from "../src/voice-notes.ts";
@@ -51,6 +52,19 @@ describe("the walk workflow", () => {
     }
     expect(deleted().sort()).toEqual(["/files/file-1", "/files/file-2"]);
     expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
+  });
+
+  it("asks SAM for every pending catalog object on both clips of a walk", async () => {
+    const walkId = await queuedWalk();
+    await seedTag(walkId, 1, "loop", 10, 40);
+    await seedTag(walkId, 2, "pan", 50, 80);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const pending = CATALOG.filter(isPending);
+    expect(pending).toHaveLength(10);
+    for (const row of pending) expect(harness.asked.filter((p) => p === samPhraseOf(row)), row.concept).toHaveLength(2);
   });
 
   it("fails the walk when the store step cannot read what segmenting left", async () => {
@@ -364,5 +378,65 @@ describe("voice notes", () => {
 
     expect(await instance.getOutput()).toEqual({ status: "done" });
     expect((await findingsForWalk(env.DB, walkId)).every((f) => f.voiceNote === null)).toBe(true);
+  });
+});
+
+describe("the stage count", () => {
+  const counted = async (instance: Awaited<ReturnType<typeof run>>, names: readonly string[]) =>
+    Promise.all(names.map((name) => instance.waitForStepResult({ name: STEP.count(name) })));
+  const rising = (total: number) => Array.from({ length: total }, (_, i) => ({ done: i + 1, total }));
+
+  it("counts a two clip walk up to the total of each stage, in order, then clears it at done", async () => {
+    const walkId = await foundWalk();
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await counted(instance, lookingSteps(["loop", "pan"]))).toEqual(rising(14));
+    expect(await counted(instance, WRITING_STEPS)).toEqual(rising(2));
+    expect(orderProblems(harness.steps, ["loop", "pan"])).toEqual([]);
+    expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
+  });
+
+  it("stores each count in D1 as the walk goes, so the second clip's upload finds the count of the step before it", async () => {
+    const walkId = await foundWalk();
+    const stored: unknown[] = [];
+    harness.onRequest = async (req) => {
+      if (req.method === "POST" && req.path === "/files") stored.push((await getWalk(env.DB, walkId))?.state);
+    };
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const looking = lookingSteps(["loop", "pan"]);
+    const before = looking.indexOf(STEP.upload("pan"));
+    expect(stored[1]).toEqual({ name: "processing", step: "segment", progress: { done: before, total: looking.length } });
+  });
+
+  it("counts no writing for a walk with nothing found", async () => {
+    const walkId = await queuedWalk();
+    await seedTag(walkId, 1, "loop", 10, 40);
+    harness.answers["wood pile"] = [{ found: [{ frame: 0, id: 0, box: [10, 20, 110, 120], confidence: 0.9 }] }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await findingsForWalk(env.DB, walkId)).toEqual([]);
+    expect(await counted(instance, lookingSteps(["loop"]))).toEqual(rising(11));
+    expect(harness.steps.filter((name) => WRITING_STEPS.map(STEP.count).includes(name))).toEqual([]);
+  });
+
+  it("adds no count for a step that failed or never ran, and the walk shows failed with no count", async () => {
+    const walkId = await foundWalk(["loop"]);
+    harness.answers.mailbox = [{ status: 500 }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    const looking = lookingSteps(["loop"]);
+    const before = looking.slice(0, looking.indexOf(STEP.blur));
+    expect(harness.steps.filter((name) => name.startsWith("count "))).toEqual(before.map(STEP.count));
+    expect(await counted(instance, before)).toEqual(rising(11).slice(0, before.length));
+    expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "failed", step: "score" });
   });
 });

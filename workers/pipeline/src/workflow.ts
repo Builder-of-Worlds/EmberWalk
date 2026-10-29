@@ -1,4 +1,4 @@
-import { claimWalk, completeWalk, type Failure, failWalk, findingsForWalk, moveWalkStep, tagsForWalk } from "@emberwalk/db";
+import { claimWalk, completeWalk, type Failure, failWalk, findingsForWalk, moveWalkStep, setWalkProgress, tagsForWalk } from "@emberwalk/db";
 import type { Clip, PipelineStep } from "@emberwalk/shared";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { blurredStills } from "./blur.ts";
@@ -11,7 +11,7 @@ import { clipStart, prepareWalk } from "./prepare.ts";
 import { findPrivacy } from "./privacy.ts";
 import { scoreWalk } from "./score.ts";
 import { dropUpload, segmentClip, uploadClip } from "./segment.ts";
-import { STEP } from "./steps.ts";
+import { lookingSteps, STEP, WRITING_STEPS } from "./steps.ts";
 import { dropWalkVideo } from "./storage.ts";
 import { storeWalk } from "./store.ts";
 import { transcribeWalk } from "./transcribe.ts";
@@ -80,39 +80,59 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
   private async work(deps: Deps, step: WorkflowStep, walkId: string, progress: Progress): Promise<Failure | null> {
     const prepared = await step.do(STEP.prepare, RETRY, () => prepareWalk(deps, walkId));
     if (!prepared.ok) return prepared.failure;
+    const looking = lookingSteps(prepared.value.map((clip) => clip.kind));
+    const count = (stage: readonly string[], name: string) =>
+      step.do(STEP.count(name), async () => {
+        const counted = { done: stage.indexOf(name) + 1, total: stage.length };
+        await setWalkProgress(deps.db, walkId, counted.done, counted.total);
+        return counted;
+      });
 
     progress.step = "segment";
     await step.do(STEP.enterSegment, () => moveWalkStep(deps.db, walkId, "segment"));
+    await count(looking, STEP.enterSegment);
     const clipIds: string[] = [];
     for (const clip of prepared.value) {
       const uploaded = await step.do(STEP.upload(clip.kind), RETRY, () => uploadClip(deps, walkId, clip));
       if (!uploaded.ok) return uploaded.failure;
       progress.uploads.push(uploaded.value);
+      await count(looking, STEP.upload(clip.kind));
       const segmented = await step.do(STEP.segment(clip.kind), RETRY, () => segmentClip(deps, walkId, clip, uploaded.value));
       if (!segmented.ok) return segmented.failure;
+      await count(looking, STEP.segment(clip.kind));
       const checked = await step.do(STEP.privacy(clip.kind), RETRY, () => findPrivacy(deps, walkId, clip, uploaded.value));
       if (!checked.ok) return checked.failure;
+      await count(looking, STEP.privacy(clip.kind));
       clipIds.push(segmented.value.clipId);
     }
     await step.do(STEP.store, RETRY, () => storeWalk(deps, walkId, clipIds));
+    await count(looking, STEP.store);
     await step.do(STEP.transcribe, RETRY, () => transcribeWalk(deps, walkId));
+    await count(looking, STEP.transcribe);
 
     progress.step = "score";
     await step.do(STEP.enterScore, () => moveWalkStep(deps.db, walkId, "score"));
+    await count(looking, STEP.enterScore);
     const scored = await step.do(STEP.score, RETRY, async () => {
       const outcome = await scoreWalk(deps, walkId);
       return outcome.ok ? pass({ findings: outcome.value.findings.length }) : outcome;
     });
     if (!scored.ok) return scored.failure;
+    await count(looking, STEP.score);
     await step.do(STEP.voiceNotes, RETRY, () => storeVoiceNotes(deps, walkId));
+    await count(looking, STEP.voiceNotes);
     const blurred = await step.do(STEP.blur, RETRY, () => blurWalk(deps, walkId, prepared.value));
     if (!blurred.ok) return blurred.failure;
+    await count(looking, STEP.blur);
     await step.do(STEP.coverage, RETRY, () => checkCoverage(deps, walkId, prepared.value));
+    await count(looking, STEP.coverage);
 
     if (scored.value.findings > 0) {
       progress.step = "explain";
       await step.do(STEP.enterExplain, () => moveWalkStep(deps.db, walkId, "explain"));
+      await count(WRITING_STEPS, STEP.enterExplain);
       await step.do(STEP.explain, RETRY, () => explainWalk(deps, walkId));
+      await count(WRITING_STEPS, STEP.explain);
     }
     await step.do(STEP.complete, () => completeWalk(deps.db, walkId));
     return null;

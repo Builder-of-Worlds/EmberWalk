@@ -80,6 +80,22 @@ describe("groundFeet", () => {
     expect(() => groundFeet({ y: 0.5, ...LEVEL, cameraHeightFeet: 0 })).toThrow(RangeError);
     expect(() => fromWall({ kind: "loop", y: 0.6, wallY: 1.2 }, LEVEL)).toThrow(RangeError);
   });
+
+  it("accepts the edges themselves: the bottom row of the picture and a tilt of -90 degrees", () => {
+    expect(groundFeet({ y: 1, ...LEVEL })).not.toBeNull();
+    expect(groundFeet({ y: 0.5, ...LEVEL, tiltBelowHorizonDegrees: -90 })).toBeNull();
+  });
+
+  it("refuses a field of view of 180 degrees, and a camera height of zero even for one depth", () => {
+    expect(() => groundFeet({ y: 0.5, ...LEVEL, verticalFovDegrees: 180 })).toThrow(RangeError);
+    expect(() => depthFeet(0.5, { ...LEVEL, cameraHeightFeet: 0 })).toThrow(RangeError);
+  });
+});
+
+describe("depthFeet", () => {
+  it("gives no depth for a point exactly on the horizon", () => {
+    expect(depthFeet(0.5, { ...LEVEL, tiltBelowHorizonDegrees: 0 })).toBeNull();
+  });
 });
 
 describe("fromWall", () => {
@@ -178,5 +194,13 @@ describe("verticalFov and tiltAt", () => {
     expect(tiltAt(samples, 2 + TILT_GAP_SECONDS + 0.01)).toBeNull();
     expect(tiltAt(samples, 0.5)).toBeNull();
     expect(tiltAt([], 1)).toBeNull();
+  });
+
+  it("takes the earlier of two samples equally near", () => {
+    const samples = [
+      { t: 1, tiltDegrees: 10, headingDegrees: 0 },
+      { t: 1.5, tiltDegrees: 20, headingDegrees: 0 },
+    ];
+    expect(tiltAt(samples, 1.25)).toBe(10);
   });
 });

@@ -12,7 +12,7 @@ const SPEECH = path.join(REPO, "fixtures/meta/transcribe-speech.wav");
 describe("live Muse Voice Transcribe on a synthetic speech WAV", () => {
   it("reads timed turns and books whole seconds", async () => {
     requireLive();
-    if (!existsSync(SPEECH)) throw new Error(`${SPEECH} is missing: the speech clip must have its rights confirmed in NOTES docs/research/rights.md first`);
+    if (!existsSync(SPEECH)) throw new Error(`${SPEECH} is missing: the speech clip must have its rights confirmed before it is used`);
     const wav = new Uint8Array(readFileSync(SPEECH));
     const ledger = new MemoryLedger();
     const client = new MetaClient({ transport: fetchTransport({ baseUrl: META_BASE_URL, apiKey: metaKey() }), cache: new MemoryCache(), ledger, billing: "free_credits" });

@@ -30,8 +30,8 @@ const corners = (view: View): View[] =>
   [-TILT_ERROR_DEGREES, TILT_ERROR_DEGREES].flatMap((tilt) =>
     [-HEIGHT_ERROR_FEET, HEIGHT_ERROR_FEET].map((height) => ({
       verticalFovDegrees: view.verticalFovDegrees,
-      tiltBelowHorizonDegrees: Math.max(-90, Math.min(90, view.tiltBelowHorizonDegrees + tilt)),
-      cameraHeightFeet: view.cameraHeightFeet + height,
+      tiltBelowHorizonDegrees: Math.max(-90, Math.min(90, tilt + view.tiltBelowHorizonDegrees)),
+      cameraHeightFeet: height + view.cameraHeightFeet,
     })),
   );
 
@@ -44,9 +44,7 @@ export const groundFeet = ({ y, ...view }: View & { y: number }): FeetRange | nu
 };
 
 export const verticalFov = (clip: Pick<Clip, "width" | "height">): number =>
-  clip.height >= clip.width
-    ? LONG_SIDE_FOV_DEGREES
-    : (2 * Math.atan(Math.tan(radians(LONG_SIDE_FOV_DEGREES) / 2) * (clip.height / clip.width)) * 180) / Math.PI;
+  (2 * Math.atan(Math.tan(radians(LONG_SIDE_FOV_DEGREES) / 2) * Math.min(1, clip.height / clip.width)) * 180) / Math.PI;
 
 export const sampleNear = (samples: readonly MotionSample[], t: number): MotionSample | null => {
   let best: MotionSample | null = null;

@@ -156,6 +156,7 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
     send: async () => ({ code: "offline" }),
     prefs: memoryPrefs(),
     motion: null,
+    light: () => null,
     locate: async () => ({ refusal: "unsupported" }),
     results: async () => null,
     walkStatus: () => new Promise(() => {}),

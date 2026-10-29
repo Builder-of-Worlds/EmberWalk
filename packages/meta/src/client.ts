@@ -77,7 +77,7 @@ export class MetaClient {
   assertMaySend(model: string, content: ContentKind): void {
     if (!isStandardModel(model)) throw new MetaRefused("non_standard_model", `${model} is not a Standard mode model`);
     if (content === "real" && this.billing !== "paid") {
-      throw new MetaRefused("real_content_on_free_credits", "real content is sent only on a paid run (D-77)");
+      throw new MetaRefused("real_content_on_free_credits", "real content is sent only on a paid run");
     }
   }
 

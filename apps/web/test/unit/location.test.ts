@@ -7,7 +7,7 @@ import type { RuleArea } from "../../src/location.ts";
 const at = (latitude: number, longitude: number) => ({ latitude, longitude });
 
 describe("jurisdiction codes", () => {
-  it("are the three D-98 codes, each valid in the shared contract", () => {
+  it("are the three location codes, each valid in the shared contract", () => {
     expect(JURISDICTIONS).toEqual(["ca", "ca_sra", "ca_vhfhsz"]);
     for (const code of JURISDICTIONS) expect(SharedJurisdiction.parse(code)).toBe(code);
   });

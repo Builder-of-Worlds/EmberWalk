@@ -71,7 +71,7 @@ describe("explain, normal", () => {
     expect(out.results.filter((r) => r.verdict === "veto")).toEqual([]);
   });
 
-  it("drops the dead fuel rule from a brush the model judges alive (D-103), as a veto by the rules", async () => {
+  it("drops the dead fuel rule from a brush the model judges alive, as a veto by the rules", async () => {
     const { client } = standIn([withAnswer(BRUSH, { plantState: "alive", reason: "The brush is green." })]);
     const brush = byId((await explain(client, input())).results, BRUSH);
     expect(brush).toMatchObject({ verdict: "veto", vetoBy: "rules", reason: "The brush is green.", plantState: "alive", wording: "template" });
@@ -208,7 +208,7 @@ describe("explain, invalid answers", () => {
   });
 });
 
-describe("explain, helpful calm wording (D-183)", () => {
+describe("explain, helpful calm wording", () => {
   const plainOf = (ruleId: string, language: "en" | "es") => RULES.find((r) => r.id === ruleId)!.plain[language];
   const BRUSH_RULE = "ca-dry-brush-ccr-z1";
   const spanish = (instruction: string) => ({

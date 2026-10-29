@@ -1,4 +1,4 @@
-import { type CatalogRow, checkWalkCost, type DetectionScope, rowsForClip, samPhraseOf, walkCost } from "@emberwalk/catalog";
+import { type CatalogRow, checkWalkCost, rowsForClip, samPhraseOf, walkCost } from "@emberwalk/catalog";
 import { type ConceptRun, getWalk } from "@emberwalk/db";
 import { deleteFile, MetaRefused, samVideoCall, uploadFile } from "@emberwalk/meta";
 import type { Clip, Track } from "@emberwalk/shared";
@@ -13,7 +13,7 @@ const UPLOAD_EXPIRY_SECONDS = 3600;
 
 export type ClipDetections = { runs: ConceptRun[]; tracks: Track[] };
 
-export type SegmentResult = { clipId: string; found: number; notChecked: number; pending?: PendingTally[] };
+export type SegmentResult = { clipId: string; found: number; notChecked: number; pending: PendingTally[] };
 
 export const uploadClip = async (deps: Deps, walkId: string, clip: Clip): Promise<Outcome<string>> => {
   const walk = await getWalk(deps.db, walkId);
@@ -63,24 +63,18 @@ const runRow = async (deps: Deps, walkId: string, clip: Clip, fileId: string, ro
   ...(await askSam(deps, walkId, clip, fileId, samPhraseOf(row), content)),
 });
 
-export const segmentClip = async (
-  deps: Deps,
-  walkId: string,
-  clip: Clip,
-  fileId: string,
-  scope: DetectionScope = "stored",
-): Promise<Outcome<SegmentResult>> => {
+export const segmentClip = async (deps: Deps, walkId: string, clip: Clip, fileId: string): Promise<Outcome<SegmentResult>> => {
   const walk = await getWalk(deps.db, walkId);
   if (walk === null) return refuse("walk_missing", "This walk no longer exists.");
   const content = walk.synthetic ? "synthetic" : "real";
-  const asked = rowsForClip(clip.kind, scope);
+  const asked = rowsForClip(clip.kind);
   let results;
   let pointed;
   try {
-    if (scope === "catalog") await checkWalkCost(deps.meta(), walkCost([clip]).nano);
+    await checkWalkCost(deps.meta(), walkCost([clip]).nano);
     [results, pointed] = await Promise.all([
       Promise.all(asked.filter((row) => row.point === null).map((row) => runRow(deps, walkId, clip, fileId, row, content))),
-      pointAndTrack(deps, walkId, clip, fileId, content, scope),
+      pointAndTrack(deps, walkId, clip, fileId, content),
     ]);
   } catch (error) {
     if (error instanceof MetaRefused) return refusalOutcome(error);
@@ -106,6 +100,6 @@ export const segmentClip = async (
     clipId: clip.id,
     found: runs.filter((r) => r.outcome === "found").length,
     notChecked: runs.filter((r) => r.outcome === "not_checked").length,
-    ...(scope === "catalog" ? { pending } : {}),
+    pending,
   });
 };

@@ -4,9 +4,10 @@ import { copy } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
+import { feetSaid } from "../distance.ts";
 import { bandsOf, dayOf, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../results.ts";
 import type { ResultFinding, Verdict, WalkResults } from "../results.ts";
-import { findingFor, recordPartFor, ROUTES, WALK_START } from "../router.ts";
+import { findingFor, recordPartFor, ROUTES } from "../router.ts";
 import { Photo } from "./Photo.tsx";
 import { StatusLine } from "./Status.tsx";
 
@@ -14,12 +15,13 @@ const VIEWS: ViewPreference[] = ["simple", "detailed"];
 
 type Shown = { view: ViewPreference; resultsId: string; statusOf: (findingId: string) => FindingStatus };
 
-const Row = ({ finding, shown }: { finding: ResultFinding; shown: Shown }) => (
+const Row = ({ finding, shown, listed }: { finding: ResultFinding; shown: Shown; listed: boolean }) => (
   <li className="finding" data-finding={finding.id}>
     <Photo proof={finding.proof} />
     <p data-part="sentence">
       <a href={findingFor(shown.resultsId, finding.id)}>{finding.instruction}</a>
     </p>
+    {listed ? <p data-part="distance">{copy.results.distance(feetSaid(finding.distanceFeet))}</p> : null}
     <p className={`label ${finding.label}`} data-part="label">
       {copy.results.label[finding.label]}
     </p>
@@ -34,10 +36,10 @@ const Row = ({ finding, shown }: { finding: ResultFinding; shown: Shown }) => (
   </li>
 );
 
-const Rows = ({ findings, shown }: { findings: ResultFinding[]; shown: Shown }) => (
+const Rows = ({ findings, shown, listed = false }: { findings: ResultFinding[]; shown: Shown; listed?: boolean }) => (
   <ul className="findings">
     {findings.map((f) => (
-      <Row key={f.id} finding={f} shown={shown} />
+      <Row key={f.id} finding={f} shown={shown} listed={listed} />
     ))}
   </ul>
 );
@@ -59,7 +61,7 @@ const heading = (v: Verdict): string => {
   return v.kind === "fix" ? copy.results.fixFirst(v.first.length) : copy.results.ready;
 };
 
-const Body = ({ verdict, results, shown, walkAgain }: { verdict: Verdict; results: WalkResults; shown: Shown; walkAgain: string }) => {
+const Body = ({ verdict, results, shown }: { verdict: Verdict; results: WalkResults; shown: Shown }) => {
   if (verdict.kind === "incomplete")
     return (
       <>
@@ -71,17 +73,13 @@ const Body = ({ verdict, results, shown, walkAgain }: { verdict: Verdict; result
             </li>
           ))}
         </ul>
-        {results.synthetic ? null : sidesToWalk(verdict.gaps).length === 0 ? (
-          <a className="button primary" href={walkAgain}>
-            {copy.results.walkAgain}
-          </a>
-        ) : (
-          sidesToWalk(verdict.gaps).map((side) => (
-            <a key={side} className="button primary" href={recordPartFor(results.id, side)}>
-              {copy.results.walkSide(side)}
-            </a>
-          ))
-        )}
+        {results.synthetic
+          ? null
+          : sidesToWalk(verdict.gaps).map((side, i) => (
+              <a key={side} className={i === 0 ? "button primary" : "button"} href={recordPartFor(results.id, side)}>
+                {copy.results.walkSide(side)}
+              </a>
+            ))}
         {results.findings.length > 0 ? (
           <section className="so-far">
             <h2>{copy.results.soFar}</h2>
@@ -93,7 +91,10 @@ const Body = ({ verdict, results, shown, walkAgain }: { verdict: Verdict; result
   if (verdict.kind === "fix")
     return (
       <>
-        <Rows findings={verdict.first} shown={shown} />
+        <p className="lead">{copy.results.lead}</p>
+        <p className="count">{copy.results.inside(verdict.first.filter((f) => f.band === "zone_0").length)}</p>
+        <p className="count">{copy.results.out(verdict.first.filter((f) => f.band === "zone_1").length)}</p>
+        <Rows findings={verdict.first} shown={shown} listed />
         <Bands findings={results.findings} shown={shown} sub={false} />
       </>
     );
@@ -154,7 +155,7 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
           ))}
         </ul>
       ) : null}
-      <Body verdict={verdict} results={listed} shown={shown} walkAgain={deps.prefs.introSeen() ? WALK_START : ROUTES.how} />
+      <Body verdict={verdict} results={listed} shown={shown} />
     </main>
   );
 };

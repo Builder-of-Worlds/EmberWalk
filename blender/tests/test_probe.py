@@ -30,6 +30,16 @@ class Record(unittest.TestCase):
         self.assertEqual((rec["fps"], rec["frame_count"], rec["duration_s"]), (30.0, 600, 20.0))
         self.assertEqual(schema.errors(rec, schema.load("render")), [])
 
+    def test_the_record_carries_the_running_version_and_machine(self):
+        for blender, machine, engine in (("4.5.15 LTS", "macOS-15.7-x86_64-i386-64bit", "BLENDER_EEVEE_NEXT"),
+                                         ("5.2.2 LTS", "macOS-26.6.2-arm64-arm-64bit-Mach-O", "CYCLES")):
+            with self.subTest(blender=blender):
+                settings = dict(SETTINGS, blender=blender, machine=machine, engine=engine)
+                rec = probe.record("test-yard", "test-yard/walk.mp4", FFPROBE, 12345, "a" * 64, settings)
+                self.assertEqual((rec["settings"]["blender"], rec["settings"]["machine"]), (blender, machine))
+                self.assertEqual(schema.errors(rec, schema.load("render")), [])
+                self.assertEqual(probe.problems(rec, MOTION), [])
+
     def test_good_render_has_no_problems(self):
         self.assertEqual(probe.problems(self.build(), MOTION), [])
 

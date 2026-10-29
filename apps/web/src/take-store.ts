@@ -1,4 +1,4 @@
-import type { CompletedPart, Device, MotionSample, WalkPart } from "@emberwalk/shared";
+import type { CompletedPart, Device, MotionSample, Side, WalkPart } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
 import type { Jurisdiction } from "./location.ts";
 
@@ -18,14 +18,17 @@ export type OneTagSent = { id: string; sent: boolean; refusal: Failure | null };
 
 export type Pause = { atMs: number; forMs: number };
 
+export type Pan = { side: Side; startMs: number; endMs: number | null };
+
 export type WalkMarks = {
   soundOffAtMs: number | null;
   pauses: Pause[];
   propertyLines: number[];
   motion: MotionSample[];
+  pans?: Pan[];
 };
 
-export const NO_MARKS: WalkMarks = { soundOffAtMs: null, pauses: [], propertyLines: [], motion: [] };
+export const NO_MARKS: WalkMarks = { soundOffAtMs: null, pauses: [], propertyLines: [], motion: [], pans: [] };
 
 export type TakeSetup = { jurisdiction: Jurisdiction | null; sound: boolean; device?: Device | null; partOf?: WalkPart | null };
 

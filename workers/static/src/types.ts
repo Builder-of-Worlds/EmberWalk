@@ -5,6 +5,7 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   RESEND_API_KEY?: string;
   UNSUBSCRIBE_SECRET?: string;
+  POSTAL_FOOTER?: string;
 }
 
 export interface Message {

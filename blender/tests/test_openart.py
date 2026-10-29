@@ -35,7 +35,7 @@ def still(view, n, credits=10, chosen=False):
     if chosen:
         s.update({
             "chosen": True,
-            "picked_by": "Deacon",
+            "picked_by": "owner",
             "picked_on": "2026-10-28",
             "copy": {"file": "synthetic-hero-%s.jpg" % view, "bytes": 412000, "sha256": HEX},
         })
@@ -224,15 +224,15 @@ class LookRefused(unittest.TestCase):
         first(doc, "front")["reference"]["frame"] = 3
         self.assertRefused(doc, "only a blender_frame has a frame")
 
-    def test_a_chosen_still_with_no_pick_by_deacon(self):
+    def test_a_chosen_still_with_no_pick_by_owner(self):
         doc = look()
         del first(doc, "front")["picked_by"]
-        self.assertRefused(doc, "picked by Deacon")
+        self.assertRefused(doc, "picked by owner")
 
     def test_a_chosen_still_picked_by_someone_else(self):
         doc = look()
         first(doc, "front")["picked_by"] = "manager"
-        self.assertRefused(doc, "picked by Deacon")
+        self.assertRefused(doc, "picked by owner")
 
     def test_a_chosen_still_with_no_date(self):
         doc = look()
@@ -266,7 +266,7 @@ class LookRefused(unittest.TestCase):
 
     def test_a_pick_on_a_still_not_chosen(self):
         doc = look()
-        doc["stills"][1]["picked_by"] = "Deacon"
+        doc["stills"][1]["picked_by"] = "owner"
         self.assertRefused(doc, "not chosen")
 
     def test_two_chosen_stills_for_one_view(self):

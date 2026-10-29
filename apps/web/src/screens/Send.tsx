@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Failure } from "../api.ts";
 import { copy } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { progressOf } from "../progress.ts";
+import type { Shown } from "../progress.ts";
 import type { Clock } from "../recorder.ts";
 import { resultsFor, ROUTES } from "../router.ts";
 import type { Sender } from "../sender.ts";
@@ -9,6 +11,7 @@ import type { Take } from "../take-store.ts";
 import type { Progress, SendResult } from "../uploader.ts";
 import { SIGNAL_RETRY_MS, watchWalk } from "../watch.ts";
 import type { Online, Watched, WalkStatus } from "../watch.ts";
+import { Trail } from "./Progress.tsx";
 
 type Sending =
   | { kind: "ready" }
@@ -32,17 +35,21 @@ const RecordWalk = () => (
 
 const HOLDS_THE_WALK: ReadonlySet<Watched["kind"]> = new Set(["waiting", "held"]);
 
+export const OPENS_IN_MS = 1_500;
+
 type CheckingProps = { walkId: string; opens: string; status: WalkStatus; clock: Clock; forget: () => void };
 
 const Checking = ({ walkId, opens, status, clock, forget }: CheckingProps) => {
-  const [watched, setWatched] = useState<Exclude<Watched, { kind: "done" }>>({ kind: "checking", state: { name: "queued" } });
+  const [watched, setWatched] = useState<Watched>({ kind: "checking", state: { name: "queued" } });
+  const [shown, setShown] = useState<Shown>(() => progressOf({ name: "queued" }));
   const [reported, setReported] = useState(false);
   const { reportFault, build } = useDeps();
 
   useEffect(() => {
     let forgotten = false;
+    let cancelOpen = () => {};
     const told = new Set<string>();
-    return watchWalk(status, walkId, clock, (next) => {
+    const stop = watchWalk(status, walkId, clock, (next) => {
       if (next.kind === "held" && !told.has(next.code)) {
         told.add(next.code);
         void reportFault({ walkId, code: next.code, build })
@@ -55,9 +62,19 @@ const Checking = ({ walkId, opens, status, clock, forget }: CheckingProps) => {
         forgotten = true;
         forget();
       }
-      if (next.kind === "done") window.location.hash = resultsFor(opens);
-      else setWatched(next);
+      if (next.kind === "checking") setShown((before) => progressOf(next.state, before));
+      if (next.kind === "done") {
+        setShown((before) => progressOf({ name: "done" }, before));
+        cancelOpen = clock.later(() => {
+          window.location.hash = resultsFor(opens);
+        }, OPENS_IN_MS);
+      }
+      setWatched(next);
     }, windowOnline);
+    return () => {
+      stop();
+      cancelOpen();
+    };
   }, [status, walkId, opens, clock, forget, reportFault, build]);
 
   if (watched.kind === "held")
@@ -68,17 +85,21 @@ const Checking = ({ walkId, opens, status, clock, forget }: CheckingProps) => {
         <p>{reported ? copy.send.reported : copy.send.held}</p>
       </>
     );
+  if (watched.kind === "done")
+    return (
+      <>
+        <h1>{copy.send.title}</h1>
+        <Trail shown={shown} still={false} />
+      </>
+    );
   if (watched.kind === "checking" || watched.kind === "waiting")
     return (
       <>
         <h1>{copy.send.title}</h1>
         <p role="status">{copy.send.sent}</p>
         <p>{copy.send.refused.walk_not_done}</p>
-        {watched.kind === "checking" ? (
-          <p aria-live="polite">{copy.send.step(watched.state)}</p>
-        ) : (
-          <p role="alert">{copy.send.refused.offline}</p>
-        )}
+        <Trail shown={shown} still={watched.kind === "waiting"} />
+        {watched.kind === "waiting" ? <p role="alert">{copy.send.refused.offline}</p> : null}
       </>
     );
   const said = watched.kind === "failed" ? watched.message : copy.send.lost;

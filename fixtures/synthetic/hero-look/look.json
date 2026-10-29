@@ -24,7 +24,7 @@
       "credits": 36,
       "original": {"file": "synthetic-hero-front-2.png", "bytes": 8793625, "sha256": "6e532837b77a273a3146b3a1911a4cb731ee60d15dd5b2c2b149fc8ab5f59b6f"},
       "chosen": true,
-      "picked_by": "Deacon",
+      "picked_by": "owner",
       "picked_on": "2026-10-28",
       "copy": {"file": "synthetic-hero-front.jpg", "bytes": 443281, "sha256": "2341b20de9265c5c8c56d9f7cf679811cdf29fb15298b4da3c54ef83667c79c7"}
     },
@@ -55,7 +55,7 @@
       "credits": 36,
       "original": {"file": "synthetic-hero-east-3.png", "bytes": 8079558, "sha256": "edef1d9e7862450243bff410573716b6bfe962db7bc4d81d3f77b8b1adacb417"},
       "chosen": true,
-      "picked_by": "Deacon",
+      "picked_by": "owner",
       "picked_on": "2026-10-28",
       "copy": {"file": "synthetic-hero-east.jpg", "bytes": 380302, "sha256": "ac2186190a57b2721a0b173c7d26fca0ec83bdc855f3bba2c7432e4dbdace6d9"}
     },
@@ -86,7 +86,7 @@
       "credits": 36,
       "original": {"file": "synthetic-hero-west-2.png", "bytes": 8830101, "sha256": "0d7162de03c3a8e593a8a4ec098fd9f50d8bfd8e6889fe5f8beeffb913755413"},
       "chosen": true,
-      "picked_by": "Deacon",
+      "picked_by": "owner",
       "picked_on": "2026-10-28",
       "copy": {"file": "synthetic-hero-west.jpg", "bytes": 448153, "sha256": "6f96d3272ee2afac6f01da80931836432763fb39970339a82a3309d56646c69a"}
     },
@@ -99,7 +99,7 @@
       "credits": 36,
       "original": {"file": "synthetic-hero-north-1.png", "bytes": 8151512, "sha256": "34ee277c4574fa5a7649ecf73f893ecfbe9793dc8526db3b67a4bd7240132307"},
       "chosen": true,
-      "picked_by": "Deacon",
+      "picked_by": "owner",
       "picked_on": "2026-10-28",
       "copy": {"file": "synthetic-hero-north.jpg", "bytes": 371447, "sha256": "7237e1f46723dd2ccf6cdf5c2d9400ee12c08b1ce2c3cf655bff7e0437a6df64"}
     },
@@ -139,7 +139,7 @@
       "credits": 36,
       "original": {"file": "synthetic-hero-after_front-3.png", "bytes": 8477857, "sha256": "d659a63da9d10a0ba7f1f1ef18a93cac0d913a5ace035618fe5b5160133120f2"},
       "chosen": true,
-      "picked_by": "Deacon",
+      "picked_by": "owner",
       "picked_on": "2026-10-28",
       "copy": {"file": "synthetic-hero-after_front.jpg", "bytes": 413047, "sha256": "dd16ff003f3cea0315285e719f5b55f8d4518b852501ed75a3b4b3846911e70e"}
     },

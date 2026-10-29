@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error the direction scripts are plain JavaScript
-import { HEAVY, clamp, cycle, holdForms, mark, onScroll, reduced, watch } from "../../directions/motion.js";
-// @ts-expect-error the direction scripts are plain JavaScript
-import * as P from "../../directions/combined/script.js";
+// @ts-expect-error the page script is plain JavaScript
+import { HEAVY, clamp, cycle, mark, onScroll, reduced, watch } from "../../public/site.js";
+// @ts-expect-error the page script is plain JavaScript
+import * as P from "../../public/site.js";
 
 type Listener = { type: string; fn: (event?: unknown) => void; options: unknown };
 type Point = { x: number; y: number };
@@ -118,7 +118,7 @@ function fakeDoc(byId: Record<string, Node> = {}, all: Record<string, Node[]> = 
 
 const seen = (target: unknown, isIntersecting = true, top = 10) => ({ target, isIntersecting, boundingClientRect: { top } });
 
-describe("motion.js", () => {
+describe("the motion helpers", () => {
   it("keeps values between 0 and 1 and reads the reduced motion query", () => {
     expect([clamp(-0.5), clamp(0.4), clamp(1.5)]).toEqual([0, 0.4, 1]);
     expect(HEAVY).toBe("cubic-bezier(0.3, 0, 0.1, 1)");
@@ -151,15 +151,12 @@ describe("motion.js", () => {
     expect(paints).toBe(4);
   });
 
-  it("holds every form so a preview never sends", () => {
-    const forms = [new Node("form"), new Node("form")];
-    holdForms(fakeDoc({}, { form: forms }));
-    for (const form of forms) {
-      expect(form.listeners.map((l) => l.type)).toEqual(["submit"]);
-      let held = false;
-      form.listeners[0].fn({ preventDefault: () => (held = true) });
-      expect(held).toBe(true);
-    }
+  it("leaves a page without the signup form alone", () => {
+    const form = new Node("form");
+    P.setupSignup(fakeDoc({}, { form: [form] }), fakeWindow(false).win, () => {
+      throw new Error("no request without a form");
+    });
+    expect(form.listeners).toEqual([]);
   });
 
   it("reports each item coming into view and leaving it, and which side it left by", () => {
@@ -193,11 +190,11 @@ describe("motion.js", () => {
   });
 });
 
-describe("combined direction, timing", () => {
+describe("the page, timing", () => {
   it("keeps every timing heavy, slow and on one twelve second walk cycle", () => {
     expect([P.SVG, P.WALK_MS, P.CYCLE_MS, P.WALK, P.HOLD, P.GONE, P.POP_MS, P.LIT]).toEqual(["http://www.w3.org/2000/svg", 9000, 12000, 0.75, 0.9, 0.97, 900, 0.03]);
     expect([P.MARKER_AT, P.STEP_AT]).toEqual([[0.59, 0.99, 0.87], [[0, 0.42], [0.42, 0.78], [0.78, 1]]]);
-    expect([P.IN_VIEW, P.STEPS, P.ZONE_MS, P.PIN_MS, P.FLOW_MS]).toEqual(["-12% 0px -12% 0px", 5, 3600, 2600, 2200]);
+    expect([P.IN_VIEW, P.STEPS, P.ZONE_MS, P.PIN_MS, P.LOOP_SPAN, P.LOOP_LAG, P.LIT_EARLY]).toEqual(["-12% 0px -12% 0px", 5, 3600, 2600, 2.5, 0.8, 0.002]);
     expect([P.SPRING, P.FOREVER]).toEqual(["cubic-bezier(0.2, 1.4, 0.4, 1)", { duration: 12000, iterations: Infinity }]);
     expect(P.GROW).toEqual({ keyframes: [{ opacity: 0, transform: "scale(0.86)" }, { opacity: 1, transform: "scale(1)" }], options: { duration: 1800, easing: HEAVY, fill: "backwards" } });
   });
@@ -241,7 +238,7 @@ function openingBox(top = 0, height = 5000) {
   return { opening, ridge, cards, box, ...film };
 }
 
-describe("combined direction, the opening", () => {
+describe("the page, the opening", () => {
   it("keeps the passage marks, the push, the house and the ember's ends in one place", () => {
     expect([P.FRAMES, P.PUSH, P.HOUSE, P.MIDDLE, P.RATE, P.SETTLE, P.ARC, P.EMBER_R, P.TRAIL, P.HAZE]).toEqual([75, 0.12, [0.7, 0.72], [0.5, 0.5], 4, 0.0005, 0.04, 14, 4, "222, 204, 178"]);
     expect(P.MARKS).toEqual({ glide: 0.1, swap: 0.42, hazeIn: 0.3, hazeOut: 0.52, settle: 0.9, lift: 0.08, land: 0.94 });
@@ -308,7 +305,7 @@ describe("combined direction, the opening", () => {
   });
 
   it("names the frame files by set, and picks the phone set on a tall screen", () => {
-    expect([P.frameSrc("d", 7), P.frameSrc("p", 74)]).toEqual(["frames/synthetic-v2-d-07.webp", "frames/synthetic-v2-p-74.webp"]);
+    expect([P.frameSrc("d", 7), P.frameSrc("p", 74)]).toEqual(["/landing/frames/synthetic-v2-d-07.webp", "/landing/frames/synthetic-v2-p-74.webp"]);
     expect([P.setFor(390, 844), P.setFor(1440, 900), P.setFor(900, 900)]).toEqual(["p", "d", "d"]);
   });
 
@@ -342,7 +339,7 @@ describe("combined direction, the opening", () => {
   });
 });
 
-describe("combined direction, the opening scrub", () => {
+describe("the page, the opening scrub", () => {
   it("paints at once, then eases each scroll toward its target and stops when settled", () => {
     const { win, listeners, frames } = fakeWindow(false);
     const painted: number[] = [];
@@ -438,7 +435,7 @@ const round = (value: unknown) => JSON.parse(JSON.stringify(value, (_, v) => (ty
 const hidden = { shown: false, lift: 0, clear: 0 };
 const cleared = { shown: true, lift: 0, clear: 1 };
 
-describe("combined direction, the house apart", () => {
+describe("the page, the house apart", () => {
   it("traces one region per layer on the house photo, in percent", () => {
     expect(P.REGIONS).toEqual([
       [[8, 0], [46, 0], [46, 22], [40, 34], [44, 45], [60, 39], [82, 32], [85, 34], [66, 54], [66, 58.5], [3, 58.5], [3, 45], [18, 45], [16, 24]],
@@ -548,7 +545,7 @@ function apartBox(top: number, height: number) {
   return { apart, box, pieces, cuts, cards };
 }
 
-describe("combined direction, the looping walk", () => {
+describe("the page, the looping walk", () => {
   it("holds, fades and clears every part at the end of each loop", () => {
     expect(P.fadeOut({ a: 1 })).toEqual([{ a: 1, opacity: 1, offset: 0.9 }, { a: 1, opacity: 0, offset: 0.97 }, { a: 1, opacity: 0, offset: 1 }]);
     expect(P.loopFrames()).toEqual([{ opacity: 1, offset: 0 }, { opacity: 1, offset: 0.9 }, { opacity: 0, offset: 0.97 }, { opacity: 0, offset: 1 }]);
@@ -655,7 +652,7 @@ function walkBox() {
   return { svg, loop, walker, markers, dots, plot, box };
 }
 
-describe("combined direction, live parts", () => {
+describe("the page, live parts", () => {
   it("loops the trace, the path, the walker, the markers and the step numbers forever", () => {
     const { svg, loop, walker, markers, dots, box } = walkBox();
     P.walk(fakeDoc(), box);
@@ -693,16 +690,30 @@ describe("combined direction, live parts", () => {
     expect(on(all)).toEqual([false, true, false, false]);
   });
 
-  it("moves the crew flow along one step at a time", () => {
-    const all = nodes(4, "li");
-    const list = node("ol", { ".node": all });
-    const { win, timers } = fakeWindow();
-    P.flow(win, list);
-    expect([on(all), list.vars.get("--at")]).toEqual([[true, false, false, false], "0"]);
-    expect(timers.map((t) => t.ms)).toEqual([2200]);
-    timers[0].fn();
-    timers[0].fn();
-    expect([on(all), list.vars.get("--at")]).toEqual([[false, false, true, false], "2"]);
+  it("maps the scroll to the drawn arc and lights each step as the arrow reaches it", () => {
+    expect(P.loopState(0, 7)).toEqual({ drawn: 0, lit: [true, false, false, false, false, false, false] });
+    expect(P.loopState(0.5, 4)).toEqual({ drawn: 0.5, lit: [true, true, true, false] });
+    expect(P.loopState(3 / 7, 7)).toEqual({ drawn: 3 / 7, lit: [true, true, true, true, false, false, false] });
+    expect(P.loopState(-1, 3)).toEqual({ drawn: 0, lit: [true, false, false] });
+    expect(P.loopState(1 / 7 - 0.001, 7).lit[1], "a step lights a hair before the arrow, against pixel rounding").toBe(true);
+    expect(P.loopState(1 / 7 - 0.003, 7).lit[1]).toBe(false);
+    expect(P.loopState(2, 3)).toEqual({ drawn: 1, lit: [true, true, true] });
+  });
+
+  it("pins the after the walk section, never the rising card, and draws its loop as ScrollTrigger scrubs the scroll", () => {
+    const { after, ring, steps, section } = ringBox();
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    P.loop(after, gsap, trigger);
+    expect([gsap.plugins, [...ring.classes]]).toEqual([[trigger], ["live"]]);
+    const [vars] = trigger.made;
+    expect({ ...vars, onUpdate: typeof vars.onUpdate }).toEqual({ trigger: section, start: "center center", end: "+=250%", pin: section, anticipatePin: 1, scrub: 0.8, onUpdate: "function" });
+    const lit = () => steps.map((step) => step.classes.has("lit"));
+    expect([ring.vars.get("--p"), lit()]).toEqual(["0.000", [true, false, false, false, false, false, false]]);
+    vars.onUpdate({ progress: 3 / 7 });
+    expect([ring.vars.get("--p"), lit()]).toEqual(["0.429", [true, true, true, true, false, false, false]]);
+    vars.onUpdate({ progress: 1 });
+    expect([ring.vars.get("--p"), lit()]).toEqual(["1.000", [true, true, true, true, true, true, true]]);
   });
 
   it("brings a card in, and takes it out up or down by the side it left", () => {
@@ -718,6 +729,24 @@ describe("combined direction, live parts", () => {
   });
 });
 
+function ringBox() {
+  const steps = nodes(7, "li");
+  const ring = node("div", { ".ring-step": steps });
+  const after = node("div", { ".ring": [ring] });
+  const section = node("section");
+  return { after: Object.assign(after, { parentElement: section }), ring, steps, section };
+}
+
+function fakeGsap() {
+  const plugins: unknown[] = [];
+  return { plugins, registerPlugin: (...more: unknown[]) => plugins.push(...more) };
+}
+
+function fakeTrigger() {
+  const made: { trigger: unknown; onUpdate: (self: { progress: number }) => void }[] = [];
+  return { made, create: (vars: (typeof made)[number]) => made.push(vars) && {} };
+}
+
 function page(visibility = "visible") {
   const opening = openingBox(-2400);
   const walking = walkBox();
@@ -731,19 +760,29 @@ function page(visibility = "visible") {
   const zones = live("zones", { ".band": bands, ".zone": nodes(3) });
   const pinList = nodes(2);
   const pinned = live("pins", { ".pin": pinList });
-  const flowNodes = nodes(4);
-  const flowList = live("flow", { ".node": flowNodes });
+  const { after, ring, steps, section } = ringBox();
   const cards = nodes(2);
   const form = new Node("form");
   const doc = fakeDoc(
-    { opening: opening.opening, apart: apart.apart, plot: walking.plot },
-    { ".rise": cards, "[data-live]": [walking.box, zones, pinned, flowList], form: [form] },
+    { opening: opening.opening, apart: apart.apart, plot: walking.plot, after },
+    { ".rise": cards, "[data-live]": [walking.box, zones, pinned], form: [form] },
     visibility,
   );
-  return { opening, apart, walking, zones, bands, pinned, pinList, flowList, flowNodes, cards, form, doc };
+  return { opening, apart, walking, zones, bands, pinned, pinList, after, section, ring, steps, cards, form, doc };
 }
 
-describe("combined direction, start", () => {
+describe("the page, start", () => {
+  it("on a page with none of the landing sections only brings its lines into view", () => {
+    const lines = nodes(2);
+    const doc = fakeDoc({}, { ".rise": lines });
+    const { win, observers, listeners } = fakeWindow(false);
+    P.start(doc, win, () => Promise.reject(new Error("no request")));
+    expect([[...doc.classes], listeners, win.made]).toEqual([["js"], [], []]);
+    expect(observers.map((o) => o.observed)).toEqual([lines, []]);
+    observers[0].notify([seen(lines[0])]);
+    expect([...lines[0].classes]).toEqual(["shown"]);
+  });
+
   it("pins the opening, places the walker and watches cards and live parts", () => {
     const { opening, apart, walking, cards, form, doc } = page();
     const { win, observers } = fakeWindow(false);
@@ -752,7 +791,7 @@ describe("combined direction, start", () => {
     expect(apart.pieces.map((p) => p.vars.get("--lift"))).toEqual(["0.000", "1.000", "0.000", "0.000"]);
     expect([walking.walker.getAttribute("cx"), walking.walker.getAttribute("cy")]).toEqual(["10.0", "5.0"]);
     expect([...doc.classes]).toEqual(["js"]);
-    expect(form.listeners).toHaveLength(1);
+    expect(form.listeners).toHaveLength(0);
     expect(observers.map((o) => o.options)).toEqual([{ rootMargin: "-12% 0px -12% 0px" }, { rootMargin: "0px" }]);
     expect(observers[0].observed).toEqual(cards);
     observers[0].notify([seen(cards[0]), seen(cards[1], false, -20)]);
@@ -761,23 +800,43 @@ describe("combined direction, start", () => {
   });
 
   it("starts each live part once, the first time it is seen", () => {
-    const { walking, bands, pinList, flowNodes, zones, pinned, flowList, doc } = page();
+    const { walking, bands, pinList, zones, pinned, doc } = page();
     const { win, observers, timers } = fakeWindow(false);
     P.start(doc, win);
     const live = observers[1];
     live.notify([seen(zones, false)]);
     expect(on(bands)).toEqual([false, false, false]);
-    live.notify([seen(walking.box), seen(zones), seen(pinned), seen(flowList)]);
+    live.notify([seen(walking.box), seen(zones), seen(pinned)]);
     expect(walking.walker.animations).toHaveLength(1);
-    expect([on(bands.slice().reverse()), on(pinList), on(flowNodes)]).toEqual([
+    expect([on(bands.slice().reverse()), on(pinList)]).toEqual([
       [true, false, false],
       [true, false],
-      [true, false, false, false],
     ]);
-    expect(timers.map((t) => t.ms)).toEqual([3600, 2600, 2200]);
+    expect(timers.map((t) => t.ms)).toEqual([3600, 2600]);
     live.notify([seen(walking.box), seen(zones)]);
     expect(walking.walker.animations).toHaveLength(1);
-    expect(timers).toHaveLength(3);
+    expect(timers).toHaveLength(2);
+  });
+
+  it("with GSAP on the window, pins the after the walk section and draws its loop by scroll; without it, leaves the loop whole", () => {
+    const { section, ring, doc } = page();
+    const { win } = fakeWindow(false);
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    P.start(doc, Object.assign(win, { gsap, ScrollTrigger: trigger }));
+    expect([trigger.made.map((vars) => vars.trigger), gsap.plugins, [...ring.classes], ring.vars.get("--p")]).toEqual([[section], [trigger], ["live"], "0.000"]);
+    const bare = page();
+    P.start(bare.doc, fakeWindow(false).win);
+    expect([[...bare.ring.classes], bare.ring.vars.size]).toEqual([[], 0]);
+  });
+
+  it("with reduced motion and GSAP on the window, builds no passage and leaves the loop whole", () => {
+    const { ring, doc } = page();
+    const { win } = fakeWindow(true);
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    P.start(doc, Object.assign(win, { gsap, ScrollTrigger: trigger }));
+    expect([trigger.made, gsap.plugins, [...ring.classes], ring.vars.size]).toEqual([[], [], [], 0]);
   });
 
   it("holds the walk until a hidden tab is shown", () => {
@@ -801,6 +860,6 @@ describe("combined direction, start", () => {
     expect(doc.classes.size).toBe(0);
     expect([observers, timers]).toEqual([[], []]);
     expect(walking.svg.children).toEqual([]);
-    expect(form.listeners).toHaveLength(1);
+    expect(form.listeners).toHaveLength(0);
   });
 });

@@ -46,7 +46,7 @@ const originOk = (origin: string): boolean => {
 
 const guarded = (send: Fetch, allowRealR2: boolean): Fetch => async (request) => {
   if (!allowRealR2 && request.method === "PUT" && REAL_R2_HOST.test(new URL(request.url).hostname)) {
-    throw new ImportError("real_r2_refused", "The API signed a part link for a real R2 bucket. Pass --allow-real-r2 only if Deacon agreed to write there.");
+    throw new ImportError("real_r2_refused", "The API signed a part link for a real R2 bucket. Pass --allow-real-r2 only when writing to that bucket is agreed.");
   }
   return send(request);
 };

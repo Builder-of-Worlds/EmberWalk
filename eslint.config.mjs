@@ -13,7 +13,7 @@ const nodeGlobals = {
 };
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/", "**/dist/", "**/coverage/", "**/.wrangler/"] },
+  { ignores: ["**/node_modules/", "**/dist/", "**/coverage/", "**/.wrangler/", "workers/static/public/vendor/"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

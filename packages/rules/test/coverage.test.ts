@@ -96,6 +96,52 @@ describe("coverageOf on a walk that went all the way around", () => {
   it("reports a closed loop as closed even when another gap holds green back", () => {
     expect(coverageOf(input({ pans: 0 })).loop).toBe("closed");
   });
+
+  it("counts a side walked for exactly the seconds needed as walked; the front of this walk takes 21 seconds", () => {
+    expect(coverageOf(input(), { ...COVERAGE_SETTINGS, secondsPerSide: 21 }).gaps).toEqual([]);
+    expect(kinds(coverageOf(input(), { ...COVERAGE_SETTINGS, secondsPerSide: 21.5 }))).toEqual(["missing:front"]);
+  });
+
+  it("does not call a side dark at exactly the light needed", () => {
+    const result = coverageOf(input({ light: { ...LIGHT, left: COVERAGE_SETTINGS.darkBelow } }));
+    expect(result.gaps).toEqual([]);
+    expect(result.coverage).toBe("checked");
+  });
+
+  it("counts the wall base from exactly two frames at the lowest confidence and the lowest bottom allowed", () => {
+    const loop = walkOf(4);
+    const edge = { box: [0.1, 0.3, 0.9, 1 - COVERAGE_SETTINGS.wallBaseMargin] as [number, number, number, number], confidence: COVERAGE_SETTINGS.wallBaseConfidence };
+    const frames = [...wallEvery(loop.endSeconds).filter((f) => f.t < 21 || f.t >= 45), { t: 21, ...edge }, { t: 24, ...edge }];
+    expect(coverageOf(input({ loop, wallFrames: frames })).gaps).toEqual([]);
+  });
+
+  it("counts wall frames taken at the very start and the very end of the loop", () => {
+    const loop = walkOf(4);
+    const box: [number, number, number, number] = [0.1, 0.3, 0.9, 0.8];
+    const ends = [0, 0, loop.endSeconds, loop.endSeconds].map((t) => ({ t, box, confidence: 0.9 }));
+    const frames = [...wallEvery(loop.endSeconds).filter((f) => f.t >= 21 && f.t < 69), ...ends];
+    expect(coverageOf(input({ loop, wallFrames: frames })).gaps).toEqual([]);
+  });
+
+  it("does not count wall frames taken after the loop ended", () => {
+    const loop = walkOf(4);
+    const after = [1, 2].map((s) => ({ t: loop.endSeconds + s, box: [0.1, 0.3, 0.9, 0.8] as [number, number, number, number], confidence: 0.9 }));
+    const frames = [...wallEvery(loop.endSeconds).filter((f) => f.t < 69), ...after];
+    expect(kinds(coverageOf(input({ loop, wallFrames: frames })))).toEqual(["first_five_feet:right"]);
+  });
+
+  it("closes the loop at exactly the turn needed", () => {
+    const loop = walkOf(3, { step: 110 });
+    const result = coverageOf(input({ loop, wallFrames: wallEvery(loop.endSeconds) }));
+    expect(result.loop).toBe("closed");
+    expect(kinds(result)).not.toContain("loop_open:null");
+  });
+
+  it("reads a walk that never turned as clockwise, naming its missing sides left, back, right", () => {
+    const loop = walkOf(1, { step: 0 });
+    const result = coverageOf(input({ loop, wallFrames: wallEvery(loop.endSeconds) }));
+    expect(kinds(result)).toEqual(["missing:left", "missing:back", "missing:right", "loop_open:null"]);
+  });
 });
 
 describe("coverageOf refuses to say checked", () => {
@@ -152,6 +198,27 @@ describe("coverageOf refuses to say checked", () => {
     notChecked(result);
     expect(result.gaps).toEqual([]);
   });
+  it("with an empty sample list on a loop shorter than the largest hole allowed, and invents no side gap", () => {
+    const result = coverageOf(input({ loop: { startSeconds: 0, endSeconds: 3, samples: [] } }));
+    notChecked(result);
+    expect(result.gaps).toEqual([]);
+  });
+  it("when the samples cannot be trusted, and gives a dark side no where", () => {
+    const loop = walkOf(4);
+    const holed = { ...loop, samples: loop.samples.filter((s) => s.t < 30 || s.t >= 36) };
+    const result = coverageOf(input({ loop: holed, light: { ...LIGHT, left: 20 } }));
+    expect(result.gaps).toEqual([{ kind: "dark", side: "left", where: null, reason: { measure: "light", measured: 20, needed: 40 } }]);
+  });
+  it("with no loop but wall frames given, which it leaves uncounted", () => {
+    const result = coverageOf(input({ loop: null }));
+    notChecked(result);
+    expect(result).toMatchObject({ loop: "not_checked", gaps: [], sides: [] });
+  });
+  it("with no loop and a look that says different, giving an open loop with no where", () => {
+    const result = coverageOf(input({ loop: null, look: { same: false, confidence: 0.9 } }));
+    notChecked(result);
+    expect(result.gaps).toEqual([{ kind: "loop_open", side: null, where: null, reason: { measure: "same_place", measured: 0.9, needed: 0.7 } }]);
+  });
   it("honours settings given to it", () => {
     const result = coverageOf(input({ pans: 2 }), { ...COVERAGE_SETTINGS, pans: 2 });
     expect(result.coverage).toBe("checked");
@@ -191,6 +258,20 @@ describe("coverageOf refuses bad input by naming the field", () => {
   });
 });
 
+describe("coverageOf accepts input at its edges", () => {
+  it("a light of 0 or 255, and a confidence of 0 or 1 on a wall frame or the look", () => {
+    const edges = input({ light: { ...LIGHT, front: 0, back: 255 } });
+    edges.wallFrames.push({ t: 1, box: [0.1, 0.3, 0.9, 0.8], confidence: 0 }, { t: 2, box: [0.1, 0.3, 0.9, 0.8], confidence: 1 });
+    expect(() => coverageOf({ ...edges, look: { same: true, confidence: 1 } })).not.toThrow();
+    expect(() => coverageOf({ ...edges, look: { same: true, confidence: 0 } })).not.toThrow();
+  });
+  it("two samples taken at the same moment", () => {
+    const loop = walkOf(1);
+    const samples = [...loop.samples.slice(0, 4), { ...loop.samples[3]! }, ...loop.samples.slice(4)];
+    expect(() => coverageOf(input({ loop: { ...loop, samples } }))).not.toThrow();
+  });
+});
+
 describe("CoverageRecord", () => {
   const record = {
     walkId: WALK_ID,
@@ -223,6 +304,18 @@ describe("CoverageRecord", () => {
   it("refuses checked with any gap, and checked with an open loop", () => {
     expect(() => CoverageRecord.parse({ ...record, coverage: "checked" })).toThrow();
     expect(() => CoverageRecord.parse({ ...record, coverage: "checked", gaps: [], loop: "open" })).toThrow();
+  });
+  it("keeps each side's state, and reads a record written before sides were kept", () => {
+    const sides = { front: "checked", right: "checked", back: "checked", left: "partly_checked" };
+    expect(CoverageRecord.parse({ ...record, sides }).sides).toEqual(sides);
+    expect(CoverageRecord.parse(record).sides).toBeUndefined();
+  });
+  it("refuses an unknown side state, a missing side, and checked with any side short of checked", () => {
+    const sides = { front: "checked", right: "checked", back: "checked", left: "checked" };
+    expect(() => CoverageRecord.parse({ ...record, sides: { ...sides, left: "grey" } })).toThrow();
+    expect(() => CoverageRecord.parse({ ...record, sides: { front: "checked", right: "checked", back: "checked" } })).toThrow();
+    expect(CoverageRecord.parse({ ...record, coverage: "checked", gaps: [], sides }).coverage).toBe("checked");
+    expect(() => CoverageRecord.parse({ ...record, coverage: "checked", gaps: [], sides: { ...sides, back: "partly_checked" } })).toThrow();
   });
   it("refuses a look with both answers or a confidence out of range", () => {
     expect(() => CoverageRecord.parse({ ...record, look: { same: true, confidence: 1.5 } })).toThrow();

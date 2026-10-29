@@ -21,7 +21,7 @@ Output goes to `$EMBERWALK_RENDERS/<scene id>/` (default `~/emberwalk-renders/`)
 
 ## Assets
 
-Only the assets named in `assets.json` are used. Poly Haven assets are CC0 and are fetched by id through the Poly Haven API at build time into `$EMBERWALK_ASSETS/polyhaven/` (default `~/emberwalk-assets/`), outside git, with each file's checksum checked (D-75). Nothing fetched reaches the app. Scripted shapes (the wood pile and the fence) are made by `ewscene/blendscene.py` and carry Poly Haven textures.
+Only the assets named in `assets.json` are used. Poly Haven assets are CC0 and are fetched by id through the Poly Haven API at build time into `$EMBERWALK_ASSETS/polyhaven/` (default `~/emberwalk-assets/`), outside git, with each file's checksum checked. Nothing fetched reaches the app. Scripted shapes (the wood pile and the fence) are made by `ewscene/blendscene.py` and carry Poly Haven textures.
 
 ## Hero house
 
@@ -32,7 +32,7 @@ The hero house is a whole house with four sides, not one side, so it has its own
 - `check_house.py <spec.json or truth.json> [--changes changes.json]`: exit 0 with one summary line, exit 3 with the reason and nothing written. Rule ids, concepts, zones and statutes are read from the rules package at run time with node; if node does not run the check exits 3.
 - `fixtures/synthetic/hero-before/spec.json` and `fixtures/synthetic/hero-after/changes.json`: the before house and what the after scene does to each hazard.
 - `ewscene/route.py` `build(spec)`: the walk's `motion.json` (one pose a frame in house axes) and `parts.json` (`emberwalk.route-parts/1`, each loop stretch and pan with its seconds and frames) from the spec's `route` settings. One clockwise lap from the front door at the standoff, facing the wall, stopping at each corner and each side's middle for a pan out to the yard; on a porch, deck or landing the camera rises by its height, eased over one stride. Refused: a standoff outside 120 to 144 in, a pan outside 10 to 20 s, a walk over 330 s, a loop that leaves the lot, a camera inside the house or a hazard box, a heading turn over 15 degrees between frames.
-- `check_openart.py --look look.json` (`emberwalk.openart-look/1`): every OpenArt still of the house's look with its model, prompt, reference (`board`, `blender_frame` with its frame, or `none`), credits and original file by name, size and sha256, and Deacon's pick of one still per view (`front`, `east`, `west`, `north`, `after_front`) with its committed JPEG copy of 500,000 bytes or less. Exit 0 prints the credit total; exit 3 with the reason. Spend has no cap; the check only makes the total add up.
+- `check_openart.py --look look.json` (`emberwalk.openart-look/1`): every OpenArt still of the house's look with its model, prompt, reference (`board`, `blender_frame` with its frame, or `none`), credits and original file by name, size and sha256, and the owner's pick of one still per view (`front`, `east`, `west`, `north`, `after_front`) with its committed JPEG copy of 500,000 bytes or less. Exit 0 prints the credit total; exit 3 with the reason. Spend has no cap; the check only makes the total add up.
 - `assets.json` carries scripted entries for the hero hazards that have no shape yet (gutter leaves, vent mulch, overhanging branch, shrub, propane tank, shed, trash cans, patio set, tall grass). The shapes themselves are built by the scene builder task.
 - Tests: `python3 -m unittest blender.tests.test_house`.
 

@@ -15,6 +15,38 @@
     "area": "State Responsibility Area",
     "features": {
       "gutters": true,
+      "windows": [
+        {"side": "front", "along_in": 60, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "front", "along_in": 240, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "front", "along_in": 540, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "front", "along_in": 720, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "front", "along_in": 860, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "left", "along_in": 100, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "left", "along_in": 400, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "right", "along_in": 80, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "right", "along_in": 260, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "back", "along_in": 80, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "back", "along_in": 300, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "back", "along_in": 460, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "wing_back", "along_in": 100, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "wing_back", "along_in": 260, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "wing_side", "along_in": 70, "width_in": 48, "height_in": 48, "sill_in": 44},
+        {"side": "front", "along_in": 60, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "front", "along_in": 240, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "front", "along_in": 540, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "front", "along_in": 720, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "front", "along_in": 860, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "left", "along_in": 100, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "left", "along_in": 400, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "right", "along_in": 80, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "right", "along_in": 260, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "back", "along_in": 80, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "back", "along_in": 300, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "back", "along_in": 460, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "wing_back", "along_in": 100, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "wing_back", "along_in": 260, "width_in": 48, "height_in": 48, "sill_in": 158},
+        {"side": "wing_side", "along_in": 70, "width_in": 48, "height_in": 48, "sill_in": 158}
+      ],
       "foundation_vents": [
         {
           "side": "left",
@@ -50,6 +82,7 @@
     "front": {"length_in": 960, "height_in": 228, "facing": "south", "clean": false}
   },
   "front_door": {"side": "front", "along_in": 396, "width_in": 48, "height_in": 84},
+  "back_door": {"side": "back", "along_in": 180, "width_in": 36, "height_in": 84},
   "structures": [
     {"id": "entry-walkway", "kind": "walkway", "material": "concrete", "min_in": [504, -1380], "max_in": [576, 0], "height_in": 0},
     {"id": "stair-steps", "kind": "steps", "material": "metal", "min_in": [384, 432], "max_in": [456, 552], "height_in": 120},

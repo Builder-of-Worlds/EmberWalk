@@ -6,6 +6,8 @@ import { storageFindingMarks } from "./finding-marks.ts";
 import type { FindingMarks } from "./finding-marks.ts";
 import { apiResults, apiStills, samplesThenApi } from "./live-api.ts";
 import type { Stills } from "./live-api.ts";
+import { browserLight } from "./light.ts";
+import type { LightEnv } from "./light.ts";
 import { browserLocate } from "./location.ts";
 import type { Locate } from "./location.ts";
 import { browserMotion } from "./motion.ts";
@@ -34,6 +36,7 @@ export type Deps = {
   send: Sender;
   prefs: Prefs;
   motion: MotionEnv | null;
+  light: LightEnv;
   locate: Locate;
   results: LoadResults;
   walkStatus: WalkStatus;
@@ -72,6 +75,7 @@ export const browserDeps = (): Deps => {
     send: walkSender({ walks: walkApi(base, put), uploads: uploadApi(base, put), put, takes, visitorId: prefs.visitorId }),
     prefs,
     motion: browserMotion(window),
+    light: browserLight(document),
     locate: browserLocate(navigator.geolocation),
     results: keptResults(once(() => openResultsStore(indexedDB)), samplesThenApi(sampleResults, apiResults(read, base)), realClock),
     walkStatus: read.status,

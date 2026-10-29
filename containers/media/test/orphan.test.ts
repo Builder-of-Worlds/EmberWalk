@@ -39,7 +39,7 @@ describe("media server when its parent dies", () => {
     const survived = alive(serverPid);
     if (survived) process.kill(serverPid, "SIGKILL");
     expect(survived).toBe(false);
-  }, 30_000);
+  });
 
   it("keeps running when it was started without a parent channel, as in the container", async () => {
     const port = await freePort();

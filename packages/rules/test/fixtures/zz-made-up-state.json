@@ -1,0 +1,92 @@
+{
+  "format": 1,
+  "state": "ZZ",
+  "bands": { "zone_0": [0, 10], "zone_1": [10, 50], "zone_2": [50, 150] },
+  "jurisdictions": { "zz": ["alpha", "beta"], "zz_alpha": ["alpha"], "zz_beta": ["beta"] },
+  "sources": {
+    "made_up_code": { "url": "https://example.com/zz/made-up-code", "on": "2026-10-28" },
+    "made_up_guide": { "url": "https://example.com/zz/made-up-guide", "on": "2026-10-27" }
+  },
+  "rules": [
+    {
+      "id": "zz-wood-alpha-z0",
+      "key": "wood-alpha",
+      "zone": "zone_0",
+      "concept": "wood_pile",
+      "condition": "Made up test condition: a wood pile near the wall",
+      "requirement": "Made up test requirement, not law: move wood away from the wall.",
+      "code": "ZZ Made Up Code",
+      "section": "1(a)",
+      "source": "made_up_code",
+      "status": "in_force",
+      "plain": { "en": "Made up test wording: move the wood.", "es": "Texto de prueba inventado: mueva la leña." },
+      "statute": "alpha",
+      "when": {},
+      "unsure": null
+    },
+    {
+      "id": "zz-wood-guide-z0",
+      "key": "wood-guide",
+      "zone": "zone_0",
+      "concept": "wood_pile",
+      "condition": "Made up test condition: a wood pile near the wall",
+      "requirement": "Made up test guidance: keep wood covered.",
+      "code": "ZZ Made Up Guide",
+      "section": "Part 2",
+      "source": "made_up_guide",
+      "status": "recommended",
+      "plain": { "en": "Made up test wording: cover the wood.", "es": "Texto de prueba inventado: tape la leña." },
+      "statute": null,
+      "when": {},
+      "unsure": null
+    },
+    {
+      "id": "zz-brush-beta-z0",
+      "key": "brush-beta",
+      "zone": "zone_0",
+      "concept": "dry_brush",
+      "condition": "Made up test condition: dry brush near the wall",
+      "requirement": "Made up test requirement, not law: cut dry brush.",
+      "code": "ZZ Made Up Code",
+      "section": "2(b)",
+      "source": "made_up_code",
+      "status": "in_force",
+      "plain": { "en": "Made up test wording: cut the brush.", "es": "Texto de prueba inventado: corte la maleza." },
+      "statute": "beta",
+      "when": { "plant": ["dead", "unsure", null] },
+      "unsure": null
+    },
+    {
+      "id": "zz-fence-guide-z0",
+      "key": "fence-guide",
+      "zone": "zone_0",
+      "concept": "wooden_fence",
+      "condition": "Made up test condition: a wooden fence at the wall",
+      "requirement": "Made up test guidance: no wood fence at the wall.",
+      "code": "ZZ Made Up Guide",
+      "section": "Part 3",
+      "source": "made_up_guide",
+      "status": "recommended",
+      "plain": { "en": "Made up test wording: swap the fence.", "es": "Texto de prueba inventado: cambie la cerca." },
+      "statute": null,
+      "when": {},
+      "unsure": null
+    },
+    {
+      "id": "zz-brush-far-z2",
+      "key": "brush-far",
+      "zone": "zone_2",
+      "concept": "dry_brush",
+      "condition": "Made up test condition: dry brush far out",
+      "requirement": "Made up test guidance: thin far brush.",
+      "code": "ZZ Made Up Guide",
+      "section": "Part 4",
+      "source": "made_up_guide",
+      "status": "recommended",
+      "plain": { "en": "Made up test wording: thin the far brush.", "es": "Texto de prueba inventado: aclare la maleza lejana." },
+      "statute": null,
+      "when": {},
+      "unsure": null
+    }
+  ]
+}

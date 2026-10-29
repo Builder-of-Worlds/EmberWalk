@@ -3,6 +3,8 @@ import { defineConfig } from "@playwright/test";
 const PORT = 4317;
 const JUDGE_PORT = 4318;
 const executablePath = process.env.EMBERWALK_CHROMIUM || undefined;
+const GAP = /\.gap\.spec\./;
+const mainIgnore = process.env.EMBERWALK_GAPS === "1" ? [] : [GAP];
 
 export default defineConfig({
   testDir: "./test/e2e",
@@ -20,10 +22,11 @@ export default defineConfig({
     },
   },
   projects: [
-    { name: "390", testIgnore: /judge\.spec/, use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: "390", testIgnore: [/judge\.spec/, ...mainIgnore], use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
     {
       name: "judge",
       testMatch: /judge\.spec/,
+      testIgnore: mainIgnore,
       use: { baseURL: `http://127.0.0.1:${JUDGE_PORT}`, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
     },
   ],
