@@ -12,7 +12,7 @@ import {
   startRecording,
   VIDEO_BITS_PER_SECOND,
 } from "../../src/recorder.ts";
-import type { Camera } from "../../src/recorder.ts";
+import type { Camera, Sensors } from "../../src/recorder.ts";
 import { NO_MARKS } from "../../src/take-store.ts";
 import type { WalkMarks } from "../../src/take-store.ts";
 import { deniedError, fakeClock, fakeMotion, FakeRecorder, fakeStream, grantedMedia } from "./fakes.ts";
@@ -111,7 +111,7 @@ describe("openCamera", () => {
   });
 });
 
-const record = (maxMs = 10_000, motion: Motion = null) => {
+const record = (maxMs = 10_000, motion: Motion = null, sensors: Sensors = {}) => {
   const { stream, track, audio } = fakeStream();
   const camera = { stream, mimeType: "video/mp4", Recorder: FakeRecorder } as unknown as Camera;
   const written: string[] = [];
@@ -123,7 +123,7 @@ const record = (maxMs = 10_000, motion: Motion = null) => {
     finish: vi.fn(async (ms: number, why: string) => finished.push([ms, why])),
   };
   const time = fakeClock();
-  const recording = startRecording(camera, sink, time.clock, maxMs, motion);
+  const recording = startRecording(camera, sink, time.clock, maxMs, motion, sensors);
   const recorder = FakeRecorder.last as FakeRecorder;
   return { recording, recorder, written, finished, sink, time, track, audio, marks: () => marks };
 };
@@ -284,5 +284,106 @@ describe("walk controls", () => {
     recording.stop();
     await recording.done;
     expect(marks().motion).toHaveLength(MAX_MOTION_SAMPLES);
+  });
+});
+
+const meterOf = (readings: (number | null)[]) => {
+  let i = 0;
+  return { read: vi.fn(() => readings[Math.min(i++, readings.length - 1)] ?? null), stop: vi.fn() };
+};
+
+describe("light", () => {
+  it("keeps the camera's light with each motion sample, leaves it out when the camera gives none, and stops the meter with the walk", async () => {
+    const motion = fakeMotion();
+    const light = meterOf([120, null, 64]);
+    const { recording, time, marks } = record(10_000, { listen: motion.env.listen }, { light });
+    motion.turn(10);
+    time.advance(MOTION_EVERY_MS);
+    motion.turn(20);
+    time.advance(MOTION_EVERY_MS);
+    motion.turn(30);
+    recording.stop();
+    await recording.done;
+    expect(marks().motion).toEqual([
+      { t: 0, headingDegrees: 10, tiltDegrees: 0, light: 120 },
+      { t: 0.1, headingDegrees: 20, tiltDegrees: 0 },
+      { t: 0.2, headingDegrees: 30, tiltDegrees: 0, light: 64 },
+    ]);
+    expect(light.stop).toHaveBeenCalledOnce();
+  });
+
+  it("reads no light between motion samples", () => {
+    const motion = fakeMotion();
+    const light = meterOf([120]);
+    const { time } = record(10_000, { listen: motion.env.listen }, { light });
+    motion.turn(10);
+    time.advance(50);
+    motion.turn(20);
+    expect(light.read).toHaveBeenCalledOnce();
+  });
+});
+
+describe("side pans after the loop", () => {
+  const corner = (motion: ReturnType<typeof fakeMotion>, time: ReturnType<typeof fakeClock>, headings: number[]) => {
+    for (const heading of headings) {
+      motion.turn(heading);
+      time.advance(MOTION_EVERY_MS);
+    }
+  };
+
+  it("Pan the Yard marks each pan's start and end on video time, naming the sides in the order the loop turned", async () => {
+    const motion = fakeMotion();
+    const { recording, time, marks } = record(100_000, { listen: motion.env.listen });
+    corner(motion, time, [0, 45, 95, 140, 185, 230, 275, 320, 5]);
+    expect(recording.panning()).toBeNull();
+    expect(recording.pansLeft()).toBe(4);
+    for (const side of ["front", "left", "back", "right"]) {
+      recording.pan();
+      expect(recording.panning()).toBe(side);
+      time.advance(2000);
+      recording.pan();
+      expect(recording.panning()).toBeNull();
+      time.advance(1000);
+    }
+    expect(recording.pansLeft()).toBe(0);
+    recording.pan();
+    expect(recording.panning()).toBeNull();
+    recording.stop();
+    await recording.done;
+    expect(marks().pans).toEqual([
+      { side: "front", startMs: 900, endMs: 2900 },
+      { side: "left", startMs: 3900, endMs: 5900 },
+      { side: "back", startMs: 6900, endMs: 8900 },
+      { side: "right", startMs: 9900, endMs: 11_900 },
+    ]);
+  });
+
+  it("closes a pan left open when the walk stops, and starts none while paused", async () => {
+    const { recording, time, marks } = record(100_000);
+    recording.pause();
+    recording.pan();
+    expect(recording.panning()).toBeNull();
+    recording.resume();
+    time.advance(1000);
+    recording.pan();
+    expect(recording.panning()).toBe("front");
+    time.advance(1500);
+    recording.stop();
+    await recording.done;
+    expect(marks().pans).toEqual([{ side: "front", startMs: 1000, endMs: 2500 }]);
+  });
+
+  it("pans only the one side of a walk of one side, once", async () => {
+    const { recording, time, marks } = record(100_000, null, { part: "back" });
+    recording.pan();
+    expect(recording.panning()).toBe("back");
+    time.advance(1000);
+    recording.pan();
+    recording.pan();
+    expect(recording.panning()).toBeNull();
+    expect(recording.pansLeft()).toBe(0);
+    recording.stop();
+    await recording.done;
+    expect(marks().pans).toEqual([{ side: "back", startMs: 0, endMs: 1000 }]);
   });
 });

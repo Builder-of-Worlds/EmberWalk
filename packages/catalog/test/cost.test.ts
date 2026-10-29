@@ -23,14 +23,14 @@ const clientWithCap = (capNano: number): MetaClient =>
 
 describe("rowsForClip", () => {
   it("gives a loop clip every existing concept and a pan clip the pan concepts", () => {
-    expect(rowsForClip("loop", "stored")).toHaveLength(15);
-    expect(rowsForClip("pan", "stored")).toHaveLength(8);
+    expect(rowsForClip("loop").filter((row) => row.pending === undefined)).toHaveLength(15);
+    expect(rowsForClip("pan").filter((row) => row.pending === undefined)).toHaveLength(8);
   });
 
-  it("adds every pending object to both kinds only in the catalog scope", () => {
-    expect(rowsForClip("loop", "catalog")).toHaveLength(25);
-    expect(rowsForClip("pan", "catalog")).toHaveLength(18);
-    expect(rowsForClip("pan", "stored").some((row) => row.pending !== undefined)).toBe(false);
+  it("adds every pending object to both kinds", () => {
+    expect(rowsForClip("loop")).toHaveLength(25);
+    expect(rowsForClip("pan")).toHaveLength(18);
+    expect(rowsForClip("pan").filter((row) => row.pending !== undefined)).toEqual(rowsForClip("loop").filter((row) => row.pending !== undefined));
   });
 });
 
@@ -44,14 +44,16 @@ describe("walkCost", () => {
     expect(walkCost([pan])).toEqual({ nano: 241_250_000, samCalls: 18, sparkCalls: POINT_LOOKS });
   });
 
-  it("prices the stored scope without the pending objects", () => {
-    expect(walkCost([loop], "stored")).toEqual({ nano: 230_500_000, samCalls: 15, sparkCalls: 10 });
+  it("prices the ten pending objects as one SAM call each, with no looks", () => {
+    const pending = rowsForClip("loop").filter((row) => row.pending !== undefined).length;
+    expect(pending).toBe(10);
+    expect(walkCost([loop]).nano - pending * SAM_CALL_60).toBe(230_500_000);
   });
 
   it("adds clips together, and bills the SAM minimum of 50 frames to a short clip", () => {
     expect(walkCost([loop, pan]).nano).toBe(350_500_000 + 241_250_000);
-    expect(walkCost([{ kind: "pan", frameCount: 10 }], "stored").nano).toBe(walkCost([{ kind: "pan", frameCount: 50 }], "stored").nano);
-    expect(walkCost([{ kind: "pan", frameCount: 51 }], "stored").nano).toBeGreaterThan(walkCost([{ kind: "pan", frameCount: 50 }], "stored").nano);
+    expect(walkCost([{ kind: "pan", frameCount: 10 }]).nano).toBe(walkCost([{ kind: "pan", frameCount: 50 }]).nano);
+    expect(walkCost([{ kind: "pan", frameCount: 51 }]).nano).toBeGreaterThan(walkCost([{ kind: "pan", frameCount: 50 }]).nano);
   });
 
   it("prices no clips at nothing", () => {

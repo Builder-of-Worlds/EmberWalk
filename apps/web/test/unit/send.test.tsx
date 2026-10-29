@@ -6,14 +6,14 @@ import { copy, unbacked } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
 import { resultsFor, ROUTES, sendFor } from "../../src/router.ts";
-import { Send } from "../../src/screens/Send.tsx";
+import { OPENS_IN_MS, Send } from "../../src/screens/Send.tsx";
 import type { Sender } from "../../src/sender.ts";
 import type { Progress, SendResult } from "../../src/uploader.ts";
 import { HELD_RETRY_MS, POLL_MS, SIGNAL_RETRY_MS } from "../../src/watch.ts";
 import type { WalkStatus } from "../../src/watch.ts";
 import { fakeClock, testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
-import { SEND_AFTER, SEND_REWRITES, SETTLED_LEAVES, shownLines } from "./settled.ts";
+import { SEND_AFTER, SEND_REWRITES, SETTLED_CHECKING, SETTLED_LEAVES, shownLines } from "./settled.ts";
 
 const withTake = async (deps: Deps, endedBy: "stopped" | "time_limit" = "stopped", durationMs: number | null = 1000) => {
   const takes = await deps.takes();
@@ -273,7 +273,7 @@ describe("Send Your Walk", () => {
     expect(button(view.host)).toBeDefined();
   });
 
-  it("says the three rewritten lines Deacon settled in D-106", async () => {
+  it("says the three rewritten lines in the agreed words", async () => {
     expect(await refusedWith("server_error")).toBe(SEND_REWRITES.tryAgain);
     expect(await refusedWith("invalid_request")).toBe(SEND_REWRITES.tryAgain);
     expect(await refusedWith("unknown_walk")).toBe(SEND_REWRITES.unknownWalk);
@@ -308,8 +308,9 @@ describe("after the walk is sent", () => {
     await settle(() => button(view.host)?.click());
     await settle(() => sender.finish({ walkId: WALK }));
     const tick = () => settle(() => time.advance(POLL_MS));
+    const opened = () => settle(() => time.advance(OPENS_IN_MS));
     const kept = async () => (await (await deps.takes()).all()).length;
-    return { view, asked, time, tick, kept };
+    return { view, asked, time, tick, opened, kept };
   };
 
   const state = (s: WalkState, message: string | null = null): Answer<WalkStatusResponse> => ({
@@ -317,7 +318,7 @@ describe("after the walk is sent", () => {
   });
 
   it("says the walk is still being checked with a plain step line, then opens its results at done", async () => {
-    const { view, asked, tick } = await sentWith([state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "processing", step: "explain" }), state({ name: "done" })]);
+    const { view, asked, tick, opened } = await sentWith([state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "processing", step: "explain" }), state({ name: "done" })]);
     expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
     expect(view.text()).toContain("This walk is still being checked.");
     expect(view.text()).toContain("Getting your walk ready to check.");
@@ -327,8 +328,105 @@ describe("after the walk is sent", () => {
     expect(view.text()).toContain("Writing down what to do about each thing found.");
     expect(window.location.hash).not.toBe(resultsFor(WALK));
     await tick();
+    expect(view.text()).toContain(SETTLED_CHECKING.checked);
+    expect(window.location.hash).not.toBe(resultsFor(WALK));
+    await opened();
     expect(window.location.hash).toBe(resultsFor(WALK));
     expect(asked).toEqual([WALK, WALK, WALK, WALK]);
+  });
+
+  describe("the trail of stages", () => {
+    const trail = (host: HTMLElement) => host.querySelector("ol.trail");
+    const current = (host: HTMLElement) => trail(host)?.getAttribute("data-current");
+    const behind = (host: HTMLElement) => [...host.querySelectorAll("ol.trail li.behind")].map((li) => li.getAttribute("data-stage"));
+
+    it("follows the walk's answers from sent to writing, then opens the results at done", async () => {
+      const steps = (["prepare", "segment", "score", "explain"] as const).map((step) => state({ name: "processing", step }));
+      const { view, tick, opened } = await sentWith([state({ name: "queued" }), ...steps, state({ name: "done" })]);
+      const seen = [[current(view.host), behind(view.host)]];
+      for (let i = 0; i < steps.length; i++) {
+        await tick();
+        seen.push([current(view.host), behind(view.host)]);
+      }
+      expect(seen).toEqual([
+        ["ready", ["sent"]],
+        ["ready", ["sent"]],
+        ["looking", ["sent", "ready"]],
+        ["looking", ["sent", "ready"]],
+        ["writing", ["sent", "ready", "looking"]],
+      ]);
+      expect(view.host.querySelector("ol.trail li.current p")?.textContent).toBe("Writing down what to do about each thing found.");
+      const hidden = [...view.host.querySelectorAll("ol.trail li")].map((li) => li.getAttribute("aria-hidden"));
+      expect(hidden).toEqual(["true", "true", "true", null, "true"]);
+      expect([...view.host.querySelectorAll("ol.trail li .label")].map((label) => label.textContent)).toEqual(SETTLED_CHECKING.stages);
+      expect(view.host.querySelector("ol.trail li.current .label")?.textContent).toBe("Writing");
+      await tick();
+      expect(behind(view.host)).toEqual(["sent", "ready", "looking", "writing", "done"]);
+      expect(view.host.querySelector("ol.trail li[data-stage=done] p")?.textContent).toBe(SETTLED_CHECKING.checked);
+      expect(view.host.querySelector("ol.trail li[data-stage=done]")?.hasAttribute("aria-hidden")).toBe(false);
+      expect(view.text()).not.toContain(copy.send.refused.walk_not_done);
+      expect(window.location.hash).not.toBe(resultsFor(WALK));
+      await opened();
+      expect(window.location.hash).toBe(resultsFor(WALK));
+    });
+
+    it("keeps the last stage reached, still, with the offline line while waiting for signal", async () => {
+      const { view, tick } = await sentWith([state({ name: "processing", step: "segment" }), { code: "offline" }]);
+      await tick();
+      expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
+      expect(current(view.host)).toBe("looking");
+      expect(trail(view.host)?.hasAttribute("aria-live")).toBe(false);
+      expect(view.host.querySelector("ol.trail li.current p")?.textContent).toBe("Looking for what needs clearing.");
+    });
+
+    it("never moves back when an older answer arrives late", async () => {
+      const { view, tick } = await sentWith([state({ name: "processing", step: "explain" }), state({ name: "processing", step: "segment" })]);
+      await tick();
+      expect(current(view.host)).toBe("writing");
+      expect(view.text()).not.toContain("Looking for what needs clearing.");
+    });
+
+    it("shows no bar and no counted line while the server counts nothing", async () => {
+      const { view } = await sentWith([state({ name: "processing", step: "segment" })]);
+      expect(view.host.querySelector("[role=progressbar]")).toBeNull();
+      expect(view.host.querySelector("[aria-valuenow]")).toBeNull();
+      expect(view.text()).not.toMatch(/(steps|checks) done/);
+    });
+
+    it("fills the bar and says the counted line from the server's count of the stage now", async () => {
+      const counted = (step: "segment" | "explain", done: number, total: number) => state({ name: "processing", step, progress: { done, total } });
+      const { view, tick } = await sentWith([counted("segment", 7, 14), counted("segment", 10, 14), counted("explain", 1, 2)]);
+      const bar = () => view.host.querySelector("ol.trail li.current [role=progressbar]");
+      const said = () => view.host.querySelector("ol.trail li.current .count")?.textContent;
+      expect(bar()?.getAttribute("aria-valuenow")).toBe("7");
+      expect(bar()?.getAttribute("aria-valuemax")).toBe("14");
+      expect(bar()?.getAttribute("aria-label")).toBe("Looking for what needs clearing.");
+      expect(bar()?.querySelector("span")?.getAttribute("style")).toContain("width: 50%");
+      expect(said()).toBe(SETTLED_CHECKING.counted);
+      await tick();
+      expect(bar()?.getAttribute("aria-valuenow")).toBe("10");
+      expect(said()).toBe("10 of 14 steps done");
+      await tick();
+      expect(current(view.host)).toBe("writing");
+      expect(bar()?.getAttribute("aria-valuemax")).toBe("2");
+      expect(said()).toBe("1 of 2 steps done");
+      expect(view.host.querySelectorAll("[role=progressbar]")).toHaveLength(1);
+    });
+
+    it("keeps the count still with the offline line while waiting for signal", async () => {
+      const { view, tick } = await sentWith([state({ name: "processing", step: "score", progress: { done: 9, total: 14 } }), { code: "offline" }]);
+      await tick();
+      expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
+      expect(view.host.querySelector("ol.trail li.current .count")?.textContent).toBe("9 of 14 steps done");
+    });
+
+    it("never opens the results when the screen is left before the Done line's moment ends", async () => {
+      const { view, opened } = await sentWith([state({ name: "done" })]);
+      expect(view.text()).toContain(SETTLED_CHECKING.checked);
+      await view.unmount();
+      await opened();
+      expect(window.location.hash).not.toBe(resultsFor(WALK));
+    });
   });
 
   it("watches a walk of one side by its own id, then opens the results of the walk it is part of", async () => {
@@ -351,6 +449,7 @@ describe("after the walk is sent", () => {
     await settle(() => sender.finish({ walkId: WALK }));
     expect(window.location.hash).not.toBe(resultsFor(PARENT));
     await settle(() => time.advance(POLL_MS));
+    await settle(() => time.advance(OPENS_IN_MS));
     expect(window.location.hash).toBe(resultsFor(PARENT));
     expect(asked).toEqual([WALK, WALK]);
     await view.unmount();
@@ -364,7 +463,7 @@ describe("after the walk is sent", () => {
     expect(window.location.hash).not.toBe(resultsFor(WALK));
   });
 
-  it("says a walk the API no longer finds in Deacon's words (D-165), with Record a Walk", async () => {
+  it("says a walk the API no longer finds in the agreed words, with Record a Walk", async () => {
     const { view } = await sentWith([{ code: "unknown_walk" }]);
     expect(view.host.querySelector("[role=alert]")?.textContent).toBe(SEND_AFTER.lost);
     expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
@@ -453,7 +552,7 @@ describe("after the walk is sent", () => {
       expect(view.text()).not.toContain(SEND_AFTER.reported);
     });
 
-    it("shows the held line until the report is received, then the reported line in its place, word for word (D-182)", async () => {
+    it("shows the held line until the report is received, then the reported line in its place, word for word", async () => {
       let answer: (value: Awaited<ReturnType<Deps["reportFault"]>>) => void = () => undefined;
       const sent = reporter(() => new Promise((resolve) => (answer = resolve)));
       const { view } = await sentWith([{ code: "invalid_request" }], sent.overrides);

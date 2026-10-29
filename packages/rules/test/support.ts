@@ -1,4 +1,7 @@
-import type { Query } from "../src/index.ts";
+import { readFileSync } from "node:fs";
+import type { Query, StateFileInput } from "../src/index.ts";
+
+export const ZZ: StateFileInput = JSON.parse(readFileSync(new URL("./fixtures/zz-made-up-state.json", import.meta.url), "utf8"));
 
 export const query = (q: Partial<Query> & Pick<Query, "concept">, feet = 2): Query => ({
   distanceFeet: { low: feet, high: feet },
@@ -25,6 +28,8 @@ export const CASES: Record<string, Partial<Query>> = {
   "foundation-vent-zone-0": {},
   "branch-dead": { plantState: "dead" },
   "branch-chimney": { flags: ["near_chimney"] },
+  "chimney-branches": { flags: ["near_chimney"] },
+  "house-wall-zone-0": {},
   "branch-live": { plantState: "alive" },
   "tree-branch-over-roof-zone-0": {},
   "tree-dead": { plantState: "unsure" },
@@ -62,6 +67,7 @@ export const NOT_MET: Record<string, Partial<Query>> = {
   "vent-debris": {},
   "branch-dead": { plantState: "alive" },
   "branch-chimney": {},
+  "chimney-branches": {},
   "branch-live": { plantState: "unsure" },
   "tree-dead": { plantState: "alive" },
   "tree-chimney": { flags: ["near_window"] },

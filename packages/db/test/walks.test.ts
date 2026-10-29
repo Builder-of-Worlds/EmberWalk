@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DbRefused } from "../src/errors.ts";
-import { claimWalk, completeWalk, createWalk, failWalk, getWalk, moveWalkStep } from "../src/walks.ts";
+import { claimWalk, completeWalk, createWalk, failWalk, getWalk, moveWalkStep, setWalkProgress } from "../src/walks.ts";
 import type { NewWalk } from "../src/walks.ts";
 import { OTHER_WALK, resetDb, seedWalk, WALK } from "./fixtures.ts";
 
@@ -124,6 +124,57 @@ describe("moving a processing walk", () => {
   it("refuses a step name outside the pipeline", async () => {
     await seedWalk(WALK, "processing", "prepare");
     await expect(moveWalkStep(env.DB, WALK, "bake" as never)).rejects.toThrow();
+  });
+});
+
+describe("counting the steps of a processing stage", () => {
+  const counted = (done: number | null, total: number | null) =>
+    env.DB.prepare("UPDATE walks SET progress_done = ?, progress_total = ? WHERE id = ?").bind(done, total, WALK).run();
+
+  it("stores a count and reads it back with the state", async () => {
+    await seedWalk(WALK, "processing", "segment");
+    await setWalkProgress(env.DB, WALK, 9, 13);
+    expect((await getWalk(env.DB, WALK))?.state).toEqual({ name: "processing", step: "segment", progress: { done: 9, total: 13 } });
+  });
+
+  it("reads a processing walk with no count as carrying none", async () => {
+    await seedWalk(WALK, "processing", "segment");
+    expect((await getWalk(env.DB, WALK))?.state).toEqual({ name: "processing", step: "segment" });
+  });
+
+  it("clears the count when the walk moves to another step", async () => {
+    await seedWalk(WALK, "processing", "score");
+    await setWalkProgress(env.DB, WALK, 13, 13);
+    await moveWalkStep(env.DB, WALK, "explain");
+    expect((await getWalk(env.DB, WALK))?.state).toEqual({ name: "processing", step: "explain" });
+  });
+
+  it("refuses more done than the total, and one column set without the other, in D1 itself", async () => {
+    await seedWalk(WALK, "processing", "segment");
+    await expect(counted(14, 13)).rejects.toThrow(/CHECK/);
+    await expect(counted(3, null)).rejects.toThrow(/CHECK/);
+    await expect(counted(null, 13)).rejects.toThrow(/CHECK/);
+    await expect(counted(-1, 13)).rejects.toThrow(/CHECK/);
+    await expect(setWalkProgress(env.DB, WALK, 14, 13)).rejects.toThrow();
+    await expect(setWalkProgress(env.DB, WALK, 1.5, 13)).rejects.toThrow();
+    expect((await getWalk(env.DB, WALK))?.state).toEqual({ name: "processing", step: "segment" });
+  });
+
+  it("refuses a count for a walk that is not processing, in the code and in D1", async () => {
+    await seedWalk(WALK, "queued");
+    await expect(setWalkProgress(env.DB, WALK, 1, 13)).rejects.toBeInstanceOf(DbRefused);
+    await expect(counted(1, 13)).rejects.toThrow(/CHECK/);
+  });
+
+  it("clears the count when the walk completes or fails", async () => {
+    await seedWalk(WALK, "processing", "explain");
+    await setWalkProgress(env.DB, WALK, 1, 2);
+    await completeWalk(env.DB, WALK);
+    expect((await getWalk(env.DB, WALK))?.state).toEqual({ name: "done" });
+    await seedWalk(OTHER_WALK, "processing", "segment");
+    await setWalkProgress(env.DB, OTHER_WALK, 4, 13);
+    await failWalk(env.DB, OTHER_WALK, "segment", { code: "segment_failed", message: "Something went wrong." });
+    expect((await getWalk(env.DB, OTHER_WALK))?.state).toEqual({ name: "failed", step: "segment" });
   });
 });
 

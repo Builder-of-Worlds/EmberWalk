@@ -1,7 +1,7 @@
 import { GAP_KINDS, HINTS_FOR, SIDES } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { copy, longDate } from "../../src/copy.ts";
-import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, FIX_FIRST_MOST, fixFirstOf, fixOrder, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
+import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, fixFirstOf, fixOrder, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
 import type { Gap, ResultFinding, Side, WalkResults } from "../../src/results.ts";
 import { feet, finding, walk } from "./result-fakes.ts";
 import { SETTLED_GAPS, SETTLED_SIDE } from "./settled.ts";
@@ -26,7 +26,7 @@ describe("verdictOf", () => {
     expect(verdictOf(walk([finding("a")])).kind).toBe("fix");
   });
 
-  it("lists the nearest open findings under 30 feet first, whatever their label, cut at the most it shows", () => {
+  it("lists every open finding under 30 feet, nearest first, whatever their label, uncut", () => {
     const list = [
       finding("req-far", feet(25, 28)),
       finding("rec-near", { label: "recommended", band: "zone_0", ...feet(3, 4) }),
@@ -34,7 +34,10 @@ describe("verdictOf", () => {
       finding("req-mid", feet(8, 12)),
     ];
     const verdict = verdictOf(walk(list));
-    expect(verdict.kind === "fix" && verdict.first.map((f) => f.id)).toEqual(["rec-near", "req-mid", "rec-mid", "req-far"].slice(0, FIX_FIRST_MOST));
+    expect(verdict.kind === "fix" && verdict.first.map((f) => f.id)).toEqual(["rec-near", "req-mid", "rec-mid", "req-far"]);
+    const many = Array.from({ length: 7 }, (_, i) => finding(`near-${i}`, feet(i * 4, i * 4 + 1)));
+    const all = verdictOf(walk(many));
+    expect(all.kind === "fix" && all.first.map((f) => f.id)).toEqual(many.map((f) => f.id));
     const two = verdictOf(walk(list.slice(0, 2)));
     expect(two.kind === "fix" && two.first.map((f) => f.id)).toEqual(["rec-near", "req-far"]);
   });
@@ -48,6 +51,8 @@ describe("verdictOf", () => {
     expect(verdictOf(walk(list))).toMatchObject({ kind: "fix", first: [{ id: "req-40" }, { id: "req-60" }] });
     const rec = finding("rec-50", { label: "recommended", band: "zone_2", ...feet(50) });
     expect(verdictOf(walk([rec, list[0]!]))).toMatchObject({ kind: "fix", first: [{ id: "req-60" }] });
+    const far = [70, 40, 90, 55].map((at) => finding(`req-${at}`, { band: "zone_2", ...feet(at) }));
+    expect(verdictOf(walk(far))).toMatchObject({ kind: "fix", first: [{ id: "req-40" }, { id: "req-55" }, { id: "req-70" }, { id: "req-90" }] });
   });
 
   it("leaves cleared items out of what blocks green", () => {
@@ -195,8 +200,9 @@ describe("sidesToWalk", () => {
     expect(sidesToWalk([])).toEqual([]);
   });
 
-  it("names no side when every side is gapped, so the whole walk is asked for", () => {
-    expect(sidesToWalk(SIDES.map((side) => gap(side)))).toEqual([]);
+  it("names every side when every side is gapped, so the whole house is never asked for at once", () => {
+    expect(sidesToWalk(SIDES.map((side) => gap(side)))).toEqual([...SIDES]);
+    expect(sidesToWalk([...SIDES].reverse().map((side) => gap(side, "dark")))).toEqual([...SIDES]);
     expect(sidesToWalk([...SIDES.slice(0, 3).map((side) => gap(side)), gap("front", "dark")])).toEqual(["front", "right", "back"]);
   });
 });

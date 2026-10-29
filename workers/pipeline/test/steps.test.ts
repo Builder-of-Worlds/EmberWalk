@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orderProblems, STEP, stepsFor } from "../src/steps.ts";
+import { lookingSteps, orderProblems, STEP, stepsFor, WRITING_STEPS } from "../src/steps.ts";
 
 const KINDS = ["loop", "pan"];
 const full = stepsFor(KINDS);
@@ -16,25 +16,56 @@ describe("stepsFor", () => {
       "claim walk",
       "prepare",
       "enter segment",
+      "count enter segment",
       "upload loop",
+      "count upload loop",
       "segment loop",
+      "count segment loop",
       "privacy loop",
+      "count privacy loop",
       "upload pan",
+      "count upload pan",
       "segment pan",
+      "count segment pan",
       "privacy pan",
+      "count privacy pan",
       "store",
+      "count store",
       "transcribe",
+      "count transcribe",
       "enter score",
+      "count enter score",
       "score",
+      "count score",
       "voice notes",
+      "count voice notes",
       "blur",
+      "count blur",
       "coverage",
+      "count coverage",
       "enter explain",
+      "count enter explain",
       "explain",
+      "count explain",
       "complete walk",
       "delete uploads",
       "delete walk video",
     ]);
+  });
+});
+
+describe("the stage counts", () => {
+  it("counts 3 steps per clip plus 8 while looking, and 2 while writing", () => {
+    expect(lookingSteps(KINDS)).toHaveLength(14);
+    expect(lookingSteps(["loop"])).toHaveLength(11);
+    expect(lookingSteps(KINDS)[0]).toBe(STEP.enterSegment);
+    expect(lookingSteps(KINDS).at(-1)).toBe(STEP.coverage);
+    expect(WRITING_STEPS).toEqual([STEP.enterExplain, STEP.explain]);
+  });
+
+  it("names every counted step's count, and no other", () => {
+    const counts = full.filter((name) => name.startsWith("count "));
+    expect(counts).toEqual([...lookingSteps(KINDS), ...WRITING_STEPS].map(STEP.count));
   });
 });
 
@@ -73,6 +104,12 @@ describe("orderProblems", () => {
 
   it("names a walk completed before it was explained", () => {
     expect(orderProblems(moved(STEP.complete, STEP.enterExplain), KINDS)).toEqual(["complete walk ran before enter explain", "complete walk ran before explain"]);
+  });
+
+  it("names a missing count, and a count that ran before its step", () => {
+    expect(orderProblems(without(STEP.count(STEP.score)), KINDS)).toEqual(["count score is missing"]);
+    expect(orderProblems(moved(STEP.count(STEP.blur), STEP.blur), KINDS)).toEqual(["count blur ran before blur"]);
+    expect(orderProblems(moved(STEP.count(STEP.segment("pan")), STEP.upload("loop")), KINDS)).toEqual(["count segment pan ran before segment pan"]);
   });
 
   it("names a step that is not on the list", () => {

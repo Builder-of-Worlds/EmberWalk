@@ -18,8 +18,8 @@ export const TRADE_FOR: { [C in Concept]: TradeRow } = {
   foundation_vent: { byRule: { "ca-vent-screen-cbc-z0": "handyman", "ca-vent-debris-ccr-z0": "brush_clearing" } },
   trash_can: { trade: null, rule: "ca-trash-can-zone-0-calfire-z0" },
   patio_furniture: { trade: null, rule: "ca-patio-furniture-zone-0-calfire-z0" },
-  chimney: { trade: null, rule: null },
-  house_wall: { trade: null, rule: null },
+  chimney: { trade: null, rule: "ca-chimney-branches-ccr-z0" },
+  house_wall: { trade: null, rule: "ca-house-wall-zone-0-calfire-z0" },
 };
 
 export class PlanRefused extends Error {

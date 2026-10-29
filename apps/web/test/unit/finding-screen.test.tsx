@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("Finding, step 10", () => {
-  it("shows only settled lines and the finding's own words, with no synthetic label on a sample house (D-177)", async () => {
+  it("shows only settled lines and the finding's own words, with no synthetic label on a sample house", async () => {
     const results = walk([RECOMMENDED, REQUIRED], [], { synthetic: true });
     const view = await open(results, RECOMMENDED.id);
     await pick(view.host, copy.finding.more);

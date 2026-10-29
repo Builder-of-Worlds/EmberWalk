@@ -1,9 +1,10 @@
 import { addTag, type ConceptRun, gapsForWalk, saveClip, storeDetections, tagsForWalk } from "@emberwalk/db";
 import { CoverageRecord, coverageKey } from "@emberwalk/rules";
-import type { Clip, MotionSample, Track } from "@emberwalk/shared";
+import type { Clip, MotionSample, Tag, Track } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { checkCoverage, notCheckedConcepts, samplesWithin } from "../src/coverage-step.ts";
+import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
+import { checkCoverage, notCheckedConcepts, samplesWithin, sideLight } from "../src/coverage-step.ts";
 import { clipKey } from "../src/storage.ts";
 import { freshWalkId, resetAll, seedWalk } from "./fixtures.ts";
 import { harness, idFor, SAME_PLACE_PHRASE, stageSamePlace, testDeps } from "./harness.ts";
@@ -27,10 +28,10 @@ const circuit = (legs: number, { hold = 20, turn = 4, direction = 1 } = {}): Mot
   return samples;
 };
 
-type Options = { legs?: number; synthetic?: boolean; wallBottom?: number; pans?: number; loopTag?: boolean };
+type Options = { legs?: number; synthetic?: boolean; wallBottom?: number; pans?: number; loopTag?: boolean; sideTags?: number };
 
 const seeded = async (options: Options = {}) => {
-  const { legs = 4, synthetic = true, wallBottom = 0.8, pans = 4, loopTag = true } = options;
+  const { legs = 4, synthetic = true, wallBottom = 0.8, pans = 4, loopTag = true, sideTags } = options;
   const walkId = freshWalkId();
   const n = Number(walkId.slice(-4));
   await seedWalk(walkId, { synthetic });
@@ -39,7 +40,13 @@ const seeded = async (options: Options = {}) => {
   const clip: Clip = { id: idFor(2000 + n), walkId, kind: "loop", file: clipKey(walkId, "loop"), fps: FPS, frameCount: seconds * FPS, width: 320, height: 334 };
   await env.MEDIA.put(clip.file, new Uint8Array(32));
   await saveClip(env.DB, clip);
-  if (loopTag) {
+  if (sideTags !== undefined) {
+    const leg = seconds / legs;
+    for (const [i, side] of ["front", "left", "back", "right"].slice(0, legs).entries()) {
+      const lit = samples.slice(i * leg, (i + 1) * leg).map((sample) => ({ ...sample, light: sideTags }));
+      await addTag(env.DB, { id: idFor(3200 + n * 10 + i), walkId, kind: "loop", startSeconds: i * leg, endSeconds: (i + 1) * leg, label: side, samples: lit, propertyLine: null });
+    }
+  } else if (loopTag) {
     await addTag(env.DB, { id: idFor(3000 + n), walkId, kind: "loop", startSeconds: 0, endSeconds: seconds, label: "Walk", samples, propertyLine: null });
   }
   for (let p = 0; p < pans; p++) {
@@ -77,7 +84,7 @@ describe("the coverage step on a walk that went all the way around", () => {
     const record = await recordOf(walkId);
     expect(record).toMatchObject({ walkId, loop: "closed", coverage: "not_checked", look: { same: true, confidence: 0.9 } });
     expect(record.gaps).toEqual([]);
-    expect(outcome).toEqual({ coverage: "not_checked", loop: "closed", gaps: 0 });
+    expect(outcome).toEqual({ coverage: "not_checked", loop: "closed", gaps: 0, sides: { front: "partly_checked", left: "partly_checked", back: "partly_checked", right: "partly_checked" } });
     expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
   });
 
@@ -280,5 +287,152 @@ describe("notCheckedConcepts", () => {
 
   it("lists nothing when every concept was checked", () => {
     expect(notCheckedConcepts([{ runs: [run("shrub", "none")], tracks: [] }])).toEqual([]);
+  });
+});
+
+
+type SideWalkOptions = { light?: (kind: string, side: string, light: number) => number | undefined; panSides?: string[]; unchecked?: ConceptRun["concept"] };
+
+const sideWalkSeeded = async ({ light = (_kind, _side, value) => value, panSides, unchecked }: SideWalkOptions = {}) => {
+  const walkId = freshWalkId();
+  const n = Number(walkId.slice(-4));
+  await seedWalk(walkId, { synthetic: true });
+  const pans = sideWalk.tags.filter((t) => t.kind === "pan");
+  const tags: Tag[] = [...sideWalk.tags.filter((t) => t.kind === "loop"), ...pans.map((t, i) => ({ ...t, label: panSides?.[i] ?? t.label }))].map(
+    (t, i) => ({
+      ...t,
+      id: idFor(5000 + n * 10 + i),
+      walkId,
+      kind: t.kind as Tag["kind"],
+      samples: t.samples.map(({ light: seen, ...sample }) => {
+        const kept = light(t.kind, t.label, seen);
+        return kept === undefined ? sample : { ...sample, light: kept };
+      }),
+    }),
+  );
+  for (const tag of tags) await addTag(env.DB, tag);
+  const loopEnd = Math.max(...tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+  const clip: Clip = { id: idFor(2000 + n), walkId, kind: "loop", file: clipKey(walkId, "loop"), fps: FPS, frameCount: loopEnd * FPS, width: 320, height: 334 };
+  await env.MEDIA.put(clip.file, new Uint8Array(32));
+  await saveClip(env.DB, clip);
+  const wall: Track = {
+    id: idFor(4000 + n),
+    clipId: clip.id,
+    concept: "house_wall",
+    samObjectId: 1,
+    frames: Array.from({ length: Math.floor(loopEnd / 3) }, (_, i) => ({ frame: i * 3 * FPS, box: [0.1, 0.3, 0.9, 0.8], mask: null, confidence: 0.9 })),
+  };
+  const runs: ConceptRun[] = [{ concept: "house_wall", outcome: "found", reason: null, framesBilled: clip.frameCount }];
+  if (unchecked !== undefined) runs.push({ concept: unchecked, outcome: "not_checked", reason: "SAM answered 503", framesBilled: 0 });
+  await storeDetections(env.DB, { clipId: clip.id, runs, tracks: [wall] });
+  return { walkId, clips: [clip] };
+};
+
+const ALL_CHECKED = { front: "checked", left: "checked", back: "checked", right: "checked" };
+const ALL_PARTLY = { front: "partly_checked", left: "partly_checked", back: "partly_checked", right: "partly_checked" };
+
+describe('the walk went all the way around the house, on the synthetic side walk as the phone tags it', () => {
+  it("a walk all the way around with four corner pans, the same place on its return and a good wall base reaches coverage checked", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await seeded({ sideTags: 150 });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect((await recordOf(walkId)).coverage).toBe("checked");
+    expect(outcome.coverage).toBe("checked");
+  });
+
+  it("holds green on the same walk when every side is too dark", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await seeded({ sideTags: 10 });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toMatchObject({ coverage: "not_checked", gaps: 4 });
+    expect((await gapsForWalk(env.DB, walkId)).map((g) => g.hint)).toEqual(["more_light", "more_light", "more_light", "more_light"]);
+  });
+
+  it("a walk with every side tagged and enough light reaches checked (green), every side checked, no gap kept", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toEqual({ coverage: "checked", loop: "closed", gaps: 0, sides: ALL_CHECKED });
+    expect(await recordOf(walkId)).toMatchObject({ coverage: "checked", loop: "closed", gaps: [], sides: ALL_CHECKED });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
+  });
+
+  it("marks a side too dark partly checked, keeps a dark gap for it alone with the more light hint, and holds green", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ light: (kind, side, value) => (kind === "loop" && side === "back" ? 20 : value) });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toEqual({ coverage: "not_checked", loop: "closed", gaps: 1, sides: { ...ALL_CHECKED, back: "partly_checked" } });
+    const record = await recordOf(walkId);
+    expect(record.sides).toEqual(outcome.sides);
+    expect(record.gaps).toEqual([expect.objectContaining({ kind: "dark", side: "back", reason: { measure: "light", measured: 20, needed: 40 } })]);
+    expect(await gapsForWalk(env.DB, walkId)).toEqual([{ side: "back", kind: "dark", hint: "more_light" }]);
+  });
+
+  it("reads the light of each side from the samples of that side's loop tags, never from its pan", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ light: (kind, _side, value) => (kind === "pan" ? 5 : value) });
+    const tags = await tagsForWalk(env.DB, walkId);
+    const mean = (kind: string, side: string) => {
+      const seen = tags.filter((t) => t.kind === kind && t.label === side).flatMap((t) => t.samples.map((s) => s.light ?? Number.NaN));
+      return seen.reduce((sum, value) => sum + value, 0) / seen.length;
+    };
+    expect(mean("pan", "left")).toBe(5);
+    expect(sideLight(tags)).toEqual({ front: mean("loop", "front"), left: mean("loop", "left"), back: mean("loop", "back"), right: mean("loop", "right") });
+    expect(sideLight(tags).front).toBe(150);
+    expect((await checkCoverage(deps(), walkId, clips)).coverage).toBe("checked");
+  });
+
+  it("holds green and marks a side partly checked when that side's light was never measured, as from a phone before light", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ light: (kind, side, value) => (kind === "loop" && side === "right" ? undefined : value) });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toEqual({ coverage: "not_checked", loop: "closed", gaps: 0, sides: { ...ALL_CHECKED, right: "partly_checked" } });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
+  });
+
+  it("counts a side panned twice as one pan, so four pans of two sides still miss the pans", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ panSides: ["front", "front", "back", "back"] });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome.coverage).toBe("not_checked");
+    expect((await recordOf(walkId)).gaps).toEqual([expect.objectContaining({ kind: "pans_missing", reason: { measure: "pans", measured: 2, needed: 4 } })]);
+    expect(outcome.sides).toEqual(ALL_PARTLY);
+  });
+
+  it("marks no side checked when the loop did not come back to its start", async () => {
+    stageSamePlace({ same: false, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toMatchObject({ coverage: "not_checked", loop: "open", sides: ALL_PARTLY });
+  });
+
+  it("marks no side checked while a concept on the walk could not be checked", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ unchecked: "wood_pile" });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome).toEqual({ coverage: "not_checked", loop: "closed", gaps: 0, sides: ALL_PARTLY });
+  });
+
+  it("marks a side the walk never reached not checked", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await seeded({ legs: 2 });
+    const outcome = await checkCoverage(deps(), walkId, clips);
+    expect(outcome.sides).toMatchObject({ back: "not_checked", right: "not_checked" });
   });
 });

@@ -1,4 +1,5 @@
 import math
+import random
 
 from . import geom, house, motion
 
@@ -24,6 +25,14 @@ PAN_TURN_S = 2
 SWEEP_DEG = {"side": 45, "corner": 60}
 WALKABLE = ("porch", "deck", "landing")
 PARTS = "emberwalk.route-parts/1"
+TUFT_TRIES = 16000
+TUFT_IN = 12.0
+TUFT_REACH_IN = 600
+TUFT_BLADES = 8
+TUFT_HEIGHT_IN = (4.0, 11.0)
+BLADE_IN = 0.6
+WALK_CLEAR_IN = 30
+HAZARD_CLEAR_IN = 6
 CONVENTIONS = {
     "pos_in": "inches in house axes: x east, y north, z up from the ground, origin at the south west corner of the footprint's bounding box",
     "heading_deg": "compass bearing about z: 0 looks north, 90 east, 180 south, 270 west",
@@ -158,6 +167,32 @@ def hazard_boxes(spec):
         z0 = h.get("elevation_in", 0)
         out[h["id"]] = (x0, y0, z0, x1, y1, z0 + h["size_in"][2])
     return out
+
+
+def ground_cover(spec):
+    eds = house.edges(spec)
+    clear = WALK_CLEAR_IN
+    keep_out = [tuple(s["min_in"]) + tuple(s["max_in"]) for s in spec["structures"]]
+    keep_out += [(b[0] - HAZARD_CLEAR_IN, b[1] - HAZARD_CLEAR_IN, b[3] + HAZARD_CLEAR_IN, b[4] + HAZARD_CLEAR_IN) for b in hazard_boxes(spec).values()]
+    for o in house.loop(spec, params(spec)["standoff_in"]):
+        (sx, sy), (ex, ey) = o["start"], o["end"]
+        keep_out.append((min(sx, ex) - clear, min(sy, ey) - clear, max(sx, ex) + clear, max(sy, ey) + clear))
+    xs, ys = [e["start"][0] for e in eds], [e["start"][1] for e in eds]
+    rng = random.Random(spec["id"] + " ground cover")
+    tufts = []
+    for _ in range(TUFT_TRIES):
+        x = rng.uniform(min(xs) - TUFT_REACH_IN, max(xs) + TUFT_REACH_IN - TUFT_IN)
+        y = rng.uniform(min(ys) - TUFT_REACH_IN, max(ys) + TUFT_REACH_IN - TUFT_IN)
+        spot = (x, y, x + TUFT_IN, y + TUFT_IN)
+        if house.overlaps_house(spot, eds) or not house._in_lot(spot, spec["lot"]) or any(house._overlap(spot, r) for r in keep_out):
+            continue
+        tall, blades = rng.uniform(*TUFT_HEIGHT_IN), []
+        for _ in range(TUFT_BLADES):
+            bx, by = x + rng.uniform(0, TUFT_IN / 2.0), y + rng.uniform(0, TUFT_IN / 2.0)
+            tip = (bx + rng.uniform(0, TUFT_IN / 2.0), by + rng.uniform(0, TUFT_IN / 2.0), tall * rng.uniform(0.6, 1.0))
+            blades.append([(bx, by, 0), (bx + BLADE_IN, by, 0), tip])
+        tufts.append({"at_in": (x, y), "tall_in": tall, "blades": blades})
+    return tufts
 
 
 def _timeline(spec, p, path):

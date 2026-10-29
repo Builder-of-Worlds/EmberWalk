@@ -1,7 +1,7 @@
 import { type Detections, detectionsForClip, getWalk, replaceCoverageGaps, tagsForWalk } from "@emberwalk/db";
 import { MetaHttpError, MetaRefused, samePlaceCall } from "@emberwalk/meta";
-import { type CoverageGap, type CoverageInput, CoverageRecord, coverageKey, coverageOf, gapHint } from "@emberwalk/rules";
-import type { Clip, Concept, Gap, MotionSample } from "@emberwalk/shared";
+import { type Coverage, type CoverageGap, type CoverageInput, type SideState, CoverageRecord, coverageKey, coverageOf, gapHint } from "@emberwalk/rules";
+import { type Clip, type Concept, type Gap, type MotionSample, type Side, SIDES, type Tag, tagSide } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
 import { clipStart } from "./prepare.ts";
 import { lookKey } from "./storage.ts";
@@ -11,7 +11,32 @@ const LOOK_MARGIN_SECONDS = 2;
 const MIN_LOOP_SECONDS = 5;
 
 type Look = { same: boolean; confidence: number } | { notChecked: string };
-export type Checked = { coverage: "checked" | "not_checked"; loop: "closed" | "open" | "not_checked"; gaps: number };
+export type Checked = {
+  coverage: "checked" | "not_checked";
+  loop: "closed" | "open" | "not_checked";
+  gaps: number;
+  sides: Record<Side, SideState>;
+};
+
+const bySide = <T>(of: (side: Side) => T): Record<Side, T> => Object.fromEntries(SIDES.map((side) => [side, of(side)])) as Record<Side, T>;
+
+export const sideLight = (tags: Tag[]): Record<Side, number | null> =>
+  bySide((side) => {
+    const seen = tags
+      .filter((t) => t.kind === "loop" && tagSide(t) === side)
+      .flatMap((t) => t.samples.flatMap((s) => (s.light === undefined ? [] : [s.light])));
+    return seen.length === 0 ? null : seen.reduce((sum, light) => sum + light, 0) / seen.length;
+  });
+
+const pansOf = (tags: Tag[]): number => new Set(tags.filter((t) => t.kind === "pan").map((t) => tagSide(t) ?? t.id)).size;
+
+const sideStates = (result: Coverage, light: Record<Side, number | null>, notChecked: readonly Concept[]): Record<Side, SideState> => {
+  const whole = result.loop === "closed" && notChecked.length === 0 && result.gaps.every((gap) => gap.side !== null);
+  return bySide((side) => {
+    if (!result.sides.includes(side)) return "not_checked";
+    return !whole || result.gaps.some((gap) => gap.side === side) || light[side] === null ? "partly_checked" : "checked";
+  });
+};
 
 export const notCheckedConcepts = (detections: Detections[]): Concept[] => [
   ...new Set(detections.flatMap((d) => d.runs.filter((r) => r.outcome === "not_checked").map((r) => r.concept))),
@@ -70,15 +95,18 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     look = await lookAtLoop(deps, walkId, loopClip, seconds);
   }
 
+  const light = sideLight(tags);
+  const notChecked = notCheckedConcepts([...detections.values()]);
   const result = coverageOf({
     loop,
     wallFrames,
-    pans: tags.filter((t) => t.kind === "pan").length,
-    light: null,
+    pans: pansOf(tags),
+    light,
     look: "same" in look ? look : null,
-    notChecked: notCheckedConcepts([...detections.values()]),
+    notChecked,
   });
 
+  const sides = sideStates(result, light, notChecked);
   const record = CoverageRecord.parse({
     walkId,
     checkedAt: new Date().toISOString(),
@@ -86,6 +114,7 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     loop: result.loop,
     gaps: result.gaps,
     look,
+    sides,
   });
   await deps.bucket.put(coverageKey(walkId), JSON.stringify(record));
 
@@ -95,5 +124,5 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     return [{ side: gap.side, kind, hint: gapHint(kind, samplesWithin(samples, gap.where)) }];
   });
   await replaceCoverageGaps(deps.db, walkId, sideGaps);
-  return { coverage: result.coverage, loop: result.loop, gaps: result.gaps.length };
+  return { coverage: result.coverage, loop: result.loop, gaps: result.gaps.length, sides };
 };

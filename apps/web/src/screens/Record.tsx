@@ -47,7 +47,11 @@ const CORNER_AT = [
   [12, 88],
 ] as const;
 
-const Outline = ({ motion }: { motion: NonNullable<Motion> }) => {
+type Panned = { done: number; panning: boolean };
+
+const NOT_PANNED: Panned = { done: 0, panning: false };
+
+const Outline = ({ motion, panned }: { motion: NonNullable<Motion>; panned: Panned }) => {
   const [corners, setCorners] = useState(0);
   useEffect(() => {
     let last: number | null = null;
@@ -61,6 +65,11 @@ const Outline = ({ motion }: { motion: NonNullable<Motion> }) => {
   return (
     <svg className="outline" viewBox="0 0 100 100" aria-hidden="true" data-corners={corners}>
       <rect x="12" y="12" width="76" height="76" />
+      {CORNER_AT.map(([x1, y1], i) => {
+        const [x2, y2] = CORNER_AT[(i + 1) % CORNER_AT.length]!;
+        const state = i < panned.done ? "panned" : i === panned.done && panned.panning ? "panning" : null;
+        return state === null ? null : <line key={`${x1}-${y1}`} className={state} x1={x1} y1={y1} x2={x2} y2={y2} />;
+      })}
       {CORNER_AT.slice(0, CORNERS).map(([x, y], i) => (
         <circle key={`${x}-${y}`} cx={x} cy={y} r="7" className={i < corners ? "done" : undefined} />
       ))}
@@ -81,6 +90,7 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
   const [sound, setSound] = useState(true);
   const [soundOff, setSoundOff] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [panned, setPanned] = useState<Panned & { left: number }>({ ...NOT_PANNED, left: 0 });
   const [rules, setRules] = useState<keyof typeof copy.record.location>("finding");
 
   useEffect(() => {
@@ -123,13 +133,26 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
       mark: (change: Parameters<typeof takes.mark>[1]) => takes.mark(take.id, change),
       finish: (durationMs: number, endedBy: Parameters<typeof takes.finish>[2]) => takes.finish(take.id, durationMs, endedBy),
     };
-    recording.current = startRecording(camera, sink, deps.clock, deps.maxWalkMs, motion);
+    recording.current = startRecording(camera, sink, deps.clock, deps.maxWalkMs, motion, {
+      light: deps.light(camera.stream),
+      part: part?.side ?? null,
+    });
     setSoundOff(!sound);
     setPaused(false);
+    setPanned({ ...NOT_PANNED, left: recording.current.pansLeft() });
     setPhase({ kind: "recording", stream: camera.stream, motion });
     await recording.current.done;
     recording.current = null;
     window.location.hash = ROUTES.send;
+  };
+
+  const pressPan = () => {
+    const now = recording.current;
+    if (now === null) return;
+    const was = now.panning() !== null;
+    now.pan();
+    const panning = now.panning() !== null;
+    setPanned((before) => ({ done: before.done + (was && !panning ? 1 : 0), panning, left: now.pansLeft() }));
   };
 
   const togglePause = () => {
@@ -172,7 +195,11 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
         <>
           <Preview stream={phase.stream} />
           <p role="status">{copy.record.location[rules]}</p>
-          {part !== null ? <p>{copy.record.oneSide(part.side)}</p> : phase.motion === null ? null : <Outline motion={phase.motion} />}
+          {part !== null ? (
+            <p>{copy.record.oneSide(part.side)}</p>
+          ) : phase.motion === null ? null : (
+            <Outline motion={phase.motion} panned={panned} />
+          )}
           {recording.current === null ? null : <TimeLeft recording={recording.current} />}
           <div className="controls">
             <Toggle label={copy.record.pause} on={paused} onPress={() => togglePause()} />
@@ -188,6 +215,12 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
             <button className="button" type="button" disabled={paused} onClick={() => recording.current?.propertyLine()}>
               {copy.record.propertyLine}
             </button>
+            <Toggle
+              label={copy.record.panYard}
+              on={panned.panning}
+              disabled={paused || (!panned.panning && panned.left === 0)}
+              onPress={pressPan}
+            />
           </div>
           <button className="button primary" type="button" onClick={() => recording.current?.stop()}>
             {copy.record.stop}

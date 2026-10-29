@@ -1,3 +1,4 @@
+import { rowsForClip } from "@emberwalk/catalog";
 import { clipsForWalk, detectionsForClip, getWalk, tagsForWalk } from "@emberwalk/db";
 import { LOOP_CONCEPTS } from "@emberwalk/shared";
 import { env, introspectWorkflowInstance } from "cloudflare:test";
@@ -17,7 +18,7 @@ const SAM_CLIP_WIDTH = 1280;
 const SAM_CLIP_HEIGHT = 720;
 const STAND_IN_CONCEPTS = ["wood_pile"];
 const COVERAGE_LOOK_CALLS = 1;
-const MODEL_CALLS = LOOP_CONCEPTS.length - POINT_CONCEPTS.length + POINT_CONCEPTS.length * POINT_LOOKS + PRIVACY_PHRASES.length + COVERAGE_LOOK_CALLS;
+const MODEL_CALLS = rowsForClip("loop").length - POINT_CONCEPTS.length + POINT_CONCEPTS.length * POINT_LOOKS + PRIVACY_PHRASES.length + COVERAGE_LOOK_CALLS;
 
 type RenderFile = { size_bytes: number; duration_s: number; width: number; height: number };
 type TruthHazard = { concept: string; frame_boxes: { frame: number; box_px: [number, number, number, number] }[] };

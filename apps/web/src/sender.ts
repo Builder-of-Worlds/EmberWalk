@@ -1,4 +1,4 @@
-import type { Device, StartWalkRequest, Tag } from "@emberwalk/shared";
+import type { Device, Side, StartWalkRequest, Tag } from "@emberwalk/shared";
 import type { Fetch, UploadApi, WalkApi } from "./api.ts";
 import type { Jurisdiction } from "./location.ts";
 import { partsOf } from "./parts.ts";
@@ -32,22 +32,36 @@ export const walkRequest = (take: Take, visitorId: string): StartWalkRequest => 
   visitorId,
 });
 
-const walkTags = (take: Take, walkId: string, parts: readonly Part[], ids: readonly string[]): Tag[] =>
-  parts.map((part, i) => ({
+type Stretch = { kind: Tag["kind"]; side: Side | null; startSeconds: number; endSeconds: number; last: boolean };
+
+const walkTags = (take: Take, walkId: string, stretches: readonly Stretch[], ids: readonly string[]): Tag[] =>
+  stretches.map((stretch, i) => ({
     id: ids[i] as string,
     walkId,
-    kind: "loop",
-    startSeconds: part.startSeconds,
-    endSeconds: part.endSeconds,
-    label: part.side ?? "Walk",
-    samples: take.marks.motion.filter(({ t }) => t >= part.startSeconds && (t < part.endSeconds || (i === parts.length - 1 && t === part.endSeconds))),
+    kind: stretch.kind,
+    startSeconds: stretch.startSeconds,
+    endSeconds: stretch.endSeconds,
+    label: stretch.side ?? "Walk",
+    samples: take.marks.motion.filter(({ t }) => t >= stretch.startSeconds && (t < stretch.endSeconds || (stretch.last && t === stretch.endSeconds))),
     propertyLine: null,
   }));
 
-const partsFor = (take: Take): Part[] => {
-  const parts = partsOf(take.durationMs ?? 0, take.marks.motion);
+const loopParts = (take: Take, endMs: number): Part[] => {
+  const parts = partsOf(endMs, take.marks.motion);
   const side = take.partOf?.side;
   return side === undefined || parts.length === 0 ? parts : [{ side, startSeconds: 0, endSeconds: parts.at(-1)!.endSeconds }];
+};
+
+const stretchesFor = (take: Take): Stretch[] => {
+  const durationMs = take.durationMs ?? 0;
+  const pans = (take.marks.pans ?? []).map((pan) => ({ ...pan, endMs: Math.min(pan.endMs ?? durationMs, durationMs) }));
+  const parts = loopParts(take, pans[0]?.startMs ?? durationMs);
+  return [
+    ...parts.map((part, i) => ({ kind: "loop" as const, ...part, last: pans.length === 0 && i === parts.length - 1 })),
+    ...pans
+      .filter((pan) => pan.endMs > pan.startMs)
+      .map((pan) => ({ kind: "pan" as const, side: pan.side, startSeconds: pan.startMs / 1000, endSeconds: pan.endMs / 1000, last: true })),
+  ];
 };
 
 const savedIds =(saved: Take["tags"]): string[] => (saved === null || saved === undefined ? [] : "ids" in saved ? saved.ids : [saved.id]);
@@ -56,10 +70,10 @@ const sendTags = async (deps: SenderDeps, takes: TakeStore, take: Take, walkId: 
   const saved = (await takes.get(take.id)).tags;
   if (saved?.sent === true) return;
   const newId = deps.newId ?? (() => crypto.randomUUID());
-  const parts = partsFor(take);
-  if (parts.length === 0) return;
-  const ids = parts.map((_, i) => savedIds(saved)[i] ?? newId());
-  const tags = walkTags(take, walkId, parts, ids);
+  const stretches = stretchesFor(take);
+  if (stretches.length === 0) return;
+  const ids = stretches.map((_, i) => savedIds(saved)[i] ?? newId());
+  const tags = walkTags(take, walkId, stretches, ids);
   const answer = await deps.walks.tags(walkId, tags);
   const refusal = answer.code ?? null;
   await takes.saveTags(take.id, { ids, sent: refusal === null || refusal === "walk_not_uploading", refusal });

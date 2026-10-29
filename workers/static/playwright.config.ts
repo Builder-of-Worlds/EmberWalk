@@ -4,9 +4,12 @@ import { UNSUBSCRIBE_SECRET } from "./test/browser/secret";
 
 const PORT = 8799;
 const executablePath = process.env.EMBERWALK_CHROMIUM || undefined;
+const GAP = /\.gap\.spec\./;
+const mainIgnore = process.env.EMBERWALK_GAPS === "1" ? [] : [GAP];
 
 export default defineConfig({
   testDir: "./test/browser",
+  testIgnore: mainIgnore,
   outputDir: "test-results/artifacts",
   workers: 1,
   timeout: 60_000,

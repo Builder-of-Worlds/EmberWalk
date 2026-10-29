@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { boxOf, clipOfDigits, edgeEnergy, FRAME, meanAbsDiffOutside, ownCorrelations, readDigits, regionAround } from "./support/digits.ts";
+import { boxOf, clipOfDigits, edgeEnergy, FRAME, meanAbsDiffInBand, ownCorrelations, readDigits, regionAround } from "./support/digits.ts";
 import { startFixtureServer } from "./support/fixture-server.ts";
 import type { FixtureServer } from "./support/fixture-server.ts";
 import { grayPixels, jpegSize } from "./support/fixtures.ts";
@@ -23,7 +23,7 @@ describe("blurring a tight house number box", () => {
     stop = () => child.kill("SIGKILL");
     baseUrl = `http://127.0.0.1:${port}`;
     await waitForHealth(baseUrl);
-    fixtures.files.set("/number.mp4", clipOfDigits(NUMBER, box));
+    fixtures.files.set("/number.mp4", clipOfDigits(NUMBER, box, MARGIN + 1));
     const res = await fetch(`${baseUrl}/stills`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -38,7 +38,7 @@ describe("blurring a tight house number box", () => {
     expect(res.status).toBe(200);
     plain = fixtures.puts.get("/out/plain.jpg") as Buffer;
     blurred = fixtures.puts.get("/out/blurred.jpg") as Buffer;
-  }, 120_000);
+  });
 
   afterAll(async () => {
     stop?.();
@@ -61,6 +61,7 @@ describe("blurring a tight house number box", () => {
   });
 
   it("does not spread the blur past the margin around the box", () => {
-    expect(meanAbsDiffOutside(grayPixels(plain), grayPixels(blurred), box, MARGIN + 8)).toBeLessThan(0.5);
+    const band = meanAbsDiffInBand(grayPixels(plain), grayPixels(blurred), box, MARGIN + 1, MARGIN + 13);
+    expect(band).toBeLessThan(0.3);
   });
 });

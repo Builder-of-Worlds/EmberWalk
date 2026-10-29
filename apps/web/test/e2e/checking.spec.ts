@@ -14,7 +14,7 @@ const EXPIRES = "2026-10-27T20:00:00.000Z";
 const FAILED = "Something went wrong while checking this walk. Please try again.";
 const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
 
-type Walk = { state: WalkState; asked: number; refuse?: ErrorCode; faults?: unknown[]; faultAnswer?: Promise<void> };
+type Walk = { state: WalkState; asked: number; refuse?: ErrorCode; faults?: unknown[]; faultAnswer?: Promise<void>; offline?: boolean };
 
 const standInApi = async (page: Page, walk: Walk) => {
   let total = 0;
@@ -41,6 +41,7 @@ const standInApi = async (page: Page, walk: Walk) => {
     }
     if (pathname === `/api/walks/${LIVE_WALK}`) {
       walk.asked += 1;
+      if (walk.offline === true) return route.abort("internetdisconnected");
       if (walk.refuse !== undefined) return route.fulfill({ status: 400, json: { error: { code: walk.refuse, message: "Refused." } } });
       const failure = walk.state.name === "failed" ? { code: "score_failed", message: FAILED } : null;
       return answer(route, { walkId: LIVE_WALK, state: walk.state, failure });
@@ -99,6 +100,80 @@ test("a sent walk shows it is being checked, then opens its findings when done, 
   await expect(page.getByText(copy.results.notChecked("roof_debris"))).toBeVisible();
   await expect(page.getByText(copy.results.ready)).toHaveCount(0);
   await expect(page.locator(".proof img").first()).toBeVisible();
+  expect(page.viewportSize()?.width).toBe(390);
+  expect(await page.evaluate(sideways)).toBe(0);
+  await everyButtonReachable(page);
+});
+
+test("the trail follows every state of the check with no sideways scroll, ending only at done, at 390 px", async ({ page }) => {
+  const walk: Walk = { state: { name: "queued" }, asked: 0 };
+  await standInApi(page, walk);
+  await sendATake(page);
+  const trail = page.locator("ol.trail");
+  const run: [WalkState, string, number][] = [
+    [{ name: "queued" }, "ready", 1],
+    [{ name: "processing", step: "prepare" }, "ready", 1],
+    [{ name: "processing", step: "segment" }, "looking", 2],
+    [{ name: "processing", step: "score" }, "looking", 2],
+    [{ name: "processing", step: "explain" }, "writing", 3],
+  ];
+  for (const [state, current, behind] of run) {
+    walk.state = state;
+    await expect(trail.locator("li.current p")).toHaveText(copy.send.step(state));
+    await expect(trail).toHaveAttribute("data-current", current);
+    await expect(trail.locator("li.behind")).toHaveCount(behind);
+    expect(await page.evaluate(sideways)).toBe(0);
+  }
+  const starts = await trail.locator(".label").evaluateAll((labels) =>
+    labels.map((label) => {
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      return Math.round(range.getBoundingClientRect().left);
+    }),
+  );
+  expect(new Set(starts).size).toBe(1);
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
+  walk.state = { name: "done" };
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.soFar);
+  expect(await page.evaluate(sideways)).toBe(0);
+});
+
+test("the counted bar fills from the server's count, and the Done line shows before the results open, at 390 px", async ({ page }) => {
+  const walk: Walk = { state: { name: "queued" }, asked: 0 };
+  await standInApi(page, walk);
+  await sendATake(page);
+  const bar = page.locator("ol.trail li.current [role=progressbar]");
+  for (const [step, done, total] of [["segment", 3, 14], ["score", 14, 14], ["explain", 1, 2]] as const) {
+    walk.state = { name: "processing", step, progress: { done, total } };
+    await expect(page.locator("ol.trail li.current .count")).toHaveText(copy.send.counted(done, total));
+    await expect(bar).toHaveAttribute("aria-valuenow", String(done));
+    expect(await page.evaluate(sideways)).toBe(0);
+  }
+  walk.state = { name: "done" };
+  await expect(page.getByText(copy.send.checked)).toBeVisible();
+  await expect(page.locator("ol.trail li.behind")).toHaveCount(5);
+  expect(await page.evaluate(sideways)).toBe(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.soFar);
+});
+
+test("with reduced motion the trail holds still, and waiting for signal it keeps its count with no sideways scroll, at 390 px", async ({ page, context }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const walk: Walk = { state: { name: "processing", step: "score", progress: { done: 9, total: 14 } }, asked: 0 };
+  await standInApi(page, walk);
+  await sendATake(page);
+  const count = page.locator("ol.trail li.current .count");
+  await expect(count).toHaveText(copy.send.counted(9, 14));
+  const moving = await page.evaluate(() =>
+    [...document.querySelectorAll("ol.trail .bar span, ol.trail .mark")]
+      .map((el) => getComputedStyle(el).transitionDuration)
+      .concat([...document.querySelectorAll("ol.trail li")].map((li) => getComputedStyle(li, "::after").transitionDuration))
+      .filter((duration) => duration.split(",").some((d) => parseFloat(d) > 0)),
+  );
+  expect(moving).toEqual([]);
+  walk.offline = true;
+  await context.setOffline(true);
+  await expect(page.getByRole("alert")).toHaveText(copy.send.refused.offline);
+  await expect(count).toHaveText(copy.send.counted(9, 14));
   expect(page.viewportSize()?.width).toBe(390);
   expect(await page.evaluate(sideways)).toBe(0);
   await everyButtonReachable(page);

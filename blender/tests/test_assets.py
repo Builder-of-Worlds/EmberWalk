@@ -63,6 +63,15 @@ class Catalog(unittest.TestCase):
                     self.assertEqual(entry["license"], "CC0-1.0")
                     self.assertEqual(entry["source"], "https://polyhaven.com/a/" + asset_id.split(":", 1)[1])
 
+    def test_every_sky_is_shaped_like_the_test_yard_sky(self):
+        catalog = assets.load_catalog()
+        skies = {i: e for i, e in catalog.items() if e["kind"] == "hdri"}
+        self.assertTrue({"polyhaven:goegap", "polyhaven:dreifaltigkeitsberg"} <= set(skies))
+        for asset_id, entry in skies.items():
+            with self.subTest(asset=asset_id):
+                self.assertEqual(sorted(entry), sorted(skies["polyhaven:goegap"]))
+                self.assertEqual(entry["resolution"], skies["polyhaven:goegap"]["resolution"])
+
     def test_scripted_material_is_in_the_catalog(self):
         catalog = assets.load_catalog()
         for entry in catalog.values():

@@ -3,6 +3,7 @@ import type { Concept, WalkState } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
 import type { FeetSaid } from "./distance.ts";
 import type { StatusKind } from "./finding-marks.ts";
+import type { Stage } from "./progress.ts";
 import type { Gap, Label, Side } from "./results.ts";
 
 const LIMIT_MINUTES = Math.floor(DEFAULT_LIMITS.maxWalkSeconds / 60);
@@ -59,9 +60,9 @@ export const draft = {
   record: {
     corners: ["Start at the front door.", "Turn the first corner.", "Turn the next corner.", "One corner to go.", "Back at the front. Tap Stop Recording."],
     propertyLine: "Point the phone at your property line, then tap Property Line.",
+    pan: (side: Side) => `Stand at the ${side} side, face the yard and turn slowly from one end to the other. Tap Pan the Yard again when done.`,
   },
   results: {
-    distance: (feet: number) => `About ${feet} feet from the house.`,
     confidence: (share: number) => `EmberWalk is ${Math.round(share * 100)}% sure of this.`,
   },
 } as const;
@@ -91,7 +92,7 @@ const distanceLine = (said: FeetSaid): string => {
     case "within":
       return `Within ${said.high} ${said.high === 1 ? "foot" : "feet"} of the house.`;
     case "about":
-      return `About ${said.feet} feet from the house.`;
+      return `About ${said.feet} ${said.feet === 1 ? "foot" : "feet"} from the house.`;
     case "range":
       return `About ${said.low} to ${said.high} feet from the house.`;
   }
@@ -103,12 +104,6 @@ export const unbacked = {
   leaves: {
     location:
       "Location: used on your phone to find your fire rules and help nearby. To show the aerial photo, the map point of your house is sent to Esri, the map provider. Your address is never sent.",
-  },
-  results: {
-    lead: "Start here: closest to your home first, out to 30 feet.",
-    distance: distanceLine,
-    inside: (count: number) => `Inside 5 feet: ${thingsToClear(count)}`,
-    out: (count: number) => `From 5 to 30 feet: ${thingsToClear(count)}`,
   },
 } as const;
 
@@ -134,10 +129,13 @@ export const copy = {
       step_back: (side) => `Walk the ${side} side again one step further from the wall, so the ground by the wall shows.`,
       again: (side) => `Walk the ${side} side once more. Your video was fine; EmberWalk needs another look.`,
     } satisfies Record<Gap["hint"], (side: Side) => string>,
-    walkAgain: "Walk Again",
     walkSide: (side: Side) => `Walk the ${titled(side)} Side`,
     soFar: "What We Found So Far",
     fixFirst: (count: number) => (count === 1 ? "Fix This First" : `Fix These ${count} First`),
+    lead: "Start closest to your home: the first 5 feet matter most, then out to 30 feet, then 100.",
+    distance: distanceLine,
+    inside: (count: number) => `Inside 5 feet: ${thingsToClear(count)}`,
+    out: (count: number) => `From 5 to 30 feet: ${thingsToClear(count)}`,
     notChecked: (concept: Concept) => `Not checked on this walk: ${CONCEPT_WORDS[concept]}.`,
     bands: { zone_0: "First 5 Feet", zone_1: "5 to 30 Feet", zone_2: "30 to 100 Feet" },
     simple: "Simple",
@@ -191,6 +189,7 @@ export const copy = {
     soundOff: "Sound Off",
     pause: "Pause",
     propertyLine: "Property Line",
+    panYard: "Pan the Yard",
     timeLeft: (ms: number) => `${clockText(ms)} left`,
     saved: "A walk is saved on this phone and has not been sent yet.",
     sendSaved: "Send My Walk",
@@ -225,6 +224,9 @@ export const copy = {
     held: "EmberWalk is still working on your walk. This page updates by itself.",
     reported: "EmberWalk was told about the problem. This page updates by itself.",
     step: (state: WalkState) => stepLine(state),
+    stages: { sent: "Sent", ready: "Ready", looking: "Looking", writing: "Writing", done: "Done" } satisfies Record<Stage, string>,
+    counted: (done: number, total: number) => `${done} of ${total} steps done`,
+    checked: "Checked. Opening what EmberWalk found.",
     savedMinutes: (minutes: number) =>
       `${minutes} ${minutes === 1 ? "minute" : "minutes"} saved on this phone.`,
     refused: {

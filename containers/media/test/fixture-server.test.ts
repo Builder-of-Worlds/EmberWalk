@@ -46,3 +46,42 @@ describe("the fixture server's request signal", () => {
     expect(await pending(arrived)).toBe(true);
   });
 });
+
+describe("the fixture server's hold", () => {
+  const settledWithin = async (response: Promise<unknown>, ms: number): Promise<boolean> =>
+    Promise.race([response.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms))]);
+
+  it("keeps the response back for as long as the hold stands, then sends the file when released", async () => {
+    fixtures = await startFixtureServer();
+    fixtures.files.set("/held.mp4", Buffer.from("held"));
+    const release = fixtures.hold("/held.mp4");
+    const arrived = fixtures.requested("/held.mp4");
+    const response = fetch(`http://127.0.0.1:${fixtures.port}/held.mp4`);
+
+    await expect(arrived).resolves.toBeUndefined();
+    expect(await settledWithin(response, 400)).toBe(false);
+    release();
+    expect(Buffer.from(await (await response).arrayBuffer()).toString()).toBe("held");
+  });
+
+  it("answers at once for a path that was not held, and for a request made after the release", async () => {
+    fixtures = await startFixtureServer();
+    fixtures.files.set("/held.mp4", Buffer.from("h"));
+    fixtures.files.set("/free.mp4", Buffer.from("f"));
+    const release = fixtures.hold("/held.mp4");
+
+    expect(await settledWithin(fetch(`http://127.0.0.1:${fixtures.port}/free.mp4`), 400)).toBe(true);
+    release();
+    expect(await settledWithin(fetch(`http://127.0.0.1:${fixtures.port}/held.mp4`), 400)).toBe(true);
+  });
+
+  it("lets a second release do nothing", async () => {
+    fixtures = await startFixtureServer();
+    fixtures.files.set("/held.mp4", Buffer.from("h"));
+    const release = fixtures.hold("/held.mp4");
+    release();
+    release();
+
+    expect(await settledWithin(fetch(`http://127.0.0.1:${fixtures.port}/held.mp4`), 400)).toBe(true);
+  });
+});

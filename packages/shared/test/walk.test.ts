@@ -12,6 +12,7 @@ import {
   Side,
   SIDES,
   Tag,
+  tagSide,
   Track,
   TrackFrame,
   Visitor,
@@ -19,6 +20,7 @@ import {
   WalkState,
 } from "../src/index.ts";
 import { AT, FP, id, refuses, refusesEach, refusesMissingAndExtra, roundTrips } from "./check.ts";
+import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
 
 const walk = {
   id: id(1),
@@ -72,6 +74,32 @@ describe("walk records", () => {
     refuses(WalkState, { name: "paused" });
   });
 
+  describe("the count of a processing stage", () => {
+    it("round trips a count of whole numbers, from none done to all done", () => {
+      for (const progress of [{ done: 0, total: 13 }, { done: 9, total: 13 }, { done: 2, total: 2 }, null]) {
+        roundTrips(WalkState, { name: "processing", step: "segment", progress });
+      }
+    });
+
+    it("refuses more done than the total, a negative or fractional count, and an empty stage", () => {
+      for (const progress of [{ done: 14, total: 13 }, { done: -1, total: 13 }, { done: 1.5, total: 13 }, { done: 0, total: 0 }, { done: 1 }]) {
+        refuses(WalkState, { name: "processing", step: "segment", progress });
+      }
+      refuses(WalkState, { name: "processing", step: "segment", progress: { done: 1, total: 2, extra: 1 } });
+    });
+
+    it("still reads a processing state with no count, which carries none", () => {
+      const parsed = WalkState.parse({ name: "processing", step: "segment" });
+      expect(parsed).toEqual({ name: "processing", step: "segment" });
+      expect(parsed.name === "processing" ? (parsed.progress ?? null) : "not processing").toBeNull();
+    });
+
+    it("refuses a count on any state but processing", () => {
+      refuses(WalkState, { name: "done", progress: { done: 2, total: 2 } });
+      refuses(WalkState, { name: "failed", step: "score", progress: { done: 1, total: 13 } });
+    });
+  });
+
   it("round trips a visitor and refuses a bad one", () => {
     const visitor = { id: FP, createdAt: AT, language: "es", liveWalksToday: 0 };
     roundTrips(Visitor, visitor);
@@ -117,6 +145,18 @@ describe("walk records", () => {
     }
   });
 
+  it("carries the light the camera saw with a motion sample, from 0 to 255, and keeps samples from phones that sent none", () => {
+    for (const light of [0, 37.5, 255]) roundTrips(MotionSample, { t: 1, tiltDegrees: 10, headingDegrees: 90, light });
+    roundTrips(MotionSample, { t: 1, tiltDegrees: 10, headingDegrees: 90 });
+    for (const light of [-1, 256, Number.NaN, "bright", null]) refuses(MotionSample, { t: 1, tiltDegrees: 10, headingDegrees: 90, light });
+    roundTrips(Tag, { ...tag, samples: [{ t: 10, tiltDegrees: -20, headingDegrees: 12, light: 140 }] });
+  });
+
+  it("reads the side a tag is labelled with, and no side from any other label", () => {
+    for (const side of SIDES) expect(tagSide({ label: side })).toBe(side);
+    for (const label of ["Walk", "back side", "Front", "corner 0", ""]) expect(tagSide({ label })).toBeNull();
+  });
+
   it("round trips a clip and refuses a bad one", () => {
     const clip = { id: id(3), walkId: id(1), kind: "loop", file: "clips/w1/loop.mp4", fps: 2, frameCount: 180, width: 1280, height: 720 };
     roundTrips(Clip, clip);
@@ -151,5 +191,30 @@ describe("walk records", () => {
     const gap = { side: "front", kind: "missing", hint: "walk_side" };
     refusesMissingAndExtra(Gap, gap);
     refusesEach(Gap, gap, [{ side: "roof" }, { kind: "smoke" }, { hint: "dance" }, { hint: "again" }]);
+  });
+});
+
+describe("the two part walk in the upload metadata", () => {
+  const tags = sideWalk.tags.map((t) => Tag.parse({ ...t, walkId: id(1) }));
+  const sidesOf = (kind: "loop" | "pan") => tags.filter((t) => t.kind === kind).map((t) => tagSide(t));
+
+  it("the synthetic sample's tags are the loop then the pans, one tag per side in walk order, each with light", () => {
+    expect(sideWalk.synthetic).toBe(true);
+    expect(tags.map((t) => t.kind)).toEqual(["loop", "loop", "loop", "loop", "pan", "pan", "pan", "pan"]);
+    expect(sidesOf("loop")).toEqual(["front", "left", "back", "right"]);
+    expect(sidesOf("pan")).toEqual(sidesOf("loop"));
+    for (const [i, t] of tags.entries()) {
+      if (i > 0) expect(t.startSeconds).toBeGreaterThanOrEqual(tags[i - 1]!.endSeconds);
+      expect(t.samples.length).toBeGreaterThan(0);
+      for (const sample of t.samples) {
+        expect(sample.light).toEqual(expect.any(Number));
+        expect(sample.t >= t.startSeconds && sample.t <= t.endSeconds).toBe(true);
+      }
+    }
+  });
+
+  it("refuses a tag whose samples carry light outside 0 to 255", () => {
+    const first = sideWalk.tags[0]!;
+    refuses(Tag, { ...first, walkId: id(1), samples: [{ ...first.samples[0]!, light: 300 }] });
   });
 });

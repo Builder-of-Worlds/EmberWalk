@@ -1,3 +1,4 @@
+import { isPending, rowsForClip } from "@emberwalk/catalog";
 import { SAM_PHRASES } from "@emberwalk/meta";
 import { LOOP_CONCEPTS, PAN_CONCEPTS } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
@@ -38,7 +39,9 @@ describe("segmentClip", () => {
 
     const result = await segmentClip(deps(), walkId, clip, "file-1");
 
-    expect(result).toEqual({ ok: true, value: { clipId: clip.id, found: 1, notChecked: 0 } });
+    expect(result).toMatchObject({ ok: true, value: { clipId: clip.id, found: 1, notChecked: 0 } });
+    const pending = (result as { value: { pending: { object: string; outcome: string }[] } }).value.pending;
+    expect(pending.map((t) => [t.object, t.outcome])).toEqual(rowsForClip("loop").filter(isPending).map((r) => [r.concept, "none"]));
     const stored = await readDetections(walkId, clip.id);
     expect(stored.runs).toHaveLength(LOOP_CONCEPTS.length);
     expect(stored.runs.filter((r) => r.outcome === "found").map((r) => r.concept)).toEqual(["wood_pile"]);
@@ -46,12 +49,12 @@ describe("segmentClip", () => {
     expect(stored.tracks).toHaveLength(1);
   });
 
-  it("asks the pan clip about the pan concepts only", async () => {
+  it("asks the pan clip about the pan concepts and the catalog's pending objects, and stores runs for the pan concepts only", async () => {
     const { walkId, clip } = await setup({ kind: "pan" });
 
     await segmentClip(deps(), walkId, clip, "file-1");
 
-    expect(requestsTo("/responses")).toHaveLength(PAN_CONCEPTS.length - 1 + POINT_LOOKS);
+    expect(requestsTo("/responses")).toHaveLength(rowsForClip("pan").length - 1 + POINT_LOOKS);
     expect((await readDetections(walkId, clip.id)).runs.map((r) => r.concept).sort()).toEqual([...PAN_CONCEPTS].sort());
   });
 
@@ -183,7 +186,7 @@ describe("segmentClip", () => {
     expect(spent).toBeGreaterThan(0);
     expect(requestsTo("/responses")).toHaveLength(calls);
     expect(await spentNano()).toBe(spent);
-    expect(await costRows()).toBe(rows + LOOP_CONCEPTS.length - POINT_CONCEPTS.length + POINTED_LOOKS);
+    expect(await costRows()).toBe(rows + rowsForClip("loop").length - POINT_CONCEPTS.length + POINTED_LOOKS);
   });
 
   it("asks SAM for the phrase chosen for a concept and for no phrase at all for the two it points for", async () => {

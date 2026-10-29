@@ -17,22 +17,32 @@ const usable = (motion: readonly MotionSample[], end: number): MotionSample[] =>
   return kept;
 };
 
+export const walkOrder = (motion: readonly MotionSample[]): readonly Side[] => {
+  const samples = usable(motion, Infinity);
+  let net = 0;
+  for (const [i, sample] of samples.entries()) {
+    if (i === 0) continue;
+    net += turnBetween((samples[i - 1] as MotionSample).headingDegrees, sample.headingDegrees);
+    if (cornersFor(net) > 0) return Math.sign(net) === -1 ? LEFT_TURNS : RIGHT_TURNS;
+  }
+  return LEFT_TURNS;
+};
+
 export const partsOf = (durationMs: number, motion: readonly MotionSample[]): Part[] => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return [];
   const end = durationMs / 1000;
   const samples = usable(motion, end);
   if (samples.length < 2) return [{ side: null, startSeconds: 0, endSeconds: end }];
 
+  const order = walkOrder(samples);
   const starts = [{ corner: 0, at: 0 }];
   let net = 0;
   let reached = 0;
-  let order = LEFT_TURNS;
   for (const [i, sample] of samples.entries()) {
     if (i === 0) continue;
     net += turnBetween((samples[i - 1] as MotionSample).headingDegrees, sample.headingDegrees);
     const corners = cornersFor(net);
     if (corners <= reached) continue;
-    if (reached === 0) order = net < 0 ? LEFT_TURNS : RIGHT_TURNS;
     reached = corners;
     const last = starts.at(-1) as { at: number };
     if (corners < CORNERS && sample.t > last.at && sample.t < end) starts.push({ corner: corners, at: sample.t });

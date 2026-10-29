@@ -1,5 +1,6 @@
 export * from "./table.ts";
 export * from "./lookup.ts";
+export * from "./state.ts";
 export * from "./severity.ts";
 export * from "./evaluate.ts";
 export * from "./rank.ts";

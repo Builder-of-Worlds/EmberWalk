@@ -66,11 +66,26 @@ describe("POST /api/signup, where the address goes", () => {
       return Response.json({ success: true, id: "email_1" });
     }) as unknown as typeof fetch;
     const env = testEnv();
-    const response = await handle(signupRequest(validBody), env, { fetchImpl: outbound, mailer: createResendMailer("re_test_key", outbound) });
+    const response = await handle(signupRequest(validBody), env, { fetchImpl: outbound, mailer: createResendMailer("re_test_key", "EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000", outbound) });
     expect(response.status).toBe(200);
     expect(hosts).toEqual(["challenges.cloudflare.com", "api.resend.com"]);
     expect(bodies[0]).not.toContain("neighbor");
     expect(bodies[1]).toContain("neighbor@example.com");
+  });
+
+  it("stores the signup and sends no email when the postal address setting is missing", async () => {
+    const hosts: string[] = [];
+    const outbound = (async (input: RequestInfo | URL) => {
+      hosts.push(new URL(String(input)).host);
+      return Response.json({ success: true, id: "email_1" });
+    }) as unknown as typeof fetch;
+    const env = testEnv();
+    const response = await handle(signupRequest(validBody), env, { fetchImpl: outbound, mailer: createResendMailer("re_test_key", undefined, outbound) });
+    expect(response.status).toBe(200);
+    expect(hosts).toEqual(["challenges.cloudflare.com"]);
+    const stored = await rows(env.DB);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].welcomed_at).toBeNull();
   });
 });
 

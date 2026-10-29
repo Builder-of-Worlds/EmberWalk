@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.tsx";
-import { clockText, copy } from "../../src/copy.ts";
+import { clockText, copy, draft } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
 import { ROUTES } from "../../src/router.ts";
@@ -214,6 +214,61 @@ describe("Get ready and recording", () => {
     await view.unmount();
   });
 
+  it("Pan the Yard marks each pan after the loop, lights the side being panned on the outline, and keeps the camera's light", async () => {
+    const motion = fakeMotion();
+    const time = fakeClock();
+    const meter = { read: vi.fn(() => 133), stop: vi.fn() };
+    const light = vi.fn(() => meter);
+    const deps = testDeps({ motion: motion.env, clock: time.clock, light });
+    const view = await startWalk(deps);
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("svg.outline") !== null);
+    expect(light).toHaveBeenCalledWith(FakeRecorder.last?.stream);
+    const edges = (state: string) => view.host.querySelectorAll(`svg.outline line.${state}`).length;
+    await settle(() => {
+      for (const heading of [0, 45, 95, 150, 185, 230, 275, 320, 5]) {
+        motion.turn(heading);
+        time.advance(100);
+      }
+    });
+    expect(pressed(view.host, copy.record.panYard)).toBe("false");
+    await click(view.host, copy.record.panYard);
+    expect(pressed(view.host, copy.record.panYard)).toBe("true");
+    expect([edges("panning"), edges("panned")]).toEqual([1, 0]);
+    await settle(() => time.advance(3000));
+    await click(view.host, copy.record.panYard);
+    expect(pressed(view.host, copy.record.panYard)).toBe("false");
+    expect([edges("panning"), edges("panned")]).toEqual([0, 1]);
+    for (const line of Object.values(draft.record)) if (typeof line === "function") expect(view.text()).not.toContain(line("front"));
+    await click(view.host, copy.record.stop);
+    await until(() => window.location.hash === ROUTES.send);
+    const take = await (await deps.takes()).latest();
+    expect(take?.marks.pans).toEqual([{ side: "front", startMs: 900, endMs: 3900 }]);
+    expect(take?.marks.motion.every((sample) => sample.light === 133)).toBe(true);
+    expect(meter.stop).toHaveBeenCalledOnce();
+    await view.unmount();
+  });
+
+  it("offers Pan the Yard four times only, and never while paused", async () => {
+    const deps = testDeps();
+    const view = await startWalk(deps);
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("video") !== null);
+    await click(view.host, copy.record.pause);
+    expect(enabled(view.host, copy.record.panYard)).toBe(false);
+    await click(view.host, copy.record.pause);
+    for (let i = 0; i < 4; i++) {
+      expect(enabled(view.host, copy.record.panYard)).toBe(true);
+      await click(view.host, copy.record.panYard);
+      await click(view.host, copy.record.panYard);
+    }
+    expect(enabled(view.host, copy.record.panYard)).toBe(false);
+    await click(view.host, copy.record.stop);
+    await until(() => window.location.hash === ROUTES.send);
+    expect((await (await deps.takes()).latest())?.marks.pans?.map((pan) => pan.side)).toEqual(["front", "right", "back", "left"]);
+    await view.unmount();
+  });
+
   it("records without the outline when motion is refused", async () => {
     const motion = fakeMotion();
     motion.requestPermission.mockResolvedValueOnce("denied");
@@ -411,6 +466,20 @@ describe("a walk of one side", () => {
     expect(view.text()).toContain(SETTLED_SIDE.record);
     await stopWalk(view);
     expect((await (await deps.takes()).latest())?.partOf).toEqual(BACK);
+    await view.unmount();
+  });
+
+  it("pans the one side once, and saves that pan with the side", async () => {
+    const deps = testDeps();
+    const view = await showPart(deps);
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("video") !== null);
+    await click(view.host, copy.record.panYard);
+    expect(pressed(view.host, copy.record.panYard)).toBe("true");
+    await click(view.host, copy.record.panYard);
+    expect(enabled(view.host, copy.record.panYard)).toBe(false);
+    await stopWalk(view);
+    expect((await (await deps.takes()).latest())?.marks.pans?.map((pan) => pan.side)).toEqual(["back"]);
     await view.unmount();
   });
 

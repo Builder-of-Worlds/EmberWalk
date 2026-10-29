@@ -1,6 +1,6 @@
 import { WalkResultsResponse } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
-import { unbacked } from "../../src/copy.ts";
+import { copy } from "../../src/copy.ts";
 import { feetSaid } from "../../src/distance.ts";
 import { liveBody } from "./result-fakes.ts";
 
@@ -37,16 +37,18 @@ describe("feetSaid", () => {
       expect(() => feetSaid(bad), JSON.stringify(bad)).toThrow(RangeError);
   });
 
-  it("drafts a line for each case whose numbers hold the measured range", () => {
-    const line = (low: number, high: number) => unbacked.results.distance(feetSaid({ low, high }));
+  it("says a line for each case whose numbers hold the measured range", () => {
+    const line = (low: number, high: number) => copy.results.distance(feetSaid({ low, high }));
     expect(line(0, 0)).toBe("Against the house.");
     expect(line(0, 0.4)).toBe("Within 1 foot of the house.");
     expect(line(0, 3)).toBe("Within 3 feet of the house.");
     expect(line(12, 12)).toBe("About 12 feet from the house.");
+    expect(line(1, 1)).toBe("About 1 foot from the house.");
+    expect(line(1.2, 1.9)).toBe("About 1 to 2 feet from the house.");
     expect(line(3.2, 4.7)).toBe("About 3 to 5 feet from the house.");
     expect(line(30, 113.6)).toBe("About 30 to 114 feet from the house.");
-    expect([0, 1, 2].map(unbacked.results.inside)).toEqual(["Inside 5 feet: nothing found.", "Inside 5 feet: 1 thing to clear.", "Inside 5 feet: 2 things to clear."]);
-    expect(unbacked.results.out(3)).toBe("From 5 to 30 feet: 3 things to clear.");
+    expect([0, 1, 2].map(copy.results.inside)).toEqual(["Inside 5 feet: nothing found.", "Inside 5 feet: 1 thing to clear.", "Inside 5 feet: 2 things to clear."]);
+    expect(copy.results.out(3)).toBe("From 5 to 30 feet: 3 things to clear.");
   });
 
   it("never sees a high below low, because the contract refuses that body first", () => {

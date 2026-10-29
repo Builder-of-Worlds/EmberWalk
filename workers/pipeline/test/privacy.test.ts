@@ -89,22 +89,22 @@ describe("findPrivacy", () => {
       return (await readRecord(walkId, clip.id)).frames[0]?.regions[0] ?? [];
     };
 
-    it("grows a house number box by a few pixels, never by a share of the frame", async () => {
-      const region = px(await stored("house number", [800, 500, 900, 540]));
+    const HUNDRED_BY_FORTY: Box = [800, 500, 899, 539];
 
-      expect(region.width).toBeGreaterThan(101);
-      expect(region.width).toBeLessThanOrEqual(107.001);
-      expect(region.height).toBeGreaterThan(41);
-      expect(region.height).toBeLessThanOrEqual(47.001);
-      expect(region.left).toBeLessThan(800);
-      expect(region.top).toBeLessThan(500);
+    it("grows a house number box of 100 x 40 px by exactly the margin on each side, never by a share of the frame", async () => {
+      const region = px(await stored("house number", HUNDRED_BY_FORTY));
+
+      expect(region.width).toBeCloseTo(106, 3);
+      expect(region.height).toBeCloseTo(46, 3);
+      expect(region.left).toBeCloseTo(797, 3);
+      expect(region.top).toBeCloseTo(497, 3);
     });
 
     it.each(["face", "license plate"])("still grows a %s box by BOX_PADDING", async (phrase) => {
-      const region = px(await stored(phrase, [800, 500, 900, 540]));
+      const region = px(await stored(phrase, HUNDRED_BY_FORTY));
 
-      expect(region.width).toBeCloseTo(101 + 2 * BOX_PADDING * 1920, 3);
-      expect(region.height).toBeCloseTo(41 + 2 * BOX_PADDING * 1080, 3);
+      expect(region.width).toBeCloseTo(100 + 2 * BOX_PADDING * 1920, 3);
+      expect(region.height).toBeCloseTo(40 + 2 * BOX_PADDING * 1080, 3);
     });
 
     it("clamps a house number box at the top left corner to 0", async () => {
@@ -121,11 +121,10 @@ describe("findPrivacy", () => {
       expect(region[0]).toBeLessThan(1860 / 1920);
     });
 
-    it("keeps a house number box of zero width as a region with some width", async () => {
+    it("keeps a house number box one pixel wide as a region with the margin on both sides", async () => {
       const region = px(await stored("house number", [500, 300, 500, 340]));
 
-      expect(region.width).toBeGreaterThan(0);
-      expect(region.width).toBeLessThanOrEqual(7.001);
+      expect(region.width).toBeCloseTo(7, 3);
     });
   });
 

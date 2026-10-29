@@ -1,6 +1,6 @@
 import type { MotionSample } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
-import { partsOf } from "../../src/parts.ts";
+import { partsOf, walkOrder } from "../../src/parts.ts";
 
 const sample = (t: number, headingDegrees: number): MotionSample => ({ t, tiltDegrees: -5, headingDegrees: ((headingDegrees % 360) + 360) % 360 });
 
@@ -87,5 +87,27 @@ describe("partsOf", () => {
       expect(part.startSeconds).toBeLessThan(part.endSeconds);
     }
     expect(parts.at(-1)?.endSeconds).toBe(45);
+  });
+});
+
+describe("walkOrder", () => {
+  it("names the sides in the order a walk of left turns meets them", () => {
+    expect(walkOrder(syntheticWalk(45, [10, 20, 30, 40], LEFT))).toEqual(["front", "right", "back", "left"]);
+  });
+
+  it("names the mirrored order once the first corner is turned to the right", () => {
+    expect(walkOrder(syntheticWalk(15, [10], RIGHT))).toEqual(["front", "left", "back", "right"]);
+  });
+
+  it("keeps the order of the first corner however the walk turns after it, as partsOf does", () => {
+    const headingAt = (t: number) => (t < 10 ? 0 : t < 20 ? -90 : 90);
+    const samples = Array.from({ length: 31 }, (_, t) => sample(t, headingAt(t)));
+    expect(walkOrder(samples)).toEqual(["front", "right", "back", "left"]);
+    expect(partsOf(30_000, samples).map((part) => part.side)).toEqual(walkOrder(samples).slice(0, 2));
+  });
+
+  it("keeps the shared side order before any corner is turned, and when there is no motion", () => {
+    expect(walkOrder(syntheticWalk(8, [], RIGHT))).toEqual(["front", "right", "back", "left"]);
+    expect(walkOrder([])).toEqual(["front", "right", "back", "left"]);
   });
 });

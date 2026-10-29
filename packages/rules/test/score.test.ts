@@ -94,6 +94,7 @@ describe("scoreHazard", () => {
       hazard({ found: [{ frame: -1, boxes: [[0, 0, 10, 10]] }] }),
       hazard({ found: [{ frame: 1, boxes: [] }] }),
       hazard({ truth: { "1": [0, 0, 0, 10] } }),
+      hazard({ truth: { "1": [0, 10, 10, 10] } }),
       hazard({ concept: "dry brush" as "dry_brush" }),
       hazard({ found: [{ frame: 1, boxes: [[0, 0, 100, 100]] }, { frame: 1, boxes: [[500, 500, 600, 600]] }] }),
       hazard({ window: [1, 1, 2] }),
@@ -114,6 +115,12 @@ describe("iou", () => {
     expect(iou([0, 0, 10, 10], [0, 0, 10, 10])).toBe(1);
     expect(iou([0, 0, 10, 10], [20, 20, 30, 30])).toBe(0);
     expect(iou([0, 0, 10, 10], [5, 0, 15, 10])).toBeCloseTo(1 / 3);
+  });
+
+  it("measures boxes away from the top left corner the same way, side by side or one above the other", () => {
+    expect(iou([10, 10, 20, 20], [15, 10, 25, 20])).toBeCloseTo(1 / 3);
+    expect(iou([10, 10, 20, 20], [10, 15, 20, 25])).toBeCloseTo(1 / 3);
+    expect(iou([10, 10, 20, 20], [30, 30, 40, 40])).toBe(0);
   });
 });
 

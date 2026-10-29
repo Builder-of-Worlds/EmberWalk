@@ -43,12 +43,6 @@ const existing = (concept: string, ruleKey: string, band: readonly Band[], why: 
   };
 };
 
-const context = (concept: string, sourceRuleKey: string, why: string): CatalogRow => {
-  const row = existing(concept, sourceRuleKey, Z012, why);
-  delete row.ruleKey;
-  return { ...row, context: true };
-};
-
 const pending = (
   concept: string,
   phrases: readonly string[],
@@ -74,9 +68,9 @@ export const CATALOG: readonly CatalogRow[] = [
   existing("wooden_fence", "wooden-fence-zone-0", Z0, "A wooden fence that touches the house carries flame straight to the wall."),
   existing("roof_debris", "roof-debris", Z01, "Leaves and needles on a roof or in a gutter catch embers and light the roof."),
   existing("foundation_vent", "vent-screen", Z0, "An open or clogged vent lets embers into the attic or crawl space."),
-  context("house_wall", "dry-brush-on-house", "The wall is not a fire risk to flag here; distances from it set the zones."),
+  existing("house_wall", "house-wall-zone-0", Z0, "Things that burn within 5 feet of the wall carry fire straight to the house."),
   existing("tree_branch_over_roof", "branch-dead", Z01, "Branches over a roof drop burning litter on it and bring flame close."),
-  context("chimney", "branch-chimney", "The chimney outlet is not flagged here; branches within 10 feet of it are."),
+  existing("chimney", "chimney-branches", Z01, "Branches within 10 feet of a chimney outlet can catch its sparks."),
   existing("shrub", "shrub-dead", Z012, "Dead or crowded shrubs carry fire to the house and to each other."),
   existing("tree", "tree-dead", Z012, "Dead or crowded trees carry fire up and across, and throw embers."),
   existing("dry_grass", "dry-grass", Z012, "Tall dry grass spreads fire fast and close to the wall."),
@@ -137,14 +131,12 @@ checkCatalog(CATALOG);
 
 export const POINT_LOOKS = 5;
 
-export type DetectionScope = "stored" | "catalog";
-
 export const isPending = (row: CatalogRow): boolean => row.pending !== undefined;
 
 export const samPhraseOf = (row: CatalogRow): string =>
   Object.hasOwn(SAM_PHRASES, row.concept) ? samPhrase(row.concept as PhraseConcept) : (row.phrases[0] ?? row.concept.replaceAll("_", " "));
 
-export const rowsForClip = (kind: "loop" | "pan", scope: DetectionScope): CatalogRow[] => {
+export const rowsForClip = (kind: "loop" | "pan"): CatalogRow[] => {
   const listed: readonly string[] = kind === "loop" ? LOOP_CONCEPTS : PAN_CONCEPTS;
-  return CATALOG.filter((row) => (isPending(row) ? scope === "catalog" : listed.includes(row.concept)));
+  return CATALOG.filter((row) => isPending(row) || listed.includes(row.concept));
 };

@@ -31,7 +31,7 @@ describe("verifyTurnstile", () => {
 
 describe("createResendMailer", () => {
   const LINK = "https://emberwalk.app/unsubscribe?t=abc.def";
-  const FOOTER = "EmberWalk, Deacon Roswell, 732 S 6th Street #5709, Las Vegas, NV 89101";
+  const FOOTER = "EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000";
   const message = { to: "a@example.com", subject: "S", body: "T", unsubscribeUrl: LINK };
 
   function sentBody(seen: { init: RequestInit }[]) {
@@ -49,7 +49,7 @@ describe("createResendMailer", () => {
 
   it("posts the message to Resend with the key and the EmberWalk sender", async () => {
     const { seen, fetchFake } = capture();
-    await createResendMailer("re_test_key", fetchFake).send(message);
+    await createResendMailer("re_test_key", FOOTER, fetchFake).send(message);
     expect(seen).toHaveLength(1);
     expect(seen[0].url).toBe("https://api.resend.com/emails");
     expect(seen[0].init.method).toBe("POST");
@@ -66,7 +66,7 @@ describe("createResendMailer", () => {
 
   it("ends every email with the postal address, after the unsubscribe link", async () => {
     const { seen, fetchFake } = capture();
-    await createResendMailer("k", fetchFake).send(message);
+    await createResendMailer("k", FOOTER, fetchFake).send(message);
     const text = String(sentBody(seen).text);
     expect(text.startsWith("T\n")).toBe(true);
     expect(text.endsWith(FOOTER)).toBe(true);
@@ -77,7 +77,7 @@ describe("createResendMailer", () => {
 
   it("sends the one click unsubscribe headers of RFC 8058", async () => {
     const { seen, fetchFake } = capture();
-    await createResendMailer("k", fetchFake).send(message);
+    await createResendMailer("k", FOOTER, fetchFake).send(message);
     expect(sentBody(seen).headers).toEqual({
       "List-Unsubscribe": `<${LINK}>`,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -86,16 +86,22 @@ describe("createResendMailer", () => {
 
   it("never turns tracking on and adds no link other than the unsubscribe link", async () => {
     const { seen, fetchFake } = capture();
-    await createResendMailer("k", fetchFake).send(message);
+    await createResendMailer("k", FOOTER, fetchFake).send(message);
     const body = sentBody(seen);
     expect(Object.keys(body).sort()).toEqual(["from", "headers", "reply_to", "subject", "text", "to"]);
     expect(JSON.stringify(body)).not.toMatch(/track|pixel|open_|click_/i);
     expect(String(body.text).match(/https?:\/\/\S+/g)).toEqual([LINK]);
   });
 
+  it.each([undefined, "", "   "])("sends nothing and throws when the postal address setting is %j", async (footer) => {
+    const { seen, fetchFake } = capture();
+    await expect(createResendMailer("k", footer, fetchFake).send(message)).rejects.toThrow("no postal address");
+    expect(seen).toEqual([]);
+  });
+
   it.each([401, 422, 500])("throws when Resend answers %i", async (status) => {
     const { fetchFake } = capture(status);
-    await expect(createResendMailer("k", fetchFake).send(message)).rejects.toThrow(String(status));
+    await expect(createResendMailer("k", FOOTER, fetchFake).send(message)).rejects.toThrow(String(status));
   });
 });
 
@@ -110,8 +116,12 @@ describe("welcomeMessage", () => {
   });
 
   it("is finished with the unsubscribe link and the postal address", () => {
-    const text = finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y"));
+    const text = finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y"), "EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000");
     expect(text).toContain("https://emberwalk.app/unsubscribe?t=x.y");
-    expect(text.endsWith("EmberWalk, Deacon Roswell, 732 S 6th Street #5709, Las Vegas, NV 89101")).toBe(true);
+    expect(text.endsWith("EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000")).toBe(true);
+  });
+
+  it("refuses to finish an email without a postal address", () => {
+    expect(() => finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y"), undefined)).toThrow("no postal address");
   });
 });

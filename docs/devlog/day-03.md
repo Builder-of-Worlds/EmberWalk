@@ -1,0 +1,27 @@
+# Day 3: Wednesday Oct. 28th, 2026
+
+The third day brought a sent walk back to the phone as results; a missed side can be filmed again on its own, and the pipeline checks whether the walk covered the house. Everything below runs and is tested on a laptop; nothing is deployed yet.
+
+## Built
+
+- **Results come back to the phone** (`apps/web/`, `workers/api/`): after a walk is sent, the phone checks on it every 2 seconds and says it is being checked, then opens the results when the check is done. If the check fails, it shows the pipeline's reason and a Record a Walk button. One test imports a synthetic sample walk through the API, runs the whole pipeline on recorded model answers, and reads the findings and blurred photos back through the phone's own loading code.
+- **Redo one side** (`apps/web/`, `workers/api/`): when results name a side the walk missed, the phone asks for that side only, with one button per side and a hint on how to film it. It asks for the whole walk again only when all four sides are missing. The new side is sent as part of the first walk and drops off the first walk's results once it is checked.
+- **Coverage check** (`packages/rules/`, `workers/pipeline/`): after blurring, the pipeline checks three things: from the phone's compass, whether the walk went all the way around; from two stills, whether Muse Spark sees the walk end where it started; and whether the base of the house wall shows on each side. A side not walked, or whose wall base never shows, comes back to the phone as a gap with a hint. Light is not measured yet, so no real walk can reach Ready for Inspection. Tested with recorded answers only.
+- **Location step** (`apps/web/`): the screen that asked which fire rules apply is gone. While recording, the phone asks for location the way it asks for the camera, and never waits for the answer. It works out the rule set on the phone and sends only that; no coordinate is stored or sent. California is the only area covered today, so every answer, a refusal included, uses California's rules, and a line says so.
+- **Fix first list** (`apps/web/`): when something must be fixed, the list shows the three nearest open findings within 30 feet of the house, nearest first. Distance comes from the server's measurement from the house wall, and tests show the measured range always contains the true distance out to 30 feet.
+- **Plainer wording** (`packages/rules/`, `packages/explain/`): every rule's text, in English and Spanish, now says what to do and offers a real way to do it, such as metal or brick for the fence, or where to move a wood pile. It uses no legal code words and no urgency words; the colour shows urgency. A Muse Spark sentence is refused, and the rule's own text used instead, if it uses those words, drops the rule's distance, or talks about something that was not found.
+- **Problem reports** (`workers/api/`, `apps/web/`): when the server refuses a status check, the phone keeps the walk, asks again every 30 seconds and sends one report to `POST /api/faults` with the walk id, the refusal code and the app build, and nothing about the person. Once the report is received, the screen says "EmberWalk was told about the problem. This page updates by itself."
+- **Stuck walk sweeper** (`workers/pipeline/`): once an hour the pipeline deletes walk videos uploaded more than 24 hours ago and marks their walks failed, so the phone stops waiting. The schedule starts at the first deploy.
+- **Object catalog** (`packages/catalog/`): one list of 25 things to look for, the 15 found today plus 10 new ones (gas can, stored fuel, lawn mower, grill, small propane bottle, vehicle, lumber pile, tarp, doormat, boat or trailer), each with its search phrases, one plain reason it matters in a fire, and a dated source. The running pipeline does not ask for the new ones yet. Estimated cost of a standard walk with the full list: $0.59, from the price table.
+- **Voice notes, switched off** (`packages/meta/`, `workers/pipeline/`, `apps/web/`): the pipeline can send the walk's sound to Muse Voice Transcribe, tidy each note with Muse Spark, and attach it to the finding it overlaps, shown under What You Said. The sound is deleted with the video. Switched off, tested with recorded answers only, never called live.
+- **Get It Fixed drafts, switched off** (`packages/agent/`): each quote request now ends with the exact work and one blurred proof photo per item. A crew that has not replied after 3 days gets a reminder, drafted for the homeowner to approve. An inspection request with CAL FIRE's links is drafted only once every Required Now item is marked Done. Nothing calls the agent yet, and nothing is sent without approval.
+
+## Numbers
+
+The push gate on this repository, run Wednesday Oct. 28th, 2026: 3,118 of 3,118 tests, all passing. The last upload had 2,025.
+
+Live model spend since the last upload: 24 Muse Spark runs of the explainer on a synthetic test yard, $0.633 recorded, plus one earlier run noted only as under $0.10. No other live model calls.
+
+## Not built yet
+
+Nothing is deployed, so no walk has gone from a phone through the live pipeline. Voice notes and the Get It Fixed agent stay switched off, and the live Transcribe test waits on a made up speech clip. The pipeline does not yet look for the catalog's new objects or measure light, so no real walk can be ruled ready for inspection. Muse Image is not built.

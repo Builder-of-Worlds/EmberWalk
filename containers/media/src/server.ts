@@ -40,7 +40,7 @@ const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> 
   const path = new URL(req.url ?? "/", "http://container").pathname;
   if (path === "/health") {
     if (req.method !== "GET") throw new MediaError(405, "method_not_allowed", "Use GET.");
-    send(res, 200, { status: "ok", ffmpeg: await version() });
+    send(res, 200, { status: "ok", ffmpeg: await version(), jobs: active });
     return;
   }
   const route = routes[path];

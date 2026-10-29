@@ -1,10 +1,7 @@
 import { z } from "zod";
-import { BAND_FEET, Concept, Contact, PLANT_CONCEPTS, PlantState, SPACED_CONCEPTS, Spacing, type Band } from "@emberwalk/shared";
-import { FLAGS, RULES, type RuleRow, type Statute, type When } from "./table.ts";
-
-export const JURISDICTIONS = { ca: ["sra", "vhfhsz"], ca_sra: ["sra"], ca_vhfhsz: ["vhfhsz"] } as const satisfies Record<string, Statute[]>;
-export const CaJurisdiction = z.enum(Object.keys(JURISDICTIONS) as [keyof typeof JURISDICTIONS]);
-export type CaJurisdiction = z.infer<typeof CaJurisdiction>;
+import { Band, BAND_FEET, Concept, Contact, PLANT_CONCEPTS, PlantState, SPACED_CONCEPTS, Spacing } from "@emberwalk/shared";
+import { FLAGS, type RuleRow, type When } from "./table.ts";
+import { stateFor, statutesOf, type LoadedState } from "./state.ts";
 
 const isOneOf = (list: readonly string[], value: string) => list.includes(value);
 
@@ -31,12 +28,14 @@ export const checked = <T extends Checked>(schema: z.ZodType<T>) =>
 export const Query = checked(z.strictObject(FACTS));
 export type Query = z.infer<typeof Query>;
 
-const BANDS = Object.entries(BAND_FEET) as [Band, readonly [number, number]][];
+export type Bands = Record<Band, readonly [number, number]>;
 
-export function bandFor(distanceFeet: { low: number; high: number }): Band | null {
+export function bandIn(bands: Bands, distanceFeet: { low: number; high: number }): Band | null {
   const { low } = Feet.parse(distanceFeet);
-  return BANDS.find(([, [, edge]]) => low <= edge)?.[0] ?? null;
+  return Band.options.find((band) => low <= bands[band][1]) ?? null;
 }
+
+export const bandFor = (distanceFeet: { low: number; high: number }): Band | null => bandIn(BAND_FEET, distanceFeet);
 
 export function holds(when: When, q: Query): boolean {
   const has = (flag: string) => q.flags.includes(flag as Query["flags"][number]);
@@ -47,13 +46,16 @@ export function holds(when: When, q: Query): boolean {
   return !(when.unless ?? []).some(has);
 }
 
-export function lookup(query: Query, jurisdiction: CaJurisdiction): RuleRow[] {
-  const q = Query.parse(query);
-  const statutes: readonly Statute[] = JURISDICTIONS[CaJurisdiction.parse(jurisdiction)];
-  const band = bandFor(q.distanceFeet);
-  if (band === null) return [];
-  const rows = RULES.filter(
+function select(rows: RuleRow[], band: Band | null, statutes: readonly string[], q: Query): RuleRow[] {
+  const found = rows.filter(
     (r) => r.concept === q.concept && r.zone === band && (r.statute === null || statutes.includes(r.statute)) && holds(r.when, q),
   );
-  return [...rows.filter((r) => r.status === "in_force"), ...rows.filter((r) => r.status !== "in_force")];
+  return [...found.filter((r) => r.status === "in_force"), ...found.filter((r) => r.status !== "in_force")];
 }
+
+export function lookupIn(state: LoadedState, query: Query, jurisdiction: string): RuleRow[] {
+  const q = Query.parse(query);
+  return select(state.rows, bandIn(state.bands, q.distanceFeet), statutesOf(state, jurisdiction), q);
+}
+
+export const lookup = (query: Query, jurisdiction: string): RuleRow[] => lookupIn(stateFor(jurisdiction), query, jurisdiction);

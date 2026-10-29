@@ -71,6 +71,30 @@ function walk(dir, rel, found) {
   }
 }
 
+function unpinned(lock, name, version) {
+  for (const [key, entry] of Object.entries(lock.packages ?? {})) {
+    if (key.includes("node_modules/")) continue;
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+      const spec = entry?.[field]?.[name];
+      if (spec !== undefined && spec !== version) return `${key || "root"} asks ${spec}`;
+    }
+  }
+  return null;
+}
+
+function noticed(notice, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(?=$|[\\s,:;)])`, "m").test(notice);
+}
+
+function shipsReason(e, json, lock, notice) {
+  if (e.ships !== true || e.version !== json.version) return "not listed";
+  const loose = unpinned(lock, json.name, json.version);
+  if (loose) return `not pinned: ${loose}`;
+  if (!noticed(notice, json.name)) return "no notice in NOTICE";
+  return null;
+}
+
 function main() {
   const root = process.cwd();
   const modules = path.join(root, "node_modules");
@@ -80,6 +104,8 @@ function main() {
   }
   const lock = readJson(path.join(root, "package-lock.json"), { packages: {} });
   const { exceptions } = readJson(path.join(root, "tools", "license-exceptions.json"), { exceptions: [] });
+  const noticeFile = path.join(root, "NOTICE");
+  const notice = existsSync(noticeFile) ? readFileSync(noticeFile, "utf8") : "";
   const found = [];
   walk(modules, "node_modules", found);
   let ok = 0;
@@ -92,12 +118,15 @@ function main() {
       continue;
     }
     const devOnly = lock.packages?.[rel]?.dev === true;
-    if (devOnly && exceptions.some((e) => e.name === json.name && e.license === license)) {
+    const listed = exceptions.filter((e) => e.name === json.name && e.license === license);
+    const reasons = listed.map((e) => (e.ships === true ? shipsReason(e, json, lock, notice) : devOnly ? null : "not listed"));
+    if (reasons.includes(null)) {
       excepted++;
       continue;
     }
     failed++;
-    console.log(`LICENSE FAIL ${json.name}@${json.version} ${license} (${rel}${devOnly ? ", dev only" : ""})`);
+    const why = reasons.find((r) => r !== "not listed");
+    console.log(`LICENSE FAIL ${json.name}@${json.version} ${license} (${rel}${devOnly ? ", dev only" : ""}${why ? `, ${why}` : ""})`);
   }
   console.log(`LICENSES packages=${found.length} allowed=${ok} excepted=${excepted} failed=${failed}`);
   if (found.length === 0) {

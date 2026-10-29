@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startFixtureServer } from "./fixture-server.ts";
+import { waitForIdle } from "./server-process.ts";
+import { timeLimits } from "./time-limits.ts";
 import type { FixtureServer } from "./fixture-server.ts";
 import { clipWithoutPicture, clipWithSound, clipWithoutSound, grayPixels, jpegSize, readWav } from "./fixtures.ts";
 
@@ -47,7 +49,11 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
       serve("/with-sound.mp4", withSound);
       serve("/silent.mp4", withoutSound);
       serve("/garbage.mp4", Buffer.from("this is not a video file at all"));
-    }, 600_000);
+    });
+
+    beforeEach(async () => {
+      await waitForIdle(target.baseUrl);
+    });
 
     afterAll(async () => {
       await target?.stop();
@@ -333,7 +339,7 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
         const reply = await call("/stills", { input: url("/silent.mp4"), stills });
         expect(reply.status).toBe(200);
         expect(reply.json.stills).toHaveLength(60);
-      }, 120_000);
+      }, timeLimits.manyStillsMs);
     });
 
     describe("stills with regions to blur", () => {
@@ -421,7 +427,7 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
       it("accepts exactly 32 regions", async () => {
         const regions = Array.from({ length: 32 }, (_, i) => [(i % 8) / 10, Math.floor(i / 8) / 10, (i % 8) / 10 + 0.05, Math.floor(i / 8) / 10 + 0.05]);
         expect((await stillsOf(regions)).reply.status).toBe(200);
-      }, 120_000);
+      }, timeLimits.manyStillsMs);
 
       it("refuses a region that is not four numbers from 0 to 1 with the first corner above and left of the second", async () => {
         const cases: [unknown, string][] = [
@@ -482,7 +488,7 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
 
     describe("load", () => {
       it("refuses a second job while one is running, then recovers", async () => {
-        fixtures.delays.set("/with-sound.mp4", 1500);
+        const release = fixtures.hold("/with-sound.mp4");
         const fetching = fixtures.requested("/with-sound.mp4");
         const first = call("/probe", { input: url("/with-sound.mp4") });
         try {
@@ -491,12 +497,29 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
           expect(second.status).toBe(503);
           expect(second.json.error.code).toBe("busy");
           expect(second.headers.get("retry-after")).toBe("5");
+          release();
           expect((await first).status).toBe(200);
         } finally {
+          release();
           await first.catch(() => undefined);
-          fixtures.delays.delete("/with-sound.mp4");
         }
         expect((await call("/probe", { input: url("/silent.mp4") })).status).toBe(200);
+      });
+
+      it("stays busy for as long as the first job runs, however late the second call lands", async () => {
+        const release = fixtures.hold("/with-sound.mp4");
+        const fetching = fixtures.requested("/with-sound.mp4");
+        const first = call("/probe", { input: url("/with-sound.mp4") });
+        try {
+          await fetching;
+          await new Promise((resolve) => setTimeout(resolve, 1800));
+          const second = await call("/probe", { input: url("/silent.mp4") });
+          expect(second.status).toBe(503);
+          expect(second.json.error.code).toBe("busy");
+        } finally {
+          release();
+          await first.catch(() => undefined);
+        }
       });
     });
 
@@ -515,7 +538,7 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
         const still = await call("/stills", { input: url("/yard.mp4"), stills: [{ time: 0.5, output: url("/out/yard.jpg") }] });
         expect(still.json.stills[0].width).toBe(info.json.video.width);
         expect(still.json.stills[0].height).toBe(info.json.video.height);
-      }, 300_000);
+      }, timeLimits.walkMs);
     });
   });
 };

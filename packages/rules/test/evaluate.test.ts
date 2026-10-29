@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { Concept, FindingLabel, PLANT_CONCEPTS } from "@emberwalk/shared";
-import { evaluate, rank, RULES, SEVERITY, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
-import { CASES } from "./support.ts";
+import { evaluate, loadState, rank, RULES, RulesRefusal, SEVERITY, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
+import { CASES, ZZ } from "./support.ts";
 
 type TruthHazard = { id: string; concept: string; distance_ft: number; band: string; contact: boolean; label: string; rule: string };
 const truth = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/test-yard/truth.json", import.meta.url), "utf8")) as {
@@ -46,6 +46,40 @@ describe("evaluate and rank on the test yard truth", () => {
   });
 });
 
+describe("evaluate and rank across states", () => {
+  beforeAll(() => {
+    loadState(ZZ);
+  });
+
+  it("gives the same test yard observations zz's own rules, citations, bands and wording under zz", () => {
+    const ranked = rank(evaluate(truth.hazards.map(fromTruth), "zz"));
+    expect(ranked.map((f) => [f.rank, f.observationId, f.band, f.label, f.ruleIds, f.citations, f.instruction])).toEqual([
+      [1, "wood-pile-1", "zone_0", "required_now", ["zz-wood-alpha-z0", "zz-wood-guide-z0"], ["ZZ Made Up Code 1(a)", "ZZ Made Up Guide Part 2"], "Made up test wording: move the wood."],
+      [2, "fence-joint-1", "zone_0", "recommended", ["zz-fence-guide-z0"], ["ZZ Made Up Guide Part 3"], "Made up test wording: swap the fence."],
+      [3, "dry-brush-1", "zone_0", "required_now", ["zz-brush-beta-z0"], ["ZZ Made Up Code 2(b)"], "Made up test wording: cut the brush."],
+    ]);
+  });
+
+  it("keeps each state's jurisdictions to their own statutes", () => {
+    const found = (code: string) => evaluate(truth.hazards.map(fromTruth), code).map((f) => [f.observationId, f.ruleIds]);
+    expect(found("zz_alpha")).toEqual([
+      ["wood-pile-1", ["zz-wood-alpha-z0", "zz-wood-guide-z0"]],
+      ["fence-joint-1", ["zz-fence-guide-z0"]],
+    ]);
+    expect(found("zz_beta")).toEqual([
+      ["wood-pile-1", ["zz-wood-guide-z0"]],
+      ["dry-brush-1", ["zz-brush-beta-z0"]],
+      ["fence-joint-1", ["zz-fence-guide-z0"]],
+    ]);
+    expect(evaluate(truth.hazards.map(fromTruth), "ca").flatMap((f) => f.ruleIds).every((id) => id.startsWith("ca-"))).toBe(true);
+  });
+
+  it("refuses a state that is not loaded with a typed refusal, before judging any observation", () => {
+    for (const code of ["nv", "zz_gamma", "ZZ"]) expect(() => evaluate(truth.hazards.map(fromTruth), code)).toThrow(RulesRefusal);
+    expect(() => evaluate([], "nv")).toThrow(RulesRefusal);
+  });
+});
+
 describe("evaluate", () => {
   it("names every rule that applies, in force first, with each citation once", () => {
     const [f] = evaluate([seen({ id: "b", concept: "tree_branch_over_roof", plantState: "dead", flags: ["near_chimney"] }, 0)], "ca_sra");
@@ -72,10 +106,18 @@ describe("evaluate", () => {
     ]);
   });
 
-  it("drops what no rule covers: reference points, things past 100 feet, a covered wood pile past 5 feet", () => {
+  it('chimney and wall get a rule that makes findings for them: a chimney and a wall observation each give one finding with its citation', () => {
+    const found = evaluate([seen({ id: "chimney", concept: "chimney", flags: ["near_chimney"] }, 0), seen({ id: "wall", concept: "house_wall" }, 0)], "ca");
+    expect(found.map((f) => [f.observationId, f.concept, f.band, f.label, f.citations])).toEqual([
+      ["chimney", "chimney", "zone_0", "required_now", ["14 CCR 1299.03(a)(2)", "PRC 4291(a)(2)", "Gov. Code 51182(a)(2)"]],
+      ["wall", "house_wall", "zone_0", "recommended", ["CAL FIRE Zone 0 guidance"]],
+    ]);
+  });
+
+  it("drops what no rule covers: a chimney with no branch near it, things past 100 feet, a covered wood pile past 5 feet", () => {
     const found = evaluate(
       [
-        seen({ id: "wall", concept: "house_wall", contact: "yes" }, 0),
+        seen({ id: "chimney", concept: "chimney", contact: "yes" }, 0),
         seen({ id: "far", concept: "shed" }, 120),
         seen({ id: "covered", concept: "wood_pile", flags: ["covered"] }, 12),
         seen({ id: "fine", concept: "shrub", plantState: "alive", spacing: "ok" }, 20),

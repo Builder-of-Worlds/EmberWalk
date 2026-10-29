@@ -9,7 +9,7 @@
     "synthetic": {"const": true},
     "label": {"const": "Synthetic sample house"},
     "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
-    "fps": {"enum": [24, 25, 30, 60]},
+    "fps": {"enum": [15, 24, 25, 30, 60]},
     "frame_count": {"type": "integer", "minimum": 1},
     "duration_s": {"type": "number", "exclusiveMinimum": 0},
     "camera": {

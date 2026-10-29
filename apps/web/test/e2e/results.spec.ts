@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { copy, unbacked } from "../../src/copy.ts";
+import { copy } from "../../src/copy.ts";
 import { resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBodyAt, liveFindingId } from "../unit/result-fakes.ts";
 
@@ -8,7 +8,7 @@ const sideways = () => document.documentElement.scrollWidth - document.documentE
 
 const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
 
-test("the fix first list runs out to 30 feet nearest first at 390 px, every row reachable, the drafted words off screen", async ({ page }) => {
+test("the fix first list runs out to 30 feet nearest first at 390 px, every row reachable and saying how far it is", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const { pathname } = new URL(route.request().url());
     if (pathname === `/api/walks/${LIVE_WALK}/results`) return route.fulfill({ json: liveBodyAt([[28, 40], [2, 3], [12, 19]]) });
@@ -29,8 +29,11 @@ test("the fix first list runs out to 30 feet nearest first at 390 px, every row 
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(390);
   }
-  await expect(page.getByText(unbacked.results.lead)).toHaveCount(0);
-  await expect(page.locator("[data-part=distance]")).toHaveCount(0);
+  await expect(page.locator("main > p.lead")).toHaveText(copy.results.lead);
+  await expect(page.locator("main > p.count")).toHaveText(["Inside 5 feet: 1 thing to clear.", "From 5 to 30 feet: 2 things to clear."]);
+  for (const line of await page.locator("main > p.count").all()) expect((await line.boundingBox())!.x + (await line.boundingBox())!.width).toBeLessThanOrEqual(390);
+  await expect(rows.locator("[data-part=distance]")).toHaveText(["About 2 to 3 feet from the house.", "About 12 to 19 feet from the house.", "About 28 to 40 feet from the house."]);
+  await expect(page.locator("section.band [data-part=distance]")).toHaveCount(0);
   await expect(page.getByText(/looking inside the first 5 feet/i)).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 2, name: copy.results.bands.zone_0 })).toBeVisible();
 });
