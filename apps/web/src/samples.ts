@@ -23,4 +23,6 @@ export const SAMPLES: WalkResults[] = syntheticOnly([withStills(testYard as Walk
 
 export type LoadResults = (id: string) => Promise<WalkResults | null>;
 
+export const isSample = (id: string): boolean => SAMPLES.some((sample) => sample.id === id);
+
 export const sampleResults: LoadResults = async (id) => SAMPLES.find((s) => s.id === id) ?? null;

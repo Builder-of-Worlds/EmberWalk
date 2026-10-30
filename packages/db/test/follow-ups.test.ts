@@ -15,7 +15,7 @@ import {
   scheduleFollowUp,
 } from "../src/agent.ts";
 import { DbRefused } from "../src/errors.ts";
-import { FINDING, OTHER_WALK, resetDb, seedWalk, WALK } from "./fixtures.ts";
+import { FINDING, OTHER_WALK, HOMEOWNER, resetDb, seedWalk, WALK } from "./fixtures.ts";
 
 const JOB = "ba0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 const OTHER_JOB = "ba0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
@@ -55,7 +55,7 @@ const message = async (n: number, crewN: number, status: "draft" | "approved" | 
     createdAt: SENT,
   });
   if (status === "draft") return;
-  await approveMessage(env.DB, messageId(n), SENT);
+  await approveMessage(env.DB, messageId(n), SENT, HOMEOWNER);
   if (status === "approved") return;
   await markSent(env.DB, messageId(n), SENT, status);
 };

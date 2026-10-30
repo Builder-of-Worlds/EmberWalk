@@ -3,6 +3,7 @@ import json
 import math
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,8 @@ BUILD_HOUSE = os.path.join(support.BLENDER_DIR, "build_house.py")
 MEASURE = os.path.join(support.BLENDER_DIR, "measure_scene.py")
 DUMP = os.path.join(support.BLENDER_DIR, "tests", "dump_house.py")
 RENDER_FRAMES = os.path.join(support.BLENDER_DIR, "render_frames.py")
+ASSEMBLE_WALK = os.path.join(support.BLENDER_DIR, "assemble_walk.py")
+PROBE_RENDER = os.path.join(support.BLENDER_DIR, "probe_render.py")
 CHECK_STILLS = os.path.join(support.BLENDER_DIR, "check_stills.py")
 BLENDER = support.blender_path()
 CATALOG = assets.load_catalog()
@@ -118,6 +121,14 @@ class Hero(unittest.TestCase):
         self.assertEqual(sorted(doc["look"]), ["concrete", "ground", "light", "roof", "siding", "trim"])
         self.assertEqual(doc["route"]["standoff_in"], 132)
 
+    def test_the_camera_sees_the_sky_reach_its_zenith_colour(self):
+        """a sky that never reaches its zenith colour in view reads flat"""
+        doc = before()
+        p = route.params(doc)
+        half = math.degrees(math.atan(p["sensor_width_mm"] * p["height_px"] / p["width_px"] / 2 / p["focal_mm"]))
+        top = math.sin(math.radians(half - p["tilt_deg"]))
+        self.assertLess(doc["look"]["light"]["sky"]["zenith_at"], top)
+
 
 class AfterScene(unittest.TestCase):
     def after(self):
@@ -174,7 +185,7 @@ class AfterScene(unittest.TestCase):
 
 class TruthFromSpec(unittest.TestCase):
     def test_the_truth_passes_and_carries_the_fields(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         house.validate(truth, CATALOG, RULES)
         by_id = {h["id"]: h for h in truth["hazards"]}
         self.assertEqual((truth["schema"], truth["scene"], truth["state"]), ("emberwalk.house-truth/1", "hero-before", "before"))
@@ -182,14 +193,14 @@ class TruthFromSpec(unittest.TestCase):
         self.assertEqual((grass["distance_ft"], grass["distance_text"], grass["band"]), (50.0, "50 ft 0 in", "30_100"))
         self.assertEqual(grass["box_in"], {"min": [150, 600, 0], "max": [450, 840, 30]})
         gutter = by_id["gutter-leaves-front"]
-        self.assertEqual((gutter["box_in"]["min"][2], gutter["box_in"]["max"][2]), (104, 109))
+        self.assertEqual((gutter["box_in"]["min"][2], gutter["box_in"]["max"][2]), (101, 112))
         self.assertEqual(by_id["wood-pile-wall"]["distance_text"], "0 ft 0 in")
         self.assertEqual(truth["sides"], before()["sides"])
         self.assertEqual(truth["footprint"], before()["footprint"])
 
     def test_the_after_truth_passes(self):
         after = house.after_spec(before(), changes(), CATALOG, RULES)
-        truth = house.truth_from_spec(after)
+        truth = house.truth_from_spec(after, RULES)
         house.validate(truth, CATALOG, RULES)
         self.assertEqual([h["id"] for h in truth["hazards"]], ["fence-at-siding"])
 
@@ -518,6 +529,11 @@ class Refused(unittest.TestCase):
         doc["look"]["light"]["hdri"] = "polyhaven:withered_grass"
         self.assertRefused(doc, "is not a hdri")
 
+    def test_the_sky_with_a_real_chapel_is_refused(self):
+        doc = before()
+        doc["look"]["light"]["hdri"] = "polyhaven:dreifaltigkeitsberg"
+        self.assertRefused(doc, "look.light.hdri: unknown asset polyhaven:dreifaltigkeitsberg")
+
     def test_a_concrete_texture_not_in_assets_json(self):
         doc = before()
         doc["look"]["concrete"]["material"] = "sketchfab:concrete"
@@ -591,43 +607,43 @@ class Refused(unittest.TestCase):
         self.assertRefused(doc, "no hazard in 30_100")
 
     def test_truth_band_that_disagrees(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         truth["hazards"][0]["band"] = "30_100"
         self.assertRefused(truth, "band 30_100")
 
     def test_truth_rule_id_the_package_does_not_have(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         truth["hazards"][0]["rule_id"] = "ca-not-a-rule-z0"
         self.assertRefused(truth, "not in the rules package")
 
     def test_truth_missing_synthetic(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         del truth["synthetic"]
         self.assertRefused(truth, "synthetic")
 
     def test_truth_contact_away_from_the_wall(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         next(h for h in truth["hazards"] if h["id"] == "shed-right")["contact"] = True
         self.assertRefused(truth, "contact")
 
     def test_truth_clean_side_with_a_hazard(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         next(h for h in truth["hazards"] if h["id"] == "trash-cans-right")["side"] = "back"
         self.assertRefused(truth, "clean side back")
 
     def test_truth_past_100_feet(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         next(h for h in truth["hazards"] if h["id"] == "wood-pile-far-left")["distance_in"] = 1300
         self.assertRefused(truth, "past 100 feet")
 
     def test_truth_with_the_after_demo_bar_off_and_before_on(self):
-        truth = house.truth_from_spec(before())
+        truth = house.truth_from_spec(before(), RULES)
         truth["hazards"] = [h for h in truth["hazards"] if h["band"] != "30_100"]
         self.assertRefused(truth, "no hazard in 30_100")
 
 
 def u_house(notch_w=240):
-    """The hero spec on a U footprint opening south, the notch notch_w wide from x 240, with no roof, structures, hazards, windows or garage door."""
+    """The hero spec on a U footprint opening south, the notch notch_w wide from x 240, with its roof tiled over the U, and no structures, hazards, trees, windows or garage door."""
     doc = before()
     east = 240 + notch_w
     corners = [("left", [0, 0]), ("back", [0, 600]), ("right", [720, 600]), ("front", [720, 0]),
@@ -636,7 +652,13 @@ def u_house(notch_w=240):
     doc["sides"] = {e["side"]: {"length_in": e["length_in"], "height_in": 108, "facing": e["facing"], "clean": False} for e in house.edges(doc)}
     doc["front_door"]["along_in"] = 40
     doc["structures"], doc["hazards"] = [], []
-    del doc["house"]["roof"], doc["house"]["features"]["windows"], doc["house"]["features"]["garage_door"]
+    doc.pop("trees", None)
+    doc["house"]["roof"]["blocks"] = [
+        {"min_in": [0, 360], "max_in": [720, 600], "ridge": "east_west", "rise_in": 80},
+        {"min_in": [0, 0], "max_in": [240, 360], "ridge": "north_south", "rise_in": 60},
+        {"min_in": [east, 0], "max_in": [720, 360], "ridge": "north_south", "rise_in": 60},
+    ]
+    del doc["house"]["features"]["windows"], doc["house"]["features"]["garage_door"]
     return doc
 
 
@@ -997,7 +1019,7 @@ class RefusedChanges(unittest.TestCase):
         self.assertIn("before house spec", str(ctx.exception))
 
     def test_changes_given_with_a_truth_file(self):
-        r, left, _ = check_args(house.truth_from_spec(before()), changes())
+        r, left, _ = check_args(house.truth_from_spec(before(), RULES), changes())
         self.assertEqual((r.returncode, left), (3, []))
         self.assertIn("house spec", r.stderr)
 
@@ -1005,7 +1027,7 @@ class RefusedChanges(unittest.TestCase):
 class Rules(unittest.TestCase):
     def test_the_package_rules_have_concept_zone_and_statute(self):
         real = rule_for("wood_pile", "zone_0", None)
-        self.assertEqual(RULES[real], {"concept": "wood_pile", "zone": "zone_0", "statute": None})
+        self.assertEqual(RULES[real], {"concept": "wood_pile", "zone": "zone_0", "statute": None, "within": None})
         self.assertIn("vhfhsz", {r["statute"] for r in RULES.values()})
         self.assertIn("sra", {r["statute"] for r in RULES.values()})
 
@@ -1070,7 +1092,7 @@ class Cli(unittest.TestCase):
 
     def test_a_truth_file_exits_0(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = write(tmp, "truth.json", house.truth_from_spec(before()))
+            path = write(tmp, "truth.json", house.truth_from_spec(before(), RULES))
             r = subprocess.run([sys.executable, CHECK, path], capture_output=True, text=True, cwd=tmp)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("hero-before truth", r.stdout)
@@ -1086,7 +1108,7 @@ class Cli(unittest.TestCase):
         self.assertEqual((r.returncode, left), (3, []))
 
     def test_the_summary_counts_each_band_and_label(self):
-        self.assertIn("15 hazards (0_5 9, 5_30 4, 30_100 2), required_now 12, recommended 3, clean side back", house.summary(before()))
+        self.assertIn("15 hazards (0_5 9, 5_30 4, 30_100 2), required_now 12, recommended 3, clean side back", house.summary(before(), RULES))
 
     def test_the_check_module_does_not_run_when_imported(self):
         sys.path.insert(0, support.BLENDER_DIR)
@@ -1094,7 +1116,7 @@ class Cli(unittest.TestCase):
             import check_house
         finally:
             sys.path.remove(support.BLENDER_DIR)
-        self.assertEqual(check_house.check(BEFORE, None), house.summary(before()))
+        self.assertEqual(check_house.check(BEFORE, None), house.summary(before(), RULES))
 
 
 def tree(doc, tree_id):
@@ -1194,10 +1216,194 @@ class Structures(unittest.TestCase):
             for s in spec_of(name)["structures"]:
                 self.assertIn(s["material"], ("concrete", "asphalt", "gravel", "masonry", "metal"), (name, s["id"]))
 
-    def test_a_wood_deck_is_refused(self):
+    def wood(self, doc, struct_id, rules=RULES):
+        struct(doc, struct_id)["material"] = "wood"
+        house.validate(doc, CATALOG, rules)
+        return house.wood_findings(doc, rules)
+
+    def side_deck(self, min_in, max_in):
+        doc = spec_of("mobile")
+        struct(doc, "carport").update(id="side-deck", kind="deck", height_in=6, min_in=min_in, max_in=max_in)
+        return doc
+
+    def test_a_wood_deck_is_a_hazard_not_decoration(self):
+        self.assertEqual(self.wood(before(), "back-deck"), [{
+            "id": "back-deck", "kind": "deck", "concept": "wood deck", "material": "wood", "side": "back",
+            "distance_in": 0, "band": "0_5", "rule_id": "ca-wood-deck-zone-0-cbc7a-z0"}])
+
+    def test_a_wood_porch_is_a_hazard_at_the_front(self):
+        found = self.wood(before(), "front-porch")
+        self.assertEqual([(f["id"], f["kind"], f["side"], f["distance_in"], f["band"]) for f in found], [("front-porch", "porch", "front", 0, "0_5")])
+
+    def test_a_wood_deck_is_a_hazard_at_its_distance_from_the_wall(self):
+        found = self.wood(self.side_deck([-264, -24], [-24, 312]), "side-deck")
+        self.assertEqual([(f["kind"], f["side"], f["distance_in"], f["band"]) for f in found], [("deck", "left", 24, "0_5")])
+
+    def test_a_wood_deck_is_a_hazard_out_to_the_edge_of_its_rules_zone_and_no_further(self):
+        self.assertEqual(RULES[house.WOOD_DECK_RULE_ID]["zone"], "zone_0")
+        self.assertEqual([(f["distance_in"], f["band"]) for f in self.wood(self.side_deck([-300, 0], [-60, 300]), "side-deck")], [(60, "0_5")])
+        for left in (-61, -124):
+            doc = self.side_deck([left - 240, 0], [left, 300])
+            self.assertEqual(self.wood(doc, "side-deck"), [], left)
+            self.assertEqual([(s["distance_in"], s["band"]) for s in house.wood_structures(doc)], [(-left, "5_30")])
+            self.assertNotIn("wood structures", house.summary(doc, RULES))
+            self.assertNotIn("structure_hazards", house.truth_from_spec(doc, RULES))
+
+    def test_a_wood_deck_is_a_hazard_only_within_its_rules_own_reach(self):
+        rules = dict(RULES, **{house.WOOD_DECK_RULE_ID: dict(RULES[house.WOOD_DECK_RULE_ID], within=3)})
+        self.assertEqual([f["distance_in"] for f in self.wood(self.side_deck([-276, 0], [-36, 300]), "side-deck", rules)], [36])
+        self.assertEqual(self.wood(self.side_deck([-277, 0], [-37, 300]), "side-deck", rules), [])
+
+    def test_the_rules_package_gives_each_rule_its_reach(self):
+        self.assertIsNone(RULES[house.WOOD_DECK_RULE_ID]["within"])
+        self.assertEqual(RULES["ca-grill-zone-0-usfa-z0"]["within"], 3)
+
+    def test_a_wood_carport_gives_no_finding_and_is_refused(self):
+        doc = spec_of("mobile")
+        struct(doc, "carport")["material"] = "wood"
+        self.assertEqual(house.wood_findings(doc, RULES), [])
+        self.assertEqual(house.wood_structures(doc), [])
+        self.assertRefused(doc, "carport: wood burns; only a wood deck or porch is taken, as a hazard")
+
+    def test_a_wood_structure_anywhere_on_the_lot_is_measured_to_its_nearest_wall(self):
+        doc = self.side_deck([-264, -24], [-24, 156])
+        struct(doc, "side-deck")["material"] = "wood"
+        eds, lot = house.edges(doc), doc["lot"]
+        gap = lambda a, b: math.hypot(max(0, a[0] - b[2], b[0] - a[2]), max(0, a[1] - b[3], b[1] - a[3]))
+        tried = 0
+        for x in range(lot["min_in"][0], lot["max_in"][0] - 240, 97):
+            for y in range(lot["min_in"][1], lot["max_in"][1] - 180, 89):
+                rect = (x, y, x + 240, y + 180)
+                want = min(gap(rect, (min(e["start"][0], e["end"][0]), min(e["start"][1], e["end"][1]),
+                                      max(e["start"][0], e["end"][0]), max(e["start"][1], e["end"][1]))) for e in eds)
+                if house.overlaps_house(rect, eds) or want > 1200:
+                    continue
+                struct(doc, "side-deck").update(min_in=[x, y], max_in=[x + 240, y + 180])
+                self.assertEqual(house.wood_structures(doc)[0]["distance_in"], int(round(want)), rect)
+                tried += 1
+        self.assertGreater(tried, 50)
+
+    def test_a_wood_deck_names_the_wall_it_stands_at(self):
+        doc = self.side_deck([744, 100], [900, 200])
+        self.assertEqual([(f["side"], f["distance_in"]) for f in self.wood(doc, "side-deck")], [("right", 24)])
+
+    def test_the_finding_cites_the_one_wood_deck_rule_constant(self):
         doc = before()
         struct(doc, "back-deck")["material"] = "wood"
-        self.assertRefused(doc, "structures[2] back-deck: wood burns; a structure that burns is a hazard, not decoration")
+        with mock.patch.object(house, "WOOD_DECK_RULE_ID", "dry-brush-made-up"):
+            self.assertEqual([f["rule_id"] for f in house.wood_findings(doc, RULES)], ["dry-brush-made-up"])
+
+    def test_a_wood_structure_past_100_feet_is_refused(self):
+        doc = self.side_deck([1980, 0], [2220, 180])
+        struct(doc, "side-deck")["material"] = "wood"
+        self.assertRefused(doc, "wood deck side-deck: 1260 in is past 100 feet")
+        struct(doc, "side-deck").update(min_in=[1920, 0], max_in=[2160, 180])
+        self.assertEqual([(s["distance_in"], s["band"]) for s in house.wood_structures(doc)], [(1200, "30_100")])
+
+    def test_wood_steps_are_refused(self):
+        doc = before()
+        struct(doc, "back-deck-steps")["material"] = "wood"
+        self.assertRefused(doc, "structures[3] back-deck-steps: wood burns; only a wood deck or porch is taken, as a hazard")
+
+    def test_a_composite_deck_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "composite"
+        self.assertRefused(doc, "back-deck: composite burns")
+
+    def test_a_wood_deck_whose_rule_is_not_in_the_rules_package_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        rules = {k: v for k, v in RULES.items() if k != house.WOOD_DECK_RULE_ID}
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(doc, CATALOG, rules)
+        self.assertEqual(ctx.exception.kind, "refused")
+        self.assertTrue(str(ctx.exception).endswith("wood deck back-deck: rule_id ca-wood-deck-zone-0-cbc7a-z0 is not in the rules package"), str(ctx.exception))
+
+    def test_a_wood_deck_rule_for_another_concept_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        rules = dict(RULES, **{house.WOOD_DECK_RULE_ID: {"concept": "dry_brush", "zone": "zone_0", "statute": None}})
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(doc, CATALOG, rules)
+        self.assertIn("rule_id ca-wood-deck-zone-0-cbc7a-z0 is for dry_brush, not wood deck", str(ctx.exception))
+
+    def test_the_summary_names_each_wood_structure(self):
+        doc = before()
+        self.assertNotIn("wood structures", house.summary(doc, RULES))
+        struct(doc, "back-deck")["material"] = "wood"
+        struct(doc, "front-porch")["material"] = "wood"
+        self.assertTrue(house.summary(doc, RULES).endswith(", clean side back, wood structures 2 (porch front-porch, deck back-deck)"), house.summary(doc, RULES))
+
+    def test_the_truth_lists_each_wood_structure_and_checks_its_rule(self):
+        doc = before()
+        self.assertNotIn("structure_hazards", house.truth_from_spec(doc, RULES))
+        struct(doc, "back-deck")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        self.assertEqual(truth["structure_hazards"], house.wood_findings(doc, RULES))
+        house.validate(truth, CATALOG, RULES)
+        self.assertIn("wood structures 1 (deck back-deck)", house.summary(truth, RULES))
+        truth["structure_hazards"][0]["rule_id"] = "wood-deck-made-up"
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(truth, CATALOG, RULES)
+        self.assertIn("rule_id wood-deck-made-up is not in the rules package", str(ctx.exception))
+
+    def test_the_truth_lists_every_wood_structure_not_the_first(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        struct(doc, "front-porch")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        self.assertEqual(sorted(f["id"] for f in truth["structure_hazards"]), ["back-deck", "front-porch"])
+        house.validate(truth, CATALOG, RULES)
+
+    def test_a_truth_wood_finding_past_its_rules_reach_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        truth["structure_hazards"][0].update(distance_in=61, band="5_30")
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(truth, CATALOG, RULES)
+        self.assertIn("wood deck back-deck: 61 in is past the reach of rule_id ca-wood-deck-zone-0-cbc7a-z0", str(ctx.exception))
+        truth["structure_hazards"][0].update(distance_in=60, band="0_5")
+        house.validate(truth, CATALOG, RULES)
+
+    def test_a_truth_wood_finding_past_100_feet_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        truth["structure_hazards"][0].update(distance_in=1300, band="30_100")
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(truth, CATALOG, RULES)
+        self.assertEqual(ctx.exception.kind, "refused")
+        self.assertIn("wood deck back-deck: 1300 in is past 100 feet", str(ctx.exception))
+
+    def test_a_truth_wood_finding_whose_band_disagrees_with_its_distance_is_refused(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        truth["structure_hazards"][0].update(distance_in=10, band="30_100")
+        with self.assertRaises(house.HouseError) as ctx:
+            house.validate(truth, CATALOG, RULES)
+        self.assertEqual(ctx.exception.kind, "refused")
+        self.assertIn("wood deck back-deck: band 30_100 does not match 10 in, which is band 0_5", str(ctx.exception))
+        truth["structure_hazards"][0].update(band="0_5")
+        house.validate(truth, CATALOG, RULES)
+
+    def test_a_truth_wood_finding_of_another_shape_is_invalid(self):
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        truth = house.truth_from_spec(doc, RULES)
+        for kind in ("steps", "carport"):
+            truth["structure_hazards"][0]["kind"] = kind
+            with self.assertRaises(house.HouseError) as ctx:
+                house.validate(truth, CATALOG, RULES)
+            self.assertEqual(ctx.exception.kind, "invalid", kind)
+
+    def test_a_wood_structure_brings_the_plank_texture(self):
+        doc = before()
+        doc["hazards"], doc["fixed"] = [], []
+        self.assertNotIn(house.WOOD_TEXTURE, [u["id"] for u in house.used_assets(doc, CATALOG)])
+        struct(doc, "back-deck")["material"] = "wood"
+        self.assertIn(house.WOOD_TEXTURE, [u["id"] for u in house.used_assets(doc, CATALOG)])
 
     def test_a_composite_carport_is_refused(self):
         doc = spec_of("mobile")
@@ -1429,6 +1635,33 @@ class Openings(unittest.TestCase):
         self.assertInvalid(doc, "unknown key sill_in")
 
 
+MIN_TREE_DEG = 5
+FAR_LOT_SHARE = 0.1
+
+
+def segments_cross(a, b, c, d):
+    def side(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+    return side(a, b, c) * side(a, b, d) < 0 and side(c, d, a) * side(c, d, b) < 0
+
+
+def frames_seeing(doc, form):
+    motion, _ = route.build(doc)
+    half, eds, seen = motion["camera"]["hfov_deg"] / 2.0, house.edges(doc), 0
+    for s in motion["samples"]:
+        x, y, z = s["pos_in"]
+        for t in doc.get("trees", []):
+            if house.tree_form(t) != form:
+                continue
+            dx, dy = t["at_in"][0] - x, t["at_in"][1] - y
+            aside = (math.degrees(math.atan2(dx, dy)) - s["heading_deg"] + 180) % 360 - 180
+            tall = math.degrees(math.atan2(t["height_in"] - z, math.hypot(dx, dy)))
+            if abs(aside) <= half and tall >= MIN_TREE_DEG and not any(segments_cross((x, y), t["at_in"], e["start"], e["end"]) for e in eds):
+                seen += 1
+                break
+    return seen, motion["frame_count"]
+
+
 class Trees(unittest.TestCase):
     def test_the_apartment_lot_is_treed_on_every_side(self):
         doc = house.validate(spec_of("apartment"), CATALOG, RULES)
@@ -1480,8 +1713,20 @@ class Trees(unittest.TestCase):
         house.validate(doc, CATALOG, RULES)
 
     def test_a_house_with_no_trees_passes(self):
-        self.assertNotIn("trees", before())
-        house.validate(before(), CATALOG, RULES)
+        doc = before()
+        doc.pop("trees", None)
+        house.validate(doc, CATALOG, RULES)
+
+    def test_the_hero_far_lot_shows_conifers_and_oaks_beyond_the_house_on_the_walk(self):
+        doc = house.validate(before(), CATALOG, RULES)
+        for form in ("conifer", "oak"):
+            seen, total = frames_seeing(doc, form)
+            self.assertGreaterEqual(seen, FAR_LOT_SHARE * total, form)
+
+    def test_a_hero_with_no_trees_has_none_in_view(self):
+        doc = before()
+        doc.pop("trees", None)
+        self.assertEqual(frames_seeing(doc, "oak")[0], 0)
 
 
 class RefusedTrees(unittest.TestCase):
@@ -1597,8 +1842,34 @@ class Roof(unittest.TestCase):
         self.assertEqual([(b["min_in"], b["max_in"], b["ridge"]) for b in doc["house"]["roof"]["blocks"]],
                          [([0, 300], [720, 780], "east_west"), ([0, 0], [360, 300], "north_south")])
 
-    def test_a_house_with_no_roof_block_still_passes_the_check(self):
-        house.validate(spec_of("mobile"), CATALOG, RULES)
+    assertRefused = Refused.assertRefused
+
+    def test_a_spec_with_no_roof_is_refused_by_the_check_with_the_build_reason(self):
+        doc = before()
+        del doc["house"]["roof"]
+        self.assertRefused(doc, "house.roof is missing; the scene needs it to build")
+
+    def test_every_shipped_spec_carries_a_roof_and_passes_the_check(self):
+        for name in ("hero", "mobile", "apartment"):
+            doc = spec_of(name)
+            self.assertIn("roof", doc["house"], name)
+            house.validate(doc, CATALOG, RULES)
+            self.assertTrue(house.roof_prisms(doc), name)
+            r, left, _ = check_args(doc)
+            self.assertEqual(r.returncode, 0, name + r.stdout + r.stderr)
+            self.assertIn("HOUSE OK", r.stdout)
+
+    def test_the_mobile_home_has_one_low_gable_along_its_length_with_a_foot_of_overhang(self):
+        (roof,) = house.roof_prisms(spec_of("mobile"))
+        self.assertEqual((roof["ridge"], roof["lo"], roof["hi"]), ("east_west", [-12, -12], [732, 348]))
+        self.assertEqual((roof["wall_in"], roof["eave_z_in"], roof["ridge_z_in"]), (120, 117, 162))
+
+    def test_the_apartment_roof_is_a_main_gable_with_a_cross_gable_over_the_back_wing(self):
+        main, wing = house.roof_prisms(spec_of("apartment"))
+        self.assertEqual((main["ridge"], main["lo"], main["hi"]), ("east_west", [-12, -12], [972, 420]))
+        self.assertEqual((main["wall_in"], main["eave_z_in"], main["ridge_z_in"]), (228, 225, 279))
+        self.assertEqual((wing["ridge"], wing["lo"], wing["hi"]), ("north_south", [-12, 216], [396, 612]))
+        self.assertEqual((wing["eave_z_in"], wing["ridge_z_in"]), (225, 276))
 
     def test_the_hero_prisms_overhang_free_sides_and_run_into_the_main_roof(self):
         main, garage = house.roof_prisms(before())
@@ -1634,8 +1905,10 @@ class Roof(unittest.TestCase):
         self.assertEqual({g["z_in"] for g in runs}, {106})
 
     def test_a_spec_with_no_roof_cannot_be_built(self):
+        doc = spec_of("mobile")
+        del doc["house"]["roof"]
         with self.assertRaises(house.HouseError) as ctx:
-            house.roof_prisms(spec_of("mobile"))
+            house.roof_prisms(doc)
         self.assertEqual(ctx.exception.kind, "refused")
         self.assertIn("house.roof is missing", str(ctx.exception))
 
@@ -1664,6 +1937,12 @@ class UsedAssets(unittest.TestCase):
         ids = [u["id"] for u in house.used_assets(spec_of("apartment"), CATALOG)]
         self.assertIn("scripted:lot_tree", ids)
         self.assertIn("polyhaven:white_stucco_02", ids)
+
+    def test_the_vent_mulch_is_painted_leaf_litter_and_not_bark(self):
+        entry = CATALOG["scripted:vent_leaf_mulch"]
+        self.assertNotIn("bark", entry["material"])
+        self.assertIn("paint", entry)
+        self.assertNotIn(entry["material"], [CATALOG[a]["material"] for a in ("scripted:overhanging_branch", "scripted:lot_tree")])
 
     def test_fixed_hazards_of_an_after_spec_are_listed(self):
         doc = before()
@@ -1712,8 +1991,15 @@ def blender(args):
 
 SCRIPTED_SPECS = [BEFORE] + [os.path.join(support.REPO_DIR, "fixtures", "synthetic", name, "spec.json")
                              for name in ("mobile-before", "apartment-before", "test-yard-2")]
-DETAIL = ["Corner trim", "back-deck", "front-porch-steps", "back-deck-steps", "probe-steps", "scripted:overhanging_branch", "scripted:storage_shed",
+DETAIL = ["Corner trim", "back-deck", "front-porch-steps", "back-deck-steps", "probe-steps", "scripted:overhanging_branch", "scripted:storage_shed", "scripted:vent_leaf_mulch",
           "Garage door panels", "Garage door frame"] + ["Window %d frame" % k for k in range(1, len(windows(before())) + 1)]
+BEST_FRAMES = {"gutter-leaves-front": 231, "vent-debris-right": 4298}
+VIEW_GRID = (160, 90)
+FRAME_PX = (1280, 720)
+VENT_HEAP_MEAN_SHARE = 0.4
+VENT_LEAVES_MIN = 40
+LEAVES_SEEN_PX = 5000
+LEAVES_SEEN_HEIGHT_PX = 12
 WALKWAY_AT_THE_FOOT = [
     {"id": "probe-porch", "kind": "porch", "material": "concrete", "min_in": [0, 100], "max_in": [100, 200], "height_in": 24},
     {"id": "probe-steps", "kind": "steps", "material": "concrete", "min_in": [30, 60], "max_in": [70, 100], "height_in": 24},
@@ -1814,6 +2100,7 @@ class HouseScene(unittest.TestCase):
             argv += ["--detail", name]
         argv += ["--verts", "Ground cover", "--paint", before()["look"]["siding"]["material"]]
         argv += ["--rays", write(cls.tmp.name, "rays.json", window_rays(before()) + wall_rays(before()))]
+        argv += ["--visible", write(cls.tmp.name, "visible.json", {"frames": sorted(BEST_FRAMES.values()), "grid": list(VIEW_GRID)})]
         r = blender(argv)
         if r.returncode != 0:
             raise AssertionError("dump failed: %s" % r.stderr[-2000:])
@@ -1891,6 +2178,11 @@ class HouseScene(unittest.TestCase):
         self.assertIn("ShaderNodeBsdfPrincipled", p["nodes"])
         self.assertIn("ShaderNodeTexImage", p["nodes"])
 
+    def test_check14_a_plain_and_a_glass_material_from_a_fresh_material_have_their_nodes(self):
+        for kind, record in self.dumped["painted"]["others"].items():
+            self.assertTrue(record["use_nodes"], kind)
+            self.assertIn("ShaderNodeBsdfPrincipled", record["nodes"], kind)
+
     def test_check14_node_owner_turns_nodes_on_for_an_owner_that_has_them_off(self):
         self.assertIs(self.dumped["node_owner"], True)
 
@@ -1910,11 +2202,61 @@ class HouseScene(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
         self.assertEqual([l.split()[1] for l in r.stdout.splitlines() if l.startswith("EW_FRAME ")], ["2"])
 
+    def test_a_render_with_changes_names_and_plans_the_after_scene(self):
+        after = house.after_spec(before(), support.load_json(CHANGES), CATALOG, RULES)
+        self.assertNotEqual(after["id"], before()["id"])
+        folder = os.path.join(self.tmp.name, "frames-after")
+        r = self.render_frames(folder, "--changes", CHANGES, "--test", "--chunk", "2", "--only", "1:0")
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        plan = support.load_json(os.path.join(folder, "chunks.json"))
+        self.assertEqual(plan["scene"], after["id"])
+        self.assertEqual(plan["chunks"], chunks.plan(self.motion["frame_count"], chunks.hazard_frames(after, self.motion), 2))
+
     def test_a_final_render_refuses_a_cut_resolution(self):
         r = self.render_frames(os.path.join(self.tmp.name, "refused"), "--percent", "50", "--only", "1:1")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("--percent is for test renders only", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "refused")))
+
+    def test_cycles64_records_cycles_64_adaptive_samples_oidn_at_1280_by_720(self):
+        folder = os.path.join(self.tmp.name, "frames-720")
+        r = self.render_frames(folder, "--cycles64", "--only", "1:0")
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        s = support.load_json(os.path.join(folder, "chunks.json"))["settings"]
+        self.assertEqual((s["engine"], s["samples"], s["adaptive"], s["denoiser"]), ("CYCLES", 64, True, "OPENIMAGEDENOISE"))
+        self.assertEqual(s["resolution"], [1280, 720, 100])
+        self.assertIn("EW_D301 Cycles 64 adaptive samples OPENIMAGEDENOISE 1280x720", r.stdout)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg is not installed")
+    def test_a_cycles64_render_assembles_and_probes_against_the_real_motion_file(self):
+        count = 3
+        root = os.path.join(self.tmp.name, "renders")
+        folder = os.path.join(root, "hero-before", "frames")
+        motion = write(self.tmp.name, "short-motion.json", dict(self.motion, frame_count=count, duration_s=count / self.motion["fps"], samples=self.motion["samples"][:count]))
+        r = blender([os.path.join(self.tmp.name, "scene.blend"), "--python", RENDER_FRAMES, "--", "--spec", BEFORE, "--motion", motion, "--frames", folder, "--cycles64"])
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        log = write(self.tmp.name, "short-render.log", r.stdout)
+        video = os.path.join(root, "hero-before", "walk.mp4")
+        a = subprocess.run([sys.executable, ASSEMBLE_WALK, "--frames", folder, "--motion", motion, "--log", log, "--out", video], capture_output=True, text=True)
+        self.assertEqual(a.returncode, 0, a.stderr)
+        record = os.path.join(self.tmp.name, "short-render.json")
+        p = subprocess.run([sys.executable, PROBE_RENDER, "hero-before", "--renders", root, "--motion", motion, "--out", record], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        rec = support.load_json(record)
+        self.assertEqual((rec["width"], rec["height"], rec["frame_count"], rec["file"]), (1280, 720, count, "hero-before/walk.mp4"))
+
+    def test_the_final_render_keeps_its_own_samples_and_size_without_cycles64(self):
+        folder = os.path.join(self.tmp.name, "frames-final")
+        r = self.render_frames(folder, "--only", "1:0")
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        s = support.load_json(os.path.join(folder, "chunks.json"))["settings"]
+        self.assertEqual((s["samples"], s["resolution"]), (engine.FINAL["samples"], [self.motion["camera"]["width_px"], self.motion["camera"]["height_px"], 100]))
+
+    def test_cycles64_refuses_a_test_render(self):
+        r = self.render_frames(os.path.join(self.tmp.name, "refused64"), "--cycles64", "--test", "--only", "1:0")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--cycles64 is a final render", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "refused64")))
 
     def test_every_hazard_fills_its_spec_box(self):
         boxes = route.hazard_boxes(before())
@@ -1959,6 +2301,10 @@ class HouseScene(unittest.TestCase):
         rec = support.load_json(os.path.join(self.tmp.name, "scene.json"))
         self.assertIs(rec["synthetic"], True)
         self.assertEqual((rec["schema"], rec["label"], rec["scene"]), ("emberwalk.scene/1", "Synthetic sample house", "hero-before"))
+
+    def test_the_scene_record_lists_every_tree_of_the_spec(self):
+        rec = support.load_json(os.path.join(self.tmp.name, "scene.json"))
+        self.assertEqual([t["id"] for t in rec["trees"]], [t["id"] for t in before()["trees"]])
 
     def test_the_build_time_is_a_real_duration(self):
         seconds = support.load_json(os.path.join(self.tmp.name, "scene.json"))["build_seconds"]
@@ -2027,6 +2373,36 @@ class HouseScene(unittest.TestCase):
                     where = "%s %s %s axis %d" % (s["asset"], s["id"], key, i)
                     self.assertGreaterEqual(part["min"][i], -BOX_SLACK_IN, where)
                     self.assertLessEqual(part["max"][i], s["size_in"][i] + BOX_SLACK_IN, where)
+
+    def seen_from_the_walk(self, hazard_id):
+        view = self.dumped["visible"][str(BEST_FRAMES[hazard_id])]
+        names = [n for n in view["first_hits"] if n == hazard_id or n.startswith(hazard_id + " ")]
+        cell = FRAME_PX[0] / float(view["cols"]) * FRAME_PX[1] / float(view["rows"])
+        rows = [r for n in names for r in view["row_span"][n]]
+        height = (max(rows) - min(rows) + 1) * FRAME_PX[1] / float(view["rows"]) if rows else 0
+        return cell * sum(view["first_hits"][n] for n in names), height
+
+    def test_the_gutter_leaves_show_from_the_loop_walk(self):
+        area, height = self.seen_from_the_walk("gutter-leaves-front")
+        self.assertGreaterEqual(area, LEAVES_SEEN_PX)
+        self.assertGreaterEqual(height, LEAVES_SEEN_HEIGHT_PX)
+
+    def test_the_vent_mulch_is_a_low_heap_under_a_litter_of_flat_leaves(self):
+        mulch = [s for s in self.dumped["scripted"] if s["asset"] == "scripted:vent_leaf_mulch"]
+        self.assertTrue(mulch)
+        for s in mulch:
+            w, d, h = s["size_in"]
+            heap = [v for i in s["parts"]["main"]["islands"] for v in i["verts"]]
+            self.assertLessEqual(sum(v[2] for v in heap) / len(heap), VENT_HEAP_MEAN_SHARE * h, s["id"])
+            leaves = s["parts"]["Dry leaves"]["face_centres"]
+            self.assertGreaterEqual(len(leaves), VENT_LEAVES_MIN, s["id"])
+            xs = [c[0] for c in leaves]
+            self.assertGreaterEqual(max(xs) - min(xs), 0.7 * w, s["id"])
+
+    def test_the_vent_mulch_shows_from_the_loop_walk(self):
+        area, height = self.seen_from_the_walk("vent-debris-right")
+        self.assertGreaterEqual(area, LEAVES_SEEN_PX)
+        self.assertGreaterEqual(height, LEAVES_SEEN_HEIGHT_PX)
 
     def test_the_shed_roof_meets_its_walls(self):
         sheds = [s for s in self.dumped["scripted"] if s["asset"] == "scripted:storage_shed"]
@@ -2156,27 +2532,27 @@ class HouseScene(unittest.TestCase):
 
     def test_the_still_check_refuses_flat_white_and_black_stills(self):
         with tempfile.TemporaryDirectory() as tmp:
-            for f in (1501, 1560):
-                write_png(os.path.join(tmp, chunks.frame_name(f)), 1920, 1080, lambda y: b"\xf0" * 5760)
-            r = self.check_stills(tmp, [1501, 1560])
+            for f in (545, 604):
+                write_png(os.path.join(tmp, chunks.frame_name(f)), 1280, 720, lambda y: b"\xf0" * 3840)
+            r = self.check_stills(tmp, [545, 604])
             self.assertEqual(r.returncode, 3, r.stderr[-1500:])
             for words in ("driveway is near white", "driveway is flat, no texture", "sky is near white", "sky is flat"):
                 self.assertIn(words, r.stdout)
             self.assertNotIn("glass is near pure black", r.stdout)
-            write_png(os.path.join(tmp, chunks.frame_name(1560)), 1920, 1080, lambda y: b"\x03" * 5760)
-            r = self.check_stills(tmp, [1560])
+            write_png(os.path.join(tmp, chunks.frame_name(604)), 1280, 720, lambda y: b"\x03" * 3840)
+            r = self.check_stills(tmp, [604])
             self.assertEqual(r.returncode, 3, r.stderr[-1500:])
             self.assertIn("glass is near pure black", r.stdout)
 
     def test_the_still_check_passes_stills_with_detail_and_finds_each_region(self):
         rng = random.Random(7)
         with tempfile.TemporaryDirectory() as tmp:
-            for f in (1501, 1560):
-                write_png(os.path.join(tmp, chunks.frame_name(f)), 1920, 1080, lambda y: bytes(40 + b // 2 for b in rng.randbytes(5760)))
-            r = self.check_stills(tmp, [1501, 1560])
+            for f in (545, 604):
+                write_png(os.path.join(tmp, chunks.frame_name(f)), 1280, 720, lambda y: bytes(40 + b // 2 for b in rng.randbytes(3840)))
+            r = self.check_stills(tmp, [545, 604])
             self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
             found = [json.loads(line.split(" ", 1)[1]) for line in r.stdout.splitlines() if line.startswith("EW_STILL ")]
-            self.assertEqual([f["frame"] for f in found], [1501, 1560])
+            self.assertEqual([f["frame"] for f in found], [545, 604])
             self.assertEqual(sorted(found[0]["regions"]), ["driveway", "sky"])
             self.assertEqual(sorted(found[1]["regions"]), ["driveway", "glass", "sky"])
             for f in found:
@@ -2186,11 +2562,11 @@ class HouseScene(unittest.TestCase):
         rng = random.Random(3)
 
         def row(y):
-            if (1079 - y) % 16:
-                return b"\xf0" * 5760
-            return b"".join(bytes(40 + b // 2 for b in rng.randbytes(3)) if x % 16 == 0 else b"\xf0\xf0\xf0" for x in range(1920))
+            if (719 - y) % 16:
+                return b"\xf0" * 3840
+            return b"".join(bytes(40 + b // 2 for b in rng.randbytes(3)) if x % 16 == 0 else b"\xf0\xf0\xf0" for x in range(1280))
         with tempfile.TemporaryDirectory() as tmp:
-            write_png(os.path.join(tmp, chunks.frame_name(1501)), 1920, 1080, row)
+            write_png(os.path.join(tmp, chunks.frame_name(1501)), 1280, 720, row)
             r = self.check_stills(tmp, [1501])
             self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
 
@@ -2202,7 +2578,7 @@ class HouseScene(unittest.TestCase):
             write_png(os.path.join(tmp, chunks.frame_name(1501)), 192, 108, lambda y: b"\x80" * 576)
             r = self.check_stills(tmp, [1501])
             self.assertEqual(r.returncode, 2)
-            self.assertIn("the scene renders 1920 by 1080", r.stderr)
+            self.assertIn("the scene renders 1280 by 720", r.stderr)
             scene = os.path.join(self.tmp.name, "scene.blend")
             for drop in ("--spec", "--frames"):
                 args = {"--spec": BEFORE, "--frames": tmp}
@@ -2280,6 +2656,50 @@ class HouseScene(unittest.TestCase):
             self.assertLess(highest["max"][2], s["height_in"], steps_id)
 
 
+WOOD_PROBE = [{"id": "probe-wood-porch", "kind": "porch", "material": "wood", "min_in": [0, -400], "max_in": [100, -300], "height_in": 6}]
+
+
+@unittest.skipUnless(BLENDER, "Blender not found: the wood deck scene test did not run, so this is a PARTIAL RUN")
+class WoodDeckScene(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        doc = before()
+        struct(doc, "back-deck")["material"] = "wood"
+        r = blender(["--python", BUILD_HOUSE, "--", write(cls.tmp.name, "doc.json", doc), "--out", cls.tmp.name])
+        if r.returncode != 0:
+            raise AssertionError("build failed: %s" % (r.stdout[-1500:] + r.stderr[-1500:]))
+        dumped = os.path.join(cls.tmp.name, "dumped.json")
+        r = blender([os.path.join(cls.tmp.name, "scene.blend"), "--python", DUMP, "--", "--out", dumped,
+                     "--structures", write(cls.tmp.name, "structures.json", WOOD_PROBE)])
+        if r.returncode != 0:
+            raise AssertionError("dump failed: %s" % r.stderr[-2000:])
+        cls.dumped = support.load_json(dumped)
+        cls.record = support.load_json(os.path.join(cls.tmp.name, "scene.json"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_the_wood_deck_is_built_in_weathered_planks(self):
+        self.assertEqual(self.dumped["objects"]["back-deck"]["materials"], ["Wood planks"])
+        self.assertTrue(any(i.startswith("weathered_planks") for i in self.dumped["materials"]["Wood planks"]["images"]),
+                        self.dumped["materials"]["Wood planks"]["images"])
+        self.assertIn(house.WOOD_TEXTURE, [a["id"] for a in self.record["assets"]])
+
+    def test_the_wood_deck_keeps_its_deck_shape(self):
+        deck = self.dumped["objects"]["back-deck"]
+        self.assertEqual([round(v) for v in deck["min"]], [120, 780, 0])
+        self.assertEqual([round(v) for v in deck["max"]], [600, 924, 24])
+
+    def test_a_wood_structure_with_no_texture_still_has_a_wood_look(self):
+        probe = self.dumped["objects"]["probe-wood-porch"]
+        self.assertEqual(probe["materials"], ["Wood"])
+        look = self.dumped["materials"]["Wood"]["inputs"]
+        self.assertEqual([round(c, 3) for c in look["Base Color"]], [round(c, 3) for c in linear("#7b5b3e")])
+        self.assertEqual((round(look["Roughness"], 3), look["Metallic"]), (0.85, 0.0))
+
+
 @unittest.skipUnless(BLENDER, "Blender not found: the house build refusals did not run, so this is a PARTIAL RUN")
 class HouseSceneRefused(unittest.TestCase):
     def assertRefusedBuild(self, doc, words):
@@ -2291,15 +2711,14 @@ class HouseSceneRefused(unittest.TestCase):
             self.assertFalse(os.path.exists(out))
 
     def test_a_house_with_no_roof(self):
-        self.assertRefusedBuild(spec_of("mobile"), "house.roof is missing")
+        doc = spec_of("mobile")
+        del doc["house"]["roof"]
+        self.assertRefusedBuild(doc, "house.roof is missing")
 
     def test_a_spec_the_check_refuses(self):
         doc = before()
         doc["synthetic"] = False
         self.assertRefusedBuild(doc, "synthetic must be true")
-
-    def test_a_house_with_trees(self):
-        self.assertRefusedBuild(spec_of("apartment"), "trees are not built yet")
 
 
 class Engines(unittest.TestCase):
@@ -2499,6 +2918,100 @@ class Stills(unittest.TestCase):
             with self.assertRaises(stills.StillError, msg=bad):
                 stills.region_stats([[("sky", bad)]])
         self.assertEqual(stills.region_stats([[("sky", [1.0, 0.0, 0.0])]])["sky"]["pixels"], 1)
+
+
+def bounding_area(doc):
+    xs = [e["start"][0] for e in house.edges(doc)]
+    ys = [e["start"][1] for e in house.edges(doc)]
+    return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+
+def reflex_corners(doc):
+    eds = house.edges(doc)
+    return [e["side"] for i, e in enumerate(eds) if e["u"][0] * eds[i - 1]["n"][0] + e["u"][1] * eds[i - 1]["n"][1] > 0]
+
+
+class OwnersWords(unittest.TestCase):
+    def test_d163_the_hero_is_an_l_with_deck_garage_driveway_and_porch(self):
+        doc = house.validate(before(), CATALOG, RULES)
+        self.assertEqual(len(reflex_corners(doc)), 1, "an L has exactly one inward corner")
+        self.assertLess(doc_area(doc), bounding_area(doc))
+        eds = {e["side"]: e for e in house.edges(doc)}
+        garage, front = eds["garage"], eds["front"]
+        self.assertEqual((garage["facing"], front["facing"]), ("south", "south"))
+        self.assertLess(garage["start"][1], front["start"][1], "the garage stands out front of the house")
+        deck, porch, drive = struct(doc, "back-deck"), struct(doc, "front-porch"), struct(doc, "driveway")
+        self.assertEqual((deck["kind"], porch["kind"], drive["kind"]), ("deck", "porch", "driveway"))
+        back_y = eds["back"]["start"][1]
+        self.assertEqual(deck["min_in"][1], back_y, "the deck is off the back wall")
+        self.assertTrue(under_door(deck, door_span(doc, doc["back_door"])), "the back door opens onto the deck")
+        garage_x = (min(garage["start"][0], garage["end"][0]), max(garage["start"][0], garage["end"][0]))
+        self.assertTrue(drive["min_in"][0] >= garage_x[0] and drive["max_in"][0] <= garage_x[1] and drive["max_in"][1] == garage["start"][1],
+                        "the driveway runs off the garage door")
+        self.assertGreaterEqual(porch["min_in"][0], garage_x[1], "the porch is to the side of the garage")
+        self.assertEqual(porch["max_in"][1], front["start"][1], "the porch is on the front wall")
+        self.assertTrue(under_door(porch, door_span(doc, doc["front_door"])), "the front door opens onto the porch")
+
+    def test_d163_the_three_houses_differ_in_shape(self):
+        rings = {name: [tuple(e["start_in"]) for e in spec_of(name)["footprint"]] for name in ("hero", "mobile", "apartment")}
+        self.assertEqual(len(set(map(tuple, rings.values()))), 3)
+        self.assertEqual(len({(len(r), doc_area(spec_of(n))) for n, r in rings.items()}), 3)
+        corners = {name: len(reflex_corners(spec_of(name))) for name in rings}
+        self.assertEqual(corners["mobile"], 0)
+        self.assertGreater(corners["hero"] + corners["apartment"], 0)
+
+    def test_d171_every_wall_is_one_unburnable_siding(self):
+        for name in ("hero", "mobile", "apartment"):
+            doc = spec_of(name)
+            self.assertIn(doc["house"]["siding"], ("fiber cement lap", "stucco", "metal"), name)
+            for side in doc["sides"]:
+                tampered = copy.deepcopy(doc)
+                tampered["sides"][side]["siding"] = "wood"
+                with self.assertRaises(house.HouseError, msg="%s %s may not carry its own siding" % (name, side)):
+                    house.validate(tampered, CATALOG, RULES)
+            for bad in ("wood", "vinyl"):
+                tampered = copy.deepcopy(doc)
+                tampered["house"]["siding"] = bad
+                with self.assertRaises(house.HouseError, msg="%s %s" % (name, bad)):
+                    house.validate(tampered, CATALOG, RULES)
+
+    def test_d178_the_apartment_is_not_a_rectangle(self):
+        doc = spec_of("apartment")
+        self.assertGreater(len(doc["footprint"]), 4)
+        self.assertLess(doc_area(doc), bounding_area(doc))
+        self.assertEqual(len(reflex_corners(doc)), 1)
+        mobile = spec_of("mobile")
+        self.assertEqual((len(mobile["footprint"]), doc_area(mobile)), (4, bounding_area(mobile)))
+
+
+@unittest.skipUnless(BLENDER, "Blender not found: the rendered sky test did not run, so this is a PARTIAL RUN")
+class RenderedSky(unittest.TestCase):
+    FRAMES = [545, 604, 1501, 2500, 3500]
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        r = blender(["--python", BUILD_HOUSE, "--", BEFORE, "--out", cls.tmp.name])
+        if r.returncode != 0:
+            raise AssertionError("build failed: %s" % (r.stdout[-1500:] + r.stderr[-1500:]))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_a_rendered_sky_pixel_is_not_the_hdris_in_five_views(self):
+        out = os.path.join(self.tmp.name, "sky.json")
+        argv = [os.path.join(self.tmp.name, "scene.blend"), "--python", os.path.join(support.BLENDER_DIR, "tests", "probe_sky.py"), "--", "--out", out]
+        for f in self.FRAMES:
+            argv += ["--frame", str(f)]
+        r = blender(argv)
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        found = support.load_json(out)
+        self.assertEqual([v["frame"] for v in found], self.FRAMES)
+        for v in found:
+            self.assertGreaterEqual(v["sky_pixels"], 40, v)
+            self.assertEqual(v["sky_change"], 0.0, v)
+            self.assertGreater(v["other_change"], 0.1, v)
 
 
 if __name__ == "__main__":

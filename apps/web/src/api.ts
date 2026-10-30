@@ -21,8 +21,8 @@ export type Completed = { walkId: string; bytes: number };
 export type Aborted = { walkId: string };
 
 export type UploadApi = {
-  start(walkId: string, totalBytes: number): Promise<Answer<StartUploadResponse>>;
-  part(uploadId: string, partNumber: number): Promise<Answer<PartLinkResponse>>;
+  start(walkId: string, totalBytes: number | null): Promise<Answer<StartUploadResponse>>;
+  part(uploadId: string, partNumber: number, bytes?: number): Promise<Answer<PartLinkResponse>>;
   complete(uploadId: string, parts: CompletedPart[]): Promise<Answer<Completed>>;
   abort(uploadId: string): Promise<Answer<Aborted>>;
 };
@@ -39,7 +39,7 @@ export type WalkApi = {
 
 type Read<T> =(body: unknown) => T | null;
 
-const bySchema =
+export const bySchema =
   <T>(schema: { safeParse(input: unknown): { success: boolean; data?: T } }): Read<T> =>
   (body) => {
     const parsed = schema.safeParse(body);
@@ -107,7 +107,8 @@ export const uploadApi = (base: string, send: Fetch): UploadApi => {
   const post = poster(base);
   return {
     start: (walkId, totalBytes) => ask(send, post("/api/uploads", { walkId, totalBytes }), bySchema(StartUploadResponse)),
-    part: (uploadId, partNumber) => ask(send, post("/api/uploads/part", { uploadId, partNumber }), bySchema(PartLinkResponse)),
+    part: (uploadId, partNumber, bytes) =>
+      ask(send, post("/api/uploads/part", { uploadId, partNumber, ...(bytes === undefined ? {} : { bytes }) }), bySchema(PartLinkResponse)),
     complete: (uploadId, parts) => ask(send, post("/api/uploads/complete", { uploadId, parts }), readCompleted),
     abort: (uploadId) => ask(send, post("/api/uploads/abort", { uploadId }), readAborted),
   };

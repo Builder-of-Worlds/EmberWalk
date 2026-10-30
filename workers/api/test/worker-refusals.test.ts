@@ -35,7 +35,7 @@ afterEach(() => {
 
 describe("start refusals through the Worker", () => {
   it("refuses a size that is not a whole number above zero", async () => {
-    for (const totalBytes of [0, -1, 1.5, "100", null]) {
+    for (const totalBytes of [0, -1, 1.5, "100", false]) {
       refused(await call("/api/uploads", { walkId: WALK, totalBytes }), 400, "invalid_size");
     }
   });
@@ -72,11 +72,14 @@ describe("start refusals through the Worker", () => {
     refused(await start(UNKNOWN, TWO_PARTS), 409, "walk_not_uploading");
   });
 
-  it("refuses a second upload while the first is open, and allows one after an abort", async () => {
+  it("answers the open upload to a second start, and a new one after an abort", async () => {
     const uploadId = await open();
-    refused(await start(WALK, TWO_PARTS), 409, "upload_in_progress");
+    const again = await start(WALK, TWO_PARTS);
+    expect([again.status, (again.json as { uploadId: string }).uploadId]).toEqual([200, uploadId]);
     expect((await abort(uploadId)).status).toBe(200);
-    expect((await start(WALK, TWO_PARTS)).status).toBe(200);
+    const fresh = await start(WALK, TWO_PARTS);
+    expect(fresh.status).toBe(200);
+    expect((fresh.json as { uploadId: string }).uploadId).not.toBe(uploadId);
   });
 
   it("allows a new upload once the first has run out of time", async () => {
@@ -223,7 +226,6 @@ describe("the error vocabulary", () => {
       "body_too_large",
       "unknown_walk",
       "walk_not_uploading",
-      "upload_in_progress",
       "unknown_upload",
       "upload_completed",
       "upload_aborted",

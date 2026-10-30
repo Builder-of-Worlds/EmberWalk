@@ -33,8 +33,10 @@ const sendPart = async (
   if (bytes.length !== range[1] - range[0]) throw new ImportError("video_unreadable", `Part ${partNumber} could not be read from the video.`);
   for (let attempt = 1; attempt <= PART_TRIES; attempt += 1) {
     const link = await post(options.fetch, options.origin, "/api/uploads/part", { uploadId, partNumber }, PartLinkResponse);
+    const length = link.headers["content-length"];
+    const headers: Record<string, string> = length === undefined ? {} : { "content-length": length };
     try {
-      const response = await options.fetch(new Request(link.url, { method: link.method, headers: link.headers, body: bytes }));
+      const response = await options.fetch(new Request(link.url, { method: link.method, headers, body: bytes }));
       const etag = response.headers.get("etag")?.replaceAll('"', "") ?? "";
       if (response.ok && etag !== "") return { partNumber, etag };
     } catch (error) {

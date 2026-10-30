@@ -1,4 +1,4 @@
-export const SETTLED_HOME = ["EmberWalk", "Walk My House", "See a Sample House", "Your Walks", "Send My Walk"];
+export const SETTLED_HOME = ["EmberWalk", "Walk My House", "See a Sample House", "Defensible Space Record", "Your Walks", "Send My Walk", "See Progress"];
 
 export const SETTLED_HOW = [
   "How Your Walk Works",
@@ -73,6 +73,7 @@ export const SETTLED_RESULTS = [
   "Over a year old. Walk again to update.",
   "Required Now",
   "Recommended",
+  "Get It Fixed",
 ];
 
 export const SETTLED_DISTANCE = [

@@ -18,8 +18,19 @@ export const TRADE_FOR: { [C in Concept]: TradeRow } = {
   foundation_vent: { byRule: { "ca-vent-screen-cbc-z0": "handyman", "ca-vent-debris-ccr-z0": "brush_clearing" } },
   trash_can: { trade: null, rule: "ca-trash-can-zone-0-calfire-z0" },
   patio_furniture: { trade: null, rule: "ca-patio-furniture-zone-0-calfire-z0" },
-  chimney: { trade: null, rule: "ca-chimney-branches-ccr-z0" },
+  chimney: { byRule: { "ca-chimney-spark-arrester-cawuic-z0": "handyman", "ca-chimney-spark-arrester-cabc-z0": "handyman" } },
   house_wall: { trade: null, rule: "ca-house-wall-zone-0-calfire-z0" },
+  gas_can: { trade: null, rule: "ca-gas-can-zone-0-cdi-z0" },
+  stored_fuel: { trade: null, rule: "ca-stored-fuel-zone-0-idl-z0" },
+  lawn_mower: { trade: null, rule: "ca-lawn-mower-zone-0-idl-z0" },
+  grill: { trade: null, rule: "ca-grill-zone-0-usfa-z0" },
+  propane_cylinder: { trade: null, rule: "ca-propane-cylinder-zone-0-usfa-z0" },
+  vehicle: { trade: null, rule: "ca-vehicle-zone-0-mcrfd-z0" },
+  lumber_pile: { trade: null, rule: "ca-lumber-pile-zone-0-calfire-z0" },
+  tarp: { trade: null, rule: "ca-tarp-zone-0-nmosi-z0" },
+  doormat: { trade: null, rule: "ca-doormat-zone-0-nmosi-z0" },
+  boat_or_trailer: { trade: null, rule: "ca-boat-or-trailer-zone-0-mcrfd-z0" },
+  wood_deck: { trade: null, rule: "ca-wood-deck-zone-0-cbc7a-z0" },
 };
 
 export class PlanRefused extends Error {

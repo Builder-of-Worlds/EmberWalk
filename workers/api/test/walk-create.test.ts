@@ -74,6 +74,7 @@ describe("refusing a bad create request", () => {
     ["synthetic as text", body({ synthetic: "yes" })],
     ["a field nobody asked for", body({ state: { name: "done" } })],
     ["an id chosen by the phone", body({ id: "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01" })],
+    ["a start key that is not a uuid", body({ startKey: "take-1" })],
     ["a list instead of an object", []],
     ["null", null],
   ])("answers 400 invalid_request for %s and stores nothing", async (_name, payload) => {
@@ -129,8 +130,6 @@ describe("creating a walk of one side, a part of a done walk", () => {
     expect(reply.status).toBe(200);
     const { walkId } = StartWalkResponse.parse(reply.json);
     expect(await stored(walkId)).toMatchObject({
-      part_of: PARENT,
-      part_side: "back",
       language: "es",
       jurisdiction: "us_ca_lra",
       synthetic: 0,
@@ -140,9 +139,21 @@ describe("creating a walk of one side, a part of a done walk", () => {
     expect(await partOfWalk(env.DB, walkId)).toEqual({ walkId: PARENT, side: "back" });
   });
 
+  it("creates the part walk for a corner only when the parent has a gap at that corner", async () => {
+    const unasked = await call("/api/walks", partBody({ partOf: { walkId: PARENT, side: "back_left" } }));
+    expect([unasked.status, unasked.json.error.code]).toEqual([400, "invalid_request"]);
+    await seedGap(PARENT, "back_left", "missing", "pan_corner");
+    const reply = await call("/api/walks", partBody({ partOf: { walkId: PARENT, side: "back_left" } }));
+    expect(reply.status).toBe(200);
+    expect(await partOfWalk(env.DB, StartWalkResponse.parse(reply.json).walkId)).toEqual({ walkId: PARENT, side: "back_left" });
+    const elsewhere = await call("/api/walks", partBody({ partOf: { walkId: PARENT, side: "front_right" } }));
+    expect([elsewhere.status, elsewhere.json.error.code]).toEqual([400, "invalid_request"]);
+    expect(await walkCount()).toBe(2);
+  });
+
   it("creates a whole walk, marked as no part, when partOf is null", async () => {
     const { walkId } = StartWalkResponse.parse((await call("/api/walks", body({ partOf: null }))).json);
-    expect(await stored(walkId)).toMatchObject({ part_of: null, part_side: null });
+    expect(await partOfWalk(env.DB, walkId)).toBeNull();
   });
 
   it("answers 404 unknown_walk for a parent that does not exist or is another visitor's, and stores nothing", async () => {
@@ -181,6 +192,152 @@ describe("creating a walk of one side, a part of a done walk", () => {
     await env.DB.prepare("UPDATE walks SET synthetic = 1 WHERE id = ?").bind(PARENT).run();
     const synthetic = await call("/api/walks", partBody());
     expect([synthetic.status, synthetic.json.error.code]).toEqual([400, "invalid_request"]);
+    expect(await walkCount()).toBe(2);
+  });
+});
+
+describe("three walks per visitor per day", () => {
+  const startThree = async (visitorId = VISITOR, already = 0) => {
+    for (let n = already; n < 3; n++) expect((await call("/api/walks", body({ visitorId }))).status).toBe(200);
+  };
+
+  it("refuses a fourth walk the same day with 429 walk_limit_reached and stores nothing", async () => {
+    await startThree();
+    const reply = await call("/api/walks", body({ synthetic: true }));
+    expect(reply.status).toBe(429);
+    expect(reply.json).toEqual({ error: { code: "walk_limit_reached", message: "You have sent as many walks as EmberWalk allows today. Try again tomorrow." } });
+    expect(await walkCount()).toBe(3);
+  });
+
+  it("never counts sample walks toward the limit", async () => {
+    for (let n = 0; n < 4; n++) expect((await call("/api/walks", body({ synthetic: true }))).status).toBe(200);
+    await startThree();
+    expect((await call("/api/walks", body())).status).toBe(429);
+    expect(await walkCount()).toBe(7);
+  });
+
+  it("counts each visitor apart, and walks from before today not at all", async () => {
+    await startThree();
+    expect((await call("/api/walks", body({ visitorId: "d".repeat(64) }))).status).toBe(200);
+    await env.DB.prepare("UPDATE walks SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day') WHERE visitor_id = ?").bind(VISITOR).run();
+    expect((await call("/api/walks", body())).status).toBe(200);
+  });
+
+  it("never counts a one side retry, and lets one through after the limit", async () => {
+    const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7e01";
+    await seedWalk(PARENT, "done");
+    await seedGap(PARENT, "back");
+    await startThree(OWNER, 1);
+    expect((await call("/api/walks", body({ visitorId: OWNER, partOf: { walkId: PARENT, side: "back" } }))).status).toBe(200);
+    expect((await call("/api/walks", body({ visitorId: OWNER }))).status).toBe(429);
+  });
+
+  it('"They have to be able to solve anything that might be an issue. This needs to be helpful.": a side and a corner reshoot each go through on a day at the limit, and neither counts toward it', async () => {
+    const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7e01";
+    await seedWalk(PARENT, "done");
+    await seedGap(PARENT, "left", "missing", "walk_side");
+    await seedGap(PARENT, "front_right", "missing", "pan_corner");
+    await startThree(OWNER, 1);
+    expect((await call("/api/walks", body({ visitorId: OWNER }))).status).toBe(429);
+    for (const side of ["left", "front_right", "left", "front_right"]) {
+      expect((await call("/api/walks", body({ visitorId: OWNER, partOf: { walkId: PARENT, side } }))).status).toBe(200);
+    }
+    await env.DB.prepare("UPDATE walks SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day') WHERE id = ?").bind(PARENT).run();
+    expect((await call("/api/walks", body({ visitorId: OWNER }))).status).toBe(200);
+    expect((await call("/api/walks", body({ visitorId: OWNER }))).status).toBe(429);
+  });
+});
+
+describe("a walk start sent again with the same start key", () => {
+  const KEY = "0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a01";
+  const OTHER_KEY = "0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a02";
+  const keyed = (startKey: string, over: Record<string, unknown> = {}) => call("/api/walks", body({ startKey, ...over }));
+
+  it("answers the same walk and stores no second one", async () => {
+    const first = await keyed(KEY);
+    const again = await keyed(KEY);
+    expect([first.status, again.status]).toEqual([200, 200]);
+    expect(again.json).toEqual(first.json);
+    expect(StartWalkResponse.parse(again.json).state).toEqual({ name: "uploading" });
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("answers the same walk in its state now, once its video is in", async () => {
+    const { json } = await keyed(KEY);
+    await env.DB.prepare("UPDATE walks SET state = 'queued' WHERE id = ?").bind(json.walkId).run();
+    const again = await keyed(KEY);
+    expect(again.json).toEqual({ walkId: json.walkId, state: { name: "queued" } });
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("answers one walk when the same start arrives twice at once", async () => {
+    const [a, b] = await Promise.all([keyed(KEY), keyed(KEY)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(a.json.walkId).toBe(b.json.walkId);
+    expect(await walkCount()).toBe(1);
+  });
+
+  it("starts a new walk for a different key", async () => {
+    const first = await keyed(KEY);
+    const second = await keyed(OTHER_KEY);
+    expect(second.status).toBe(200);
+    expect(second.json.walkId).not.toBe(first.json.walkId);
+    expect(await walkCount()).toBe(2);
+  });
+
+  it("never answers another visitor's walk for that visitor's key, and starts a walk of this visitor's own", async () => {
+    const theirs = await keyed(KEY, { visitorId: "d".repeat(64) });
+    const mine = await keyed(KEY);
+    expect(mine.status).toBe(200);
+    expect(mine.json.walkId).not.toBe(theirs.json.walkId);
+    const owners = await env.DB.prepare("SELECT id, visitor_id FROM walks").all<{ id: string; visitor_id: string }>();
+    expect(Object.fromEntries(owners.results.map((row) => [row.id, row.visitor_id]))).toEqual({
+      [theirs.json.walkId]: "d".repeat(64),
+      [mine.json.walkId]: VISITOR,
+    });
+  });
+
+  it("never counts a repeat toward the three walks a day, and answers it on a day at the limit", async () => {
+    const keys = [KEY, OTHER_KEY, "0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a03"];
+    const ids: string[] = [];
+    for (const key of keys) ids.push((await keyed(key)).json.walkId);
+    for (const [i, key] of keys.entries()) {
+      const again = await keyed(key);
+      expect([again.status, again.json.walkId]).toEqual([200, ids[i]]);
+    }
+    const fourth = await keyed("0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a04");
+    expect([fourth.status, fourth.json.error?.code]).toEqual([429, "walk_limit_reached"]);
+    expect(await walkCount()).toBe(3);
+  });
+
+  it("answers a failed walk to its own key, and lets its resend under the failed walk's id as key through on a day at the limit, uncounted", async () => {
+    const keys = [KEY, OTHER_KEY, "0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a03"];
+    const ids: string[] = [];
+    for (const key of keys) ids.push((await keyed(key)).json.walkId);
+    const failed = ids[2] ?? "";
+    await env.DB.prepare("UPDATE walks SET state = 'failed', step = 'segment' WHERE id = ?").bind(failed).run();
+    expect((await keyed(keys[2] ?? "")).json).toEqual({ walkId: failed, state: { name: "failed", step: "segment" } });
+
+    const resend = await keyed(failed);
+    expect(resend.status).toBe(200);
+    expect(resend.json).toMatchObject({ state: { name: "uploading" } });
+    expect(resend.json.walkId).not.toBe(failed);
+    expect((await keyed(failed)).json.walkId).toBe(resend.json.walkId);
+    const fourth = await keyed("0b7c1f5e-2d4a-4e8b-9c3f-6a1d2e3f4a04");
+    expect([fourth.status, fourth.json.error?.code]).toEqual([429, "walk_limit_reached"]);
+    expect(await walkCount()).toBe(4);
+  });
+
+  it("answers the same one side walk for a repeated part start, stored once", async () => {
+    const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7e01";
+    await seedWalk(PARENT, "done");
+    await seedGap(PARENT, "back");
+    const part = { visitorId: OWNER, partOf: { walkId: PARENT, side: "back" } };
+    const first = await keyed(KEY, part);
+    const again = await keyed(KEY, part);
+    expect([first.status, again.status]).toEqual([200, 200]);
+    expect(again.json.walkId).toBe(first.json.walkId);
+    expect(await partOfWalk(env.DB, first.json.walkId)).toEqual({ walkId: PARENT, side: "back" });
     expect(await walkCount()).toBe(2);
   });
 });

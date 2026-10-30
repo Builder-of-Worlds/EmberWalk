@@ -48,6 +48,7 @@ export type Harness = {
   asked: string[];
   uploads: number;
   billing: Billing;
+  syntheticRender: boolean;
   capUsd: number;
   sleeps: number[];
   ids: number;
@@ -75,6 +76,7 @@ export const freshHarness = (): Harness => ({
   asked: [],
   uploads: 0,
   billing: "free_credits",
+  syntheticRender: true,
   capUsd: 20,
   sleeps: [],
   ids: 0,
@@ -95,6 +97,10 @@ export const SAME_PLACE_PHRASE = "Photo one, then photo two.";
 
 export const stageSamePlace = (answer: { same: boolean; confidence: number } | string): void => {
   harness.answers[SAME_PLACE_PHRASE] = [{ text: typeof answer === "string" ? answer : JSON.stringify(answer) }];
+};
+
+export const stageSamePlaces = (...answers: ({ same: boolean; confidence: number } | string)[]): void => {
+  harness.answers[SAME_PLACE_PHRASE] = answers.map((answer) => ({ text: typeof answer === "string" ? answer : JSON.stringify(answer) }));
 };
 
 export const stageCatalogYard =(h: Harness): void => {
@@ -194,7 +200,7 @@ export const fakeMedia = (env: Pick<Env, "MEDIA" | "R2_BUCKET_NAME">, h: Harness
       if ("refuse" in h.clip) return refuse(h.clip.refuse.code, h.clip.refuse.message);
       const bytes = new Uint8Array(16);
       await env.MEDIA.put(keyOf(request.output), bytes);
-      return pass({ ...h.clip, bytes: bytes.length, durationSeconds: request.end - request.start });
+      return pass({ ...h.clip, codec: "h264", bytes: bytes.length, durationSeconds: request.end - request.start });
     },
     async stills(request) {
       h.stilled.push(request);
@@ -204,7 +210,7 @@ export const fakeMedia = (env: Pick<Env, "MEDIA" | "R2_BUCKET_NAME">, h: Harness
       const made = [];
       for (const still of request.stills) {
         const key = keyOf(still.output);
-        const bytes = POINT_STILL.test(key) ? placeholderJpeg(key) : new Uint8Array(16);
+        const bytes = POINT_STILL.test(key) || LOOK_STILL.test(key) ? placeholderJpeg(key) : new Uint8Array(16);
         await env.MEDIA.put(key, bytes);
         made.push({ time: still.time, bytes: bytes.length, width, height });
       }
@@ -269,23 +275,28 @@ const failingDeletes = (bucket: R2Bucket, h: Harness): R2Bucket =>
     },
   }) as unknown as R2Bucket;
 
+const testMeta = (env: Env, h: Harness) => (): MetaClient =>
+  new MetaClient({
+    transport: fakeTransport(h),
+    cache: r2Cache(env.DB, env.MEDIA, () => FIXED_NOW),
+    ledger: d1Ledger(env.DB),
+    billing: h.billing,
+    limits: limitsWith({ dailySpendUsd: h.capUsd }),
+    now: () => FIXED_NOW,
+  });
+
 export const testDeps = (env: Env, h: Harness): Deps => ({
   db: env.DB,
   bucket: h.failDeletes > 0 || h.failPointDeletes > 0 ? failingDeletes(env.MEDIA, h) : h.hideDetections ? withoutDetections(env.MEDIA) : env.MEDIA,
   media: fakeMedia(env, h),
   signer: r2Signer(env, () => FIXED_NOW),
-  meta: () =>
-    new MetaClient({
-      transport: fakeTransport(h),
-      cache: r2Cache(env.DB, env.MEDIA, () => FIXED_NOW),
-      ledger: d1Ledger(env.DB),
-      billing: h.billing,
-      limits: limitsWith({ dailySpendUsd: h.capUsd }),
-      now: () => FIXED_NOW,
-    }),
+  meta: testMeta(env, h),
+  museImage: testMeta(env, h),
   sleep: async (ms) => {
     h.sleeps.push(ms);
   },
   newId: () => idFor(++h.ids),
   voiceNotes: h.voiceNotes,
+  billing: h.billing,
+  isSyntheticRender: async () => h.syntheticRender,
 });

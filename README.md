@@ -2,21 +2,19 @@
 
 Wildfire defensible space checks from one phone video, using Meta SAM 3.1 and Muse on Cloudflare.
 
-**Status, Thursday Oct. 29th, 2026:** the two part walk is built, and a walk sent from the phone comes back as ranked results in a test run.
+**Status, Friday Oct. 30th, 2026:** Get It Fixed is built, and the first deploy is ready.
 
 ## What it does
 
 The homeowner films one walk around the house, and EmberWalk finds what could carry fire to the house and ranks what to fix first, with the California rule behind each item.
 
-As of the end of Day 4:
+As of the end of Day 5:
 
-- **Film a two part walk.** The homeowner walks the loop around the house, then taps Pan the Yard, stands at each side in turn and turns slowly to pan the yard. Each part is sent labelled with its side.
-- **Light is checked on every side.** A side too dark to check is asked for again in daylight, by name, and only that side is filmed again.
-- **What the app finds.** Every walk looks for all 25 objects on the list, on the loop and on the pans, against California's rules.
-- **Watching the check.** Five stages, Sent, Ready, Looking, Writing and Done, with a count such as "3 of 8 steps done", then the results open.
-- **How results look.** Required Now first. The fix first list holds every open finding within 30 feet of the house, nearest first, each with its distance, such as "About 1 foot from the house."
-- **Ready for Inspection.** A walk that covers every side in good light, with every object checked and nothing to fix, shows Ready for Inspection.
-- **Get It Fixed.** Quote requests list the exact work with a blurred photo per item, and nothing is sent without the homeowner's approval.
+- **Film one walk.** The loop around the house is followed by a pan of the yard from each side, tagged by corner, and one side or corner can be filmed again on its own. Walks upload while they are recorded and pick up again when signal returns, and the phone keeps each walk's video, so a house is never walked twice.
+- **What the app finds.** All 25 objects on the list, from dry brush and fences to gas cans, grills and wooden decks, each at a published source's distance. A second model reviews each finding and shows its reason when it sees it differently.
+- **How results look.** Required Now first, with a fix first list. The house is drawn from above with rings at 5, 30 and 100 feet and a numbered pin for each finding. See It Fixed previews the top three findings fixed, labelled as an AI preview.
+- **Get It Fixed.** The homeowner enters a ZIP code and sees licensed crews for each kind of work, closest first. Nothing is sent until the homeowner approves it.
+- **Defensible space record.** Each finding is marked Needs Fixing, Fix Planned or Done, with its date.
 
 ## How it works
 
@@ -66,6 +64,7 @@ EmberWalk is built during the Meta Global AI Developer Hackathon, Monday Oct. 26
 | 2 | Tuesday Oct. 27th | Phone screens, results screens, the walk pipeline steps, the rules engine and the privacy blur. [Write-up](docs/devlog/day-02.md) |
 | 3 | Wednesday Oct. 28th | Results back on the phone, one side redone, the coverage check, the location step and plainer wording. [Write-up](docs/devlog/day-03.md) |
 | 4 | Thursday Oct. 29th | The two part walk, light on each side, the checking screen's step counts, the full object list in the pipeline and rules by state. [Write-up](docs/devlog/day-04.md) |
+| 5 | Friday Oct. 30th | Get It Fixed, See It Fixed and the second check, the house drawn with its findings, rules for the newer objects, the walk sent while recorded and a first deploy made ready. [Write-up](docs/devlog/day-05.md) |
 
 ## License
 

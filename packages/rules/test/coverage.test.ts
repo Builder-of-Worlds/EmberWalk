@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MotionSample, Side } from "@emberwalk/shared";
-import { COVERAGE_SETTINGS, CoverageRecord, coverageKey, coverageOf, gapHint, type CoverageInput } from "../src/index.ts";
+import { closesByVideo, COVERAGE_SETTINGS, CoverageRecord, coverageKey, coverageOf, gapHint, type CoverageInput } from "../src/index.ts";
 
 const WALK_ID = "5b0f7a52-3d52-4a47-9a0a-0a6a54f4d6a1";
 const norm = (degrees: number) => ((degrees % 360) + 360) % 360;
@@ -225,7 +225,236 @@ describe("coverageOf refuses to say checked", () => {
   });
 });
 
+describe("coverageOf on a guided walk, split by the phone's side tags when there is no compass split", () => {
+  const GUIDED: { side: Side; startSeconds: number; endSeconds: number }[] = [
+    { side: "front", startSeconds: 0, endSeconds: 12 },
+    { side: "left", startSeconds: 12, endSeconds: 24 },
+    { side: "back", startSeconds: 24, endSeconds: 36 },
+    { side: "right", startSeconds: 36, endSeconds: 48 },
+  ];
+  const guided = (sideTags = GUIDED, over: Partial<CoverageInput> = {}) => {
+    const endSeconds = sideTags.at(-1)?.endSeconds ?? 48;
+    return coverageOf(input({ loop: { startSeconds: 0, endSeconds, samples: [] }, wallFrames: wallEvery(endSeconds), light: null, sideTags, ...over }));
+  };
+
+  it("walks every side in the order the phone tagged them, with no side gap, when each side was walked long enough", () => {
+    const result = guided();
+    expect(result.sides).toEqual(["front", "left", "back", "right"]);
+    expect(result.gaps).toEqual([]);
+    expect(result).toMatchObject({ coverage: "not_checked", loop: "not_checked" });
+  });
+
+  it("gives missing for the one side tapped through in 2 seconds, with where and why, and walks the other three", () => {
+    const result = guided([
+      { side: "front", startSeconds: 0, endSeconds: 12 },
+      { side: "left", startSeconds: 12, endSeconds: 14 },
+      { side: "back", startSeconds: 14, endSeconds: 26 },
+      { side: "right", startSeconds: 26, endSeconds: 38 },
+    ]);
+    expect(kinds(result)).toEqual(["missing:left"]);
+    expect(result.gaps[0]).toMatchObject({ where: { startSeconds: 12, endSeconds: 14 }, reason: { measure: "seconds", measured: 2, needed: 5 } });
+    expect(result.sides).toEqual(["front", "back", "right"]);
+  });
+
+  it("gives missing with no where for a side the walk never reached", () => {
+    const result = guided(GUIDED.slice(0, 3));
+    expect(result.gaps).toEqual([{ kind: "missing", side: "right", where: null, reason: { measure: "seconds", measured: 0, needed: 5 } }]);
+  });
+
+  it("gives first_five_feet on the side whose wall frames fall in its tag", () => {
+    const result = guided(GUIDED, { wallFrames: wallEvery(48, (t) => (t >= 24 && t < 36 ? 0.99 : 0.8)) });
+    expect(kinds(result)).toEqual(["first_five_feet:back"]);
+    expect(result.gaps[0]!.where).toEqual({ startSeconds: 24, endSeconds: 36 });
+  });
+
+  it("gives dark from the light it was given on a tagged side", () => {
+    expect(kinds(guided(GUIDED, { light: { ...LIGHT, front: 20 } }))).toEqual(["dark:front"]);
+  });
+
+  it("keeps the compass split when the walk has one, whatever the tags say", () => {
+    const result = coverageOf(input({ sideTags: [{ side: "back", startSeconds: 0, endSeconds: 95 }] }));
+    expect(result).toMatchObject({ coverage: "checked", gaps: [], sides: ["front", "left", "back", "right"] });
+  });
+
+  it("invents no side gap with no tags or no loop", () => {
+    expect(guided([]).gaps).toEqual([]);
+    expect(coverageOf(input({ loop: null, wallFrames: [], sideTags: GUIDED })).gaps).toEqual([]);
+  });
+
+  it("refuses a side tag that ends before it starts, naming it", () => {
+    expect(() => guided([{ side: "front", startSeconds: 5, endSeconds: 5 }])).toThrow("sideTags[0].endSeconds");
+  });
+});
+
+describe("coverageOf closes a walk with no compass from the video alone", () => {
+  const TAGS: { side: Side; startSeconds: number; endSeconds: number }[] = [
+    { side: "front", startSeconds: 0, endSeconds: 12 },
+    { side: "left", startSeconds: 12, endSeconds: 24 },
+    { side: "back", startSeconds: 24, endSeconds: 36 },
+    { side: "right", startSeconds: 36, endSeconds: 48 },
+  ];
+  const AWAY = { same: false, confidence: 0.9 };
+  const guidedLook = (look: CoverageInput["look"], over: Partial<CoverageInput> = {}, endSeconds = 48) =>
+    coverageOf(input({ loop: { startSeconds: 0, endSeconds, samples: [] }, wallFrames: wallEvery(endSeconds), sideTags: TAGS, look, ...over }));
+
+  it("is closed when the end looks like the start and the halfway point does not, and can then be checked", () => {
+    const result = guidedLook({ same: true, confidence: 0.9, halfway: AWAY });
+    expect(result).toMatchObject({ loop: "closed", coverage: "checked", gaps: [], sides: ["front", "left", "back", "right"] });
+  });
+
+  it("is not checked, with no invented gap, when the halfway point was not looked at", () => {
+    expect(guidedLook({ same: true, confidence: 0.9 })).toMatchObject({ loop: "not_checked", coverage: "not_checked", gaps: [] });
+  });
+
+  it("is not checked when the halfway point looks like the start, which is a walker who never left it", () => {
+    const result = guidedLook({ same: true, confidence: 0.99, halfway: { same: true, confidence: 0.99 } });
+    expect(result).toMatchObject({ loop: "not_checked", coverage: "not_checked", gaps: [] });
+  });
+
+  it("needs the halfway answer to be different at 0.7 or more, and takes exactly 0.7", () => {
+    expect(guidedLook({ same: true, confidence: 0.9, halfway: { same: false, confidence: 0.69 } }).loop).toBe("not_checked");
+    expect(guidedLook({ same: true, confidence: 0.9, halfway: { same: false, confidence: 0.7 } }).loop).toBe("closed");
+  });
+
+  it("still needs the end to look like the start at 0.7 or more", () => {
+    expect(guidedLook({ same: true, confidence: 0.69, halfway: AWAY }).loop).toBe("not_checked");
+    expect(guidedLook({ same: true, confidence: 0.7, halfway: AWAY }).loop).toBe("closed");
+  });
+
+  it("is open, with the gap that says why, when the end does not look like the start", () => {
+    const result = guidedLook({ same: false, confidence: 0.9, halfway: AWAY });
+    expect(result.loop).toBe("open");
+    expect(result.gaps).toContainEqual(expect.objectContaining({ kind: "loop_open", side: null, reason: { measure: "same_place", measured: 0.9, needed: 0.7 } }));
+  });
+
+  it("is not checked on a loop under 20 seconds and closes on one of exactly 20", () => {
+    const look = { same: true, confidence: 0.9, halfway: AWAY };
+    expect(guidedLook(look, { sideTags: [] }, 19.9).loop).toBe("not_checked");
+    expect(guidedLook(look, { sideTags: [] }, 20).loop).toBe("closed");
+  });
+
+  it("is not checked with no loop video, whatever the look says", () => {
+    expect(coverageOf(input({ loop: null, wallFrames: [], sideTags: TAGS, look: { same: true, confidence: 0.99, halfway: AWAY } })).loop).toBe("not_checked");
+  });
+
+  it("is never closed by the side tags or the corner pans alone, since a tap is not a place", () => {
+    expect(guidedLook(null, { pans: 4 })).toMatchObject({ loop: "not_checked", coverage: "not_checked", gaps: [] });
+    expect(guidedLook({ same: true, confidence: 0.99 }, { pans: 4 })).toMatchObject({ loop: "not_checked", coverage: "not_checked" });
+  });
+
+  it("is also closed on a loop whose compass samples have a hole too long to trust", () => {
+    const loop = walkOf(4);
+    loop.samples.splice(10, 8);
+    const result = coverageOf(input({ loop, look: { same: true, confidence: 0.9, halfway: AWAY } }));
+    expect(result.loop).toBe("closed");
+  });
+
+  it("leaves a walk with a compass to its compass: the halfway look neither closes it short nor opens it", () => {
+    const short = walkOf(3, { step: 100 });
+    const open = coverageOf(input({ loop: short, wallFrames: wallEvery(short.endSeconds), look: { same: true, confidence: 0.9, halfway: AWAY } }));
+    expect(open.loop).toBe("open");
+    expect(open.gaps.at(-1)).toMatchObject({ kind: "loop_open", reason: { measure: "degrees" } });
+    expect(coverageOf(input({ look: { same: true, confidence: 0.9, halfway: { same: true, confidence: 0.99 } } })).loop).toBe("closed");
+  });
+
+  it("refuses a halfway confidence out of range, naming the field", () => {
+    expect(() => guidedLook({ same: true, confidence: 0.9, halfway: { same: false, confidence: 1.2 } })).toThrow(/look\.halfway\.confidence/);
+    expect(() => guidedLook({ same: true, confidence: 0.9, halfway: { same: false, confidence: Number.NaN } })).toThrow(/look\.halfway\.confidence/);
+  });
+
+  it("honours the settings it is given", () => {
+    const settings = { ...COVERAGE_SETTINGS, videoLoopSeconds: 60, halfwayConfidence: 0.95 };
+    const look = { same: true, confidence: 0.9, halfway: AWAY };
+    const make = (over: Partial<CoverageInput>) => coverageOf(input({ loop: { startSeconds: 0, endSeconds: 48, samples: [] }, wallFrames: wallEvery(48), sideTags: TAGS, look, ...over }), settings);
+    expect(make({}).loop).toBe("not_checked");
+    expect(coverageOf(input({ loop: { startSeconds: 0, endSeconds: 70, samples: [] }, wallFrames: wallEvery(70), look: { ...look, halfway: { same: false, confidence: 0.94 } } }), settings).loop).toBe("not_checked");
+    expect(coverageOf(input({ loop: { startSeconds: 0, endSeconds: 70, samples: [] }, wallFrames: wallEvery(70), look: { ...look, halfway: { same: false, confidence: 0.95 } } }), settings).loop).toBe("closed");
+  });
+});
+
+describe("closesByVideo, which says whether the pipeline should look at the halfway point", () => {
+  const noCompass = (seconds: number) => ({ startSeconds: 0, endSeconds: seconds, samples: [] as MotionSample[] });
+
+  it("is true for a loop of 20 seconds or more with no compass samples", () => {
+    expect(closesByVideo(noCompass(20))).toBe(true);
+    expect(closesByVideo(noCompass(19.9))).toBe(false);
+  });
+  it("is true for a loop of exactly 20 seconds that starts at 12.3 seconds, whose end minus start is just under 20 in floating point", () => {
+    const late = { startSeconds: 12.3, endSeconds: 12.3 + 20, samples: [] as MotionSample[] };
+    expect(late.endSeconds - late.startSeconds).toBeLessThan(20);
+    expect(closesByVideo(late)).toBe(true);
+    expect(closesByVideo({ ...late, endSeconds: 12.3 + 19.999 })).toBe(false);
+    const look = { same: true, confidence: 0.9, halfway: { same: false, confidence: 0.9 } };
+    expect(coverageOf(input({ loop: late, wallFrames: wallEvery(late.endSeconds), look })).loop).toBe("closed");
+  });
+  it("is true when the compass samples have a hole longer than the settings allow", () => {
+    const loop = walkOf(4);
+    loop.samples.splice(10, 8);
+    expect(closesByVideo(loop)).toBe(true);
+  });
+  it("is false for a walk with a usable compass, and for no loop", () => {
+    expect(closesByVideo(walkOf(4))).toBe(false);
+    expect(closesByVideo(null)).toBe(false);
+  });
+});
+
+describe("coverageOf at the edges of its measures", () => {
+  const sample = (t: number, headingDegrees: number): MotionSample => ({ t, tiltDegrees: 10, headingDegrees });
+  const heldAt = (from: number, to: number, heading: number) => Array.from({ length: to - from }, (_, i) => sample(from + i, heading));
+
+  it("calls samples with a 6 second hole unknown", () => {
+    const loop = walkOf(4);
+    const result = coverageOf(input({ loop: { ...loop, samples: loop.samples.filter((s) => s.t < 30 || s.t >= 35) } }));
+    expect(result.loop).toBe("not_checked");
+    expect(result.gaps).toEqual([]);
+  });
+
+  it("reads the largest hole from samples a tenth of a second apart", () => {
+    const samples = Array.from({ length: 11 }, (_, i) => sample(i / 10, 0));
+    const result = coverageOf(input({ loop: { startSeconds: 0, endSeconds: 1, samples }, wallFrames: [] }), { ...COVERAGE_SETTINGS, maxSampleHoleSeconds: 0.5 });
+    expect(result.loop).toBe("open");
+  });
+
+  it("knows a loop of a single sample, which walked its one side from the sample to the end", () => {
+    const result = coverageOf(input({ loop: { startSeconds: 0, endSeconds: 5, samples: [sample(0, 0)] }, wallFrames: [] }));
+    expect(result.sides).toEqual(["front"]);
+    expect(result.loop).toBe("open");
+  });
+
+  it("counts the turn between the first two samples toward the closing turn", () => {
+    const samples = [0, 90, 180, 270, 0].map((heading, t) => sample(t, heading));
+    const result = coverageOf(input({ loop: { startSeconds: 0, endSeconds: 5, samples } }));
+    expect(result.loop).toBe("closed");
+  });
+
+  it("keeps a turn of 44 degrees on the front side, and starts the second side at 45", () => {
+    const turned = (heading: number) => ({ startSeconds: 0, endSeconds: 14, samples: [...heldAt(0, 5, 0), ...heldAt(5, 14, heading), sample(14, heading)] });
+    expect(coverageOf(input({ loop: turned(44), wallFrames: [] })).sides).toEqual(["front"]);
+    expect(coverageOf(input({ loop: turned(45), wallFrames: [] })).sides).toEqual(["front", "left"]);
+  });
+
+  it("keeps a step back against the direction of the walk on the front side", () => {
+    const samples = [...heldAt(0, 5, 0), ...heldAt(5, 10, 300), ...heldAt(10, 15, 0), sample(15, 0)];
+    expect(coverageOf(input({ loop: { startSeconds: 0, endSeconds: 15, samples }, wallFrames: [] })).sides).toEqual(["front"]);
+  });
+
+  it("counts a wall frame taken before the first sample on the first sample's side", () => {
+    const loop = { startSeconds: 0, endSeconds: 20, samples: [sample(2, 0), sample(8, 100), sample(14, 200), sample(20, 300)] };
+    const early = [0, 1].map((t) => ({ t, box: [0.1, 0.3, 0.9, 0.8] as [number, number, number, number], confidence: 0.9 }));
+    const result = coverageOf(input({ loop, wallFrames: early }), { ...COVERAGE_SETTINGS, maxSampleHoleSeconds: 10 });
+    expect(kinds(result)).not.toContain("first_five_feet:front");
+  });
+});
+
 describe("coverageOf refuses bad input by naming the field", () => {
+  it("samples out of time order at the second sample", () => {
+    const loop = walkOf(1);
+    const samples = [loop.samples[1]!, loop.samples[0]!, ...loop.samples.slice(2)];
+    expect(() => coverageOf(input({ loop: { ...loop, samples } }))).toThrow(/loop\.samples\[1\]\.t/);
+  });
+  it("a light of 256", () => {
+    expect(() => coverageOf(input({ light: { ...LIGHT, front: 256 } }))).toThrow(/light\.front/);
+  });
   it("samples out of time order", () => {
     const loop = walkOf(1);
     const samples = [...loop.samples];
@@ -290,6 +519,15 @@ describe("CoverageRecord", () => {
   it("reads a look that could not be made", () => {
     expect(CoverageRecord.parse({ ...record, look: { notChecked: "the model refused" } }).look).toEqual({ notChecked: "the model refused" });
   });
+  it("keeps at most 32 gaps", () => {
+    const gap = { kind: "loop_open", side: null, where: null, reason: { measure: "degrees", measured: 1, needed: 2 } };
+    expect(CoverageRecord.parse({ ...record, gaps: Array(32).fill(gap) }).gaps).toHaveLength(32);
+    expect(() => CoverageRecord.parse({ ...record, gaps: Array(33).fill(gap) })).toThrow();
+  });
+  it("keeps a look that could not be made to between 1 and 300 characters", () => {
+    for (const reason of ["x", "x".repeat(300)]) expect(CoverageRecord.parse({ ...record, look: { notChecked: reason } }).look).toEqual({ notChecked: reason });
+    for (const reason of ["", "x".repeat(301)]) expect(() => CoverageRecord.parse({ ...record, look: { notChecked: reason } })).toThrow();
+  });
   it("refuses a gap with an unknown kind", () => {
     expect(() => CoverageRecord.parse({ ...record, gaps: [{ ...record.gaps[0], kind: "grey" }] })).toThrow();
   });
@@ -316,6 +554,19 @@ describe("CoverageRecord", () => {
     expect(() => CoverageRecord.parse({ ...record, sides: { front: "checked", right: "checked", back: "checked" } })).toThrow();
     expect(CoverageRecord.parse({ ...record, coverage: "checked", gaps: [], sides }).coverage).toBe("checked");
     expect(() => CoverageRecord.parse({ ...record, coverage: "checked", gaps: [], sides: { ...sides, back: "partly_checked" } })).toThrow();
+  });
+  it("keeps the halfway look beside the end look, and refuses one with a confidence out of range", () => {
+    const halfway = { same: false, confidence: 0.9 };
+    expect(CoverageRecord.parse({ ...record, look: { same: true, confidence: 0.9, halfway } }).look).toEqual({ same: true, confidence: 0.9, halfway });
+    expect(() => CoverageRecord.parse({ ...record, look: { same: true, confidence: 0.9, halfway: { same: false, confidence: 2 } } })).toThrow();
+    expect(() => CoverageRecord.parse({ ...record, look: { notChecked: "x", halfway } })).toThrow();
+  });
+  it("keeps why the halfway look is missing beside the end look, from 1 to 300 characters", () => {
+    for (const reason of ["x", "x".repeat(300)]) {
+      expect(CoverageRecord.parse({ ...record, look: { same: true, confidence: 0.9, halfwayNotChecked: reason } }).look).toEqual({ same: true, confidence: 0.9, halfwayNotChecked: reason });
+    }
+    for (const reason of ["", "x".repeat(301)]) expect(() => CoverageRecord.parse({ ...record, look: { same: true, confidence: 0.9, halfwayNotChecked: reason } })).toThrow();
+    expect(() => CoverageRecord.parse({ ...record, look: { notChecked: "x", halfwayNotChecked: "x" } })).toThrow();
   });
   it("refuses a look with both answers or a confidence out of range", () => {
     expect(() => CoverageRecord.parse({ ...record, look: { same: true, confidence: 1.5 } })).toThrow();

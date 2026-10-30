@@ -1,11 +1,12 @@
-import { DbRefused, findingsForWalk, followUpsForJob, getJob, getWalk, jobCrews, messagesForJob, scheduleFollowUp } from "@emberwalk/db";
+import { DbRefused, findingsForWalk, followUpsForJob, getJob, getWalk, jobCrews, messagesForJob, scheduleFollowUp, takeUse } from "@emberwalk/db";
 import type { ToolUse } from "@emberwalk/meta";
 import type { Crew, OutgoingMessage } from "@emberwalk/shared";
 import { lengthRefusal, missingReason, missingStills, withWork } from "./drafts.ts";
-import { type AgentDeps, AgentOff, refuse, runTurns, stepLog, type TurnsEnd, type UseResult, userText } from "./loop.ts";
+import { type AgentDeps, AgentOff, giveBackOnOutage, RateLimited, refuse, runTurns, stepLog, type TurnsEnd, type UseResult, userText } from "./loop.ts";
 import { FOLLOW_UP_TOOLS, type ScheduleFollowUpArgs } from "./tools.ts";
 
 export const FOLLOW_UP_AFTER_DAYS = 3;
+export const MAX_FOLLOW_UP_RUNS_PER_JOB = 3;
 const DAY_MS = 86_400_000;
 
 export type FollowUpDeps = Omit<AgentDeps, "directory">;
@@ -51,6 +52,7 @@ export async function runFollowUps(deps: FollowUpDeps, jobId: string): Promise<F
   if (walk === null) throw new DbRefused(`walk ${job.walkId} does not exist`);
   const waiting = await waitingMessages(db, job.id, deps.now());
   if (waiting.length === 0) return { jobId: job.id, ended: "nothing_waiting", requests: 0, followUps: 0 };
+  if (!(await takeUse(db, "followup_run", job.id, MAX_FOLLOW_UP_RUNS_PER_JOB))) throw new RateLimited(`follow ups for job ${job.id}`);
   const findings = (await findingsForWalk(db, job.walkId)).filter((f) => job.findingIds.includes(f.id));
   const step = stepLog(deps, job.id);
   const at = () => deps.now().toISOString();
@@ -73,16 +75,18 @@ export async function runFollowUps(deps: FollowUpDeps, jobId: string): Promise<F
     return { ran: true, output: { draftId, status: "draft" }, detail: `drafted a ${w.message.channel} reminder to crew ${w.crew.id} for message ${w.message.id}` };
   };
 
-  const end = await runTurns({
-    client: deps.client,
-    walkId: job.walkId,
-    content: walk.synthetic ? "synthetic" : "real",
-    instructions: FOLLOW_UP_INSTRUCTIONS,
-    input: [userText(waitingText(job.id, waiting))],
-    tools: FOLLOW_UP_TOOLS,
-    use,
-    step,
-  });
+  const end = await giveBackOnOutage(deps, "followup_run", job.id, (client) =>
+    runTurns({
+      client,
+      walkId: job.walkId,
+      content: walk.synthetic ? "synthetic" : "real",
+      instructions: FOLLOW_UP_INSTRUCTIONS,
+      input: [userText(waitingText(job.id, waiting))],
+      tools: FOLLOW_UP_TOOLS,
+      use,
+      step,
+    }),
+  );
   await step("finish", "", end.ended === "finished", `${end.why}; ${followed.size} of ${waiting.length} waiting messages have a reminder for the homeowner`);
   return { jobId: job.id, ended: end.ended, requests: end.requests, followUps: followed.size };
 }

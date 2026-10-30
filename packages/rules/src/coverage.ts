@@ -26,6 +26,8 @@ export const COVERAGE_SETTINGS = {
   wallBaseMargin: EDGE_MARGIN,
   darkBelow: 40,
   lookConfidence: 0.7,
+  halfwayConfidence: 0.7,
+  videoLoopSeconds: 20,
   pans: 4,
 };
 export type CoverageSettings = typeof COVERAGE_SETTINGS;
@@ -51,6 +53,7 @@ export const CoverageGap = z
   });
 export type CoverageGap = z.infer<typeof CoverageGap>;
 
+const Look = z.strictObject({ same: z.boolean(), confidence: z.number().min(0).max(1) });
 const Verdict = z.enum(["checked", "not_checked"]);
 const LoopVerdict = z.enum(["closed", "open", "not_checked"]);
 export const SideState = z.enum(["checked", "partly_checked", "not_checked"]);
@@ -64,7 +67,12 @@ export const CoverageRecord = z
     loop: LoopVerdict,
     gaps: z.array(CoverageGap).max(32),
     look: z.union([
-      z.strictObject({ same: z.boolean(), confidence: z.number().min(0).max(1) }),
+      z.strictObject({
+        same: z.boolean(),
+        confidence: z.number().min(0).max(1),
+        halfway: Look.optional(),
+        halfwayNotChecked: z.string().min(1).max(300).optional(),
+      }),
       z.strictObject({ notChecked: z.string().min(1).max(300) }),
     ]),
     sides: z.record(Side, SideState).optional(),
@@ -84,8 +92,9 @@ export type CoverageInput = {
   wallFrames: { t: number; box: [number, number, number, number]; confidence: number }[];
   pans: number;
   light: Record<Side, number | null> | null;
-  look: { same: boolean; confidence: number } | null;
+  look: { same: boolean; confidence: number; halfway?: { same: boolean; confidence: number } } | null;
   notChecked: Concept[];
+  sideTags?: { side: Side; startSeconds: number; endSeconds: number }[];
 };
 
 export type Coverage = {
@@ -101,7 +110,11 @@ const refuse = (field: string, why: string): never => {
 
 const inRange = (value: number, low: number, high: number) => Number.isFinite(value) && value >= low && value <= high;
 
-const validate = ({ loop, wallFrames, pans, light, look }: CoverageInput) => {
+const validate = ({ loop, wallFrames, pans, light, look, sideTags = [] }: CoverageInput) => {
+  sideTags.forEach((tag, i) => {
+    if (!(Number.isFinite(tag.startSeconds) && tag.startSeconds >= 0 && tag.endSeconds > tag.startSeconds))
+      refuse(`sideTags[${i}].endSeconds`, "must be after sideTags[i].startSeconds");
+  });
   if (loop !== null) {
     if (!(Number.isFinite(loop.startSeconds) && loop.startSeconds >= 0 && loop.endSeconds > loop.startSeconds))
       refuse("loop.endSeconds", "must be after loop.startSeconds");
@@ -122,6 +135,7 @@ const validate = ({ loop, wallFrames, pans, light, look }: CoverageInput) => {
     if (value != null && !inRange(value, 0, 255)) refuse(`light.${side}`, "must be from 0 to 255");
   }
   if (look !== null && !inRange(look.confidence, 0, 1)) refuse("look.confidence", "must be from 0 to 1");
+  if (look?.halfway !== undefined && !inRange(look.halfway.confidence, 0, 1)) refuse("look.halfway.confidence", "must be from 0 to 1");
 };
 
 const turnsOf = (samples: readonly MotionSample[]): number[] => {
@@ -139,40 +153,55 @@ const largestHole = (loop: NonNullable<CoverageInput["loop"]>) => {
   return Math.max(0, ...times.slice(1).map((t, i) => t - times[i]!));
 };
 
+const compassKnown = (loop: NonNullable<CoverageInput["loop"]>, settings: CoverageSettings) =>
+  loop.samples.length > 0 && largestHole(loop) <= settings.maxSampleHoleSeconds;
+
+const wholeMs = (seconds: number) => Math.round(seconds * 1000);
+
+export const closesByVideo = (loop: CoverageInput["loop"], settings: CoverageSettings = COVERAGE_SETTINGS): boolean =>
+  loop !== null && !compassKnown(loop, settings) && wholeMs(loop.endSeconds) - wholeMs(loop.startSeconds) >= wholeMs(settings.videoLoopSeconds);
+
 export const coverageOf = (input: CoverageInput, settings: CoverageSettings = COVERAGE_SETTINGS): Coverage => {
   validate(input);
-  const { loop, wallFrames, pans, light, look, notChecked } = input;
+  const { loop, wallFrames, pans, light, look, notChecked, sideTags = [] } = input;
   const samples = loop?.samples ?? [];
-  const known = loop !== null && samples.length > 0 && largestHole(loop) <= settings.maxSampleHoleSeconds;
+  const known = loop !== null && compassKnown(loop, settings);
+  const tagged = !known && loop !== null && sideTags.length > 0;
+  const split = known || tagged;
 
   const turns = turnsOf(samples);
-  const net = turns.at(-1) ?? 0;
+  const net = turns.at(-1) ?? Number.NaN;
   const direction = net < 0 ? -1 : 1;
-  const order: Side[] = direction === 1 ? ["front", "left", "back", "right"] : ["front", "right", "back", "left"];
-  const sideAt = (i: number): Side => order[Math.min(3, Math.floor((Math.max(0, turns[i]! * direction) + 45) / 90))]!;
+  const order: Side[] = tagged
+    ? [...new Set([...sideTags.map((tag) => tag.side), ...SIDES])]
+    : direction === 1
+      ? ["front", "left", "back", "right"]
+      : ["front", "right", "back", "left"];
+  const sideAt = (i: number): Side => order[Math.min(3, Math.max(0, Math.floor((turns[i]! * direction + 45) / 90)))]!;
 
   const spans = new Map<Side, Span>();
-  if (known) {
-    samples.forEach((sample, i) => {
-      const end = Math.max(sample.t, samples[i + 1]?.t ?? loop.endSeconds);
-      const side = sideAt(i);
-      const span = spans.get(side);
-      spans.set(side, {
-        seconds: (span?.seconds ?? 0) + (end - sample.t),
-        startSeconds: span?.startSeconds ?? sample.t,
-        endSeconds: end,
-      });
+  const addSpan = (side: Side, startSeconds: number, endSeconds: number) => {
+    const span = spans.get(side);
+    spans.set(side, {
+      seconds: (span?.seconds ?? 0) + (endSeconds - startSeconds),
+      startSeconds: span?.startSeconds ?? startSeconds,
+      endSeconds,
     });
-  }
+  };
+  if (known) samples.forEach((sample, i) => addSpan(sideAt(i), sample.t, Math.max(sample.t, samples[i + 1]?.t ?? loop.endSeconds)));
+  if (tagged) sideTags.forEach((tag) => addSpan(tag.side, tag.startSeconds, tag.endSeconds));
 
+  const frameSide = (t: number): Side | null => {
+    if (known) return sideAt(Math.max(0, samples.findLastIndex((s) => s.t <= t)));
+    return sideTags.find((tag) => t >= tag.startSeconds && t <= tag.endSeconds)?.side ?? null;
+  };
   const goodFrames = new Map<Side, number>();
-  if (known) {
+  if (split) {
     for (const frame of wallFrames) {
-      if (frame.t < loop.startSeconds || frame.t > loop.endSeconds) continue;
+      if (frame.t < loop!.startSeconds || frame.t > loop!.endSeconds) continue;
       if (frame.confidence < settings.wallBaseConfidence || frame.box[3] > 1 - settings.wallBaseMargin) continue;
-      const at = samples.findLastIndex((s) => s.t <= frame.t);
-      const side = sideAt(Math.max(0, at));
-      goodFrames.set(side, (goodFrames.get(side) ?? 0) + 1);
+      const side = frameSide(frame.t);
+      if (side !== null) goodFrames.set(side, (goodFrames.get(side) ?? 0) + 1);
     }
   }
 
@@ -182,24 +211,26 @@ export const coverageOf = (input: CoverageInput, settings: CoverageSettings = CO
     return span === undefined ? null : { startSeconds: span.startSeconds, endSeconds: span.endSeconds };
   };
   const walked: Side[] = [];
-  for (const side of known ? order : SIDES) {
+  for (const side of split ? order : SIDES) {
     const seconds = spans.get(side)?.seconds ?? 0;
-    if (known && seconds < settings.secondsPerSide) {
+    if (split && seconds < settings.secondsPerSide) {
       gaps.push({ kind: "missing", side, where: whereOf(side), reason: { measure: "seconds", measured: seconds, needed: settings.secondsPerSide } });
       continue;
     }
-    if (known) walked.push(side);
+    if (split) walked.push(side);
     const lux = light?.[side];
     if (lux != null && lux < settings.darkBelow)
       gaps.push({ kind: "dark", side, where: whereOf(side), reason: { measure: "light", measured: lux, needed: settings.darkBelow } });
     const frames = goodFrames.get(side) ?? 0;
-    if (known && frames < settings.wallBaseFrames)
+    if (split && frames < settings.wallBaseFrames)
       gaps.push({ kind: "first_five_feet", side, where: whereOf(side), reason: { measure: "frames", measured: frames, needed: settings.wallBaseFrames } });
   }
 
   const compass = !known ? "unknown" : Math.abs(net) >= settings.closedTurnDegrees ? "yes" : "no";
   const looked = look === null || look.confidence < settings.lookConfidence ? "unknown" : look.same ? "yes" : "no";
-  const closure = compass === "no" || looked === "no" ? "open" : compass === "yes" && looked === "yes" ? "closed" : "not_checked";
+  const away = look?.halfway !== undefined && !look.halfway.same && look.halfway.confidence >= settings.halfwayConfidence;
+  const byVideo = closesByVideo(loop, settings) && looked === "yes" && away;
+  const closure = compass === "no" || looked === "no" ? "open" : (compass === "yes" && looked === "yes") || byVideo ? "closed" : "not_checked";
   if (closure === "open") {
     const where = loop === null ? null : { startSeconds: loop.startSeconds, endSeconds: loop.endSeconds };
     gaps.push(

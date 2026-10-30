@@ -24,6 +24,7 @@ const When = z.strictObject({
   spacing: z.array(Spacing).min(1).optional(),
   flags: z.array(z.enum(FLAGS)).min(1).optional(),
   unless: z.array(z.enum(FLAGS)).min(1).optional(),
+  within: z.number().positive().optional(),
 });
 
 const FileRule = z.strictObject({

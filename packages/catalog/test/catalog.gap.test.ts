@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RULES } from "@emberwalk/rules";
 import { Concept } from "@emberwalk/shared";
 import { rowsForClip } from "../src/catalog.ts";
 
@@ -22,5 +23,8 @@ describe('detection widens to every identifiable object around a house that matt
 
   it.each(HOUSE_OBJECTS)("a walk can store a track and carry a finding for %s", (object) => {
     expect(Concept.options).toContain(object);
+    const row = rowsForClip("loop").find((r) => r.concept === object);
+    expect(row?.pending, `${object} is still only tallied`).toBeUndefined();
+    expect(RULES.filter((r) => r.concept === object && r.key === row?.ruleKey).length, `${object} has no rule row`).toBeGreaterThan(0);
   });
 });

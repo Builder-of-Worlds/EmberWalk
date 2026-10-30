@@ -9,7 +9,7 @@ import {
   StartUploadResponse,
   UPLOAD_REFUSALS,
 } from "../src/index.ts";
-import { AT, id, refusesEach, refusesMissingAndExtra, roundTrips } from "./check.ts";
+import { AT, id, refuses, refusesEach, refusesMissingAndExtra, roundTrips } from "./check.ts";
 
 const UPLOAD = "2~AbC.dEf_gh-ij+kl/mn=";
 
@@ -49,6 +49,23 @@ describe("upload contracts", () => {
       { headers: { "content-length": "12a" } },
       { headers: { "content-length": "1", authorization: "x" } },
     ]);
+  });
+
+  it("starts an upload before its size is known, for a walk still being recorded", () => {
+    const open = { walkId: id(1), totalBytes: null };
+    roundTrips(StartUploadRequest, open);
+    refusesMissingAndExtra(StartUploadRequest, open);
+    refuses(StartUploadRequest, { walkId: id(1) });
+  });
+
+  it("lets a part link name the size of its part, and answers with or without the signed length", () => {
+    const req = { uploadId: UPLOAD, partNumber: 2, bytes: 5 * 1024 * 1024 };
+    roundTrips(PartLinkRequest, req);
+    refusesEach(PartLinkRequest, req, [{ bytes: 0 }, { bytes: -1 }, { bytes: 1.5 }, { bytes: "5" }, { bytes: null }]);
+
+    const res = { url: "https://acct.r2.cloudflarestorage.com/b/k?partNumber=2&uploadId=x", method: "PUT", headers: {}, expiresAt: AT };
+    roundTrips(PartLinkResponse, res);
+    refusesEach(PartLinkResponse, res, [{ headers: { authorization: "x" } }, { headers: null }]);
   });
 
   it("round trips the complete request and refuses repeated or missing parts", () => {

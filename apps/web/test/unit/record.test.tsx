@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Fetch } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
 import { clockText, copy, draft } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
+import { liveUpload } from "../../src/live-upload.ts";
 import { ROUTES } from "../../src/router.ts";
 import { Record } from "../../src/screens/Record.tsx";
 import { Send } from "../../src/screens/Send.tsx";
@@ -102,6 +104,96 @@ describe("Record screen", () => {
     await until(() => view.text().includes(copy.record.start));
     expect(await takes.latest()).toBeNull();
     await view.unmount();
+  });
+
+  it("never offers a walk still being checked as one not sent yet", async () => {
+    const deps = testDeps();
+    const takes = await deps.takes();
+    const sent = await takes.create("video/mp4", 1);
+    deps.sentWalks.add({ walkId: "walk-1", opens: "walk-1", takeId: sent.id, createdAt: 1 });
+    const view = await show(deps);
+    await until(() => view.text().includes(copy.record.start));
+    expect(view.text()).not.toContain(copy.record.saved);
+    expect(await takes.latest()).toMatchObject({ id: sent.id });
+    await view.unmount();
+  });
+
+  it("stops the saved walk's open upload when it is deleted, and deletes it when the server cannot be reached", async () => {
+    const aborted: string[] = [];
+    const deps = testDeps({
+      abortUpload: async (uploadId) => {
+        aborted.push(uploadId);
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    const takes = await deps.takes();
+    const old = await takes.create("video/mp4", 1);
+    await takes.saveUpload(old.id, { walkId: "w", uploadId: "u-open", partBytes: 10, partCount: 2, parts: [] });
+    const view = await show(deps);
+    await until(() => view.text().includes(copy.record.saved));
+    await click(view.host, copy.record.recordAgain);
+    await until(() => view.text().includes(copy.record.start));
+    expect(aborted).toEqual(["u-open"]);
+    expect(await takes.latest()).toBeNull();
+    await view.unmount();
+  });
+
+  it("aborts nothing when the saved walk has no upload open", async () => {
+    const aborted: string[] = [];
+    const deps = testDeps({ abortUpload: async (uploadId) => aborted.push(uploadId) });
+    await (await deps.takes()).create("video/mp4", 1);
+    const view = await show(deps);
+    await until(() => view.text().includes(copy.record.saved));
+    await click(view.host, copy.record.recordAgain);
+    await until(() => view.text().includes(copy.record.start));
+    expect(aborted).toEqual([]);
+    await view.unmount();
+  });
+});
+
+describe("upload while recording", () => {
+  const recordWith = async (agreed: boolean) => {
+    const chunks: number[] = [];
+    let stopped = 0;
+    const opened: string[] = [];
+    const prefs = memoryPrefs();
+    if (agreed) prefs.markAgreedToSend();
+    const deps = testDeps({
+      prefs,
+      live: (_takes, takeId) => {
+        opened.push(takeId);
+        return {
+          chunk: (data) => void chunks.push(data.size),
+          stop: async () => {
+            stopped += 1;
+          },
+        };
+      },
+    });
+    const view = await show(deps);
+    await until(() => view.text().includes(copy.record.start));
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("video") !== null);
+    await settle(() => FakeRecorder.last?.emit("walk video"));
+    await click(view.host, copy.record.stop);
+    await until(() => window.location.hash === ROUTES.send);
+    const take = await (await deps.takes()).latest();
+    await view.unmount();
+    return { chunks, stopped, opened, take };
+  };
+
+  it("sends each recorded chunk on while recording once this phone has agreed to send a walk, and stops it before the take is finished", async () => {
+    const { chunks, stopped, opened, take } = await recordWith(true);
+    expect(opened).toEqual([take?.id]);
+    expect(chunks).toEqual([10]);
+    expect(stopped).toBe(1);
+    expect(take).toMatchObject({ endedBy: "stopped", bytes: 10 });
+  });
+
+  it("sends nothing while recording on a phone that has never agreed to send a walk", async () => {
+    const { chunks, stopped, opened, take } = await recordWith(false);
+    expect([opened, chunks, stopped]).toEqual([[], [], 0]);
+    expect(take).toMatchObject({ endedBy: "stopped", bytes: 10 });
   });
 });
 
@@ -243,7 +335,7 @@ describe("Get ready and recording", () => {
     await click(view.host, copy.record.stop);
     await until(() => window.location.hash === ROUTES.send);
     const take = await (await deps.takes()).latest();
-    expect(take?.marks.pans).toEqual([{ side: "front", startMs: 900, endMs: 3900 }]);
+    expect(take?.marks.pans).toEqual([{ side: "front", corner: "front_left", startMs: 900, endMs: 3900 }]);
     expect(take?.marks.motion.every((sample) => sample.light === 133)).toBe(true);
     expect(meter.stop).toHaveBeenCalledOnce();
     await view.unmount();
@@ -317,6 +409,19 @@ const stopWalk = async (view: Awaited<ReturnType<typeof show>>) => {
 
 const saved = async (deps: Deps) => (await (await deps.takes()).latest())?.jurisdiction;
 
+const neverAnswers: Fetch = () => new Promise(() => undefined);
+
+const agreedLive = (over: Partial<Deps>) => {
+  const prefs = memoryPrefs();
+  prefs.markAgreedToSend();
+  return testDeps({
+    prefs,
+    live: (takes, takeId, ready) =>
+      liveUpload({ base: "https://api.test", send: neverAnswers, put: neverAnswers, takes, visitorId: () => "v" }, takeId, ready),
+    ...over,
+  });
+};
+
 const asksNothing = (view: Awaited<ReturnType<typeof show>>) => {
   expect(view.host.querySelector("[role=alert]")).toBeNull();
   expect([...view.host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(copy.record.tryAgain);
@@ -374,6 +479,19 @@ describe("the walk's fire rules from the phone's location", () => {
     says(view, copy.record.location.finding);
     await stopWalk(view);
     expect(await (await deps.takes()).latest()).toMatchObject({ endedBy: "stopped", jurisdiction: null });
+    await view.unmount();
+  });
+
+  it.each([
+    ["whose location never answers", "never"],
+    ["while the network never answers", "network"],
+  ] as const)("records, saves and finishes a walk %s on a phone that has agreed to send, with the real live upload", async (_name, held) => {
+    const location = heldLocate();
+    const deps = agreedLive(held === "never" ? { locate: location.locate } : {});
+    const view = await recordWalk(deps);
+    await settle(() => FakeRecorder.last?.emit("walk video"));
+    await stopWalk(view);
+    expect(await (await deps.takes()).latest()).toMatchObject({ endedBy: "stopped", bytes: 10 });
     await view.unmount();
   });
 

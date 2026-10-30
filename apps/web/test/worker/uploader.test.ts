@@ -17,6 +17,7 @@ const MiB = 1024 * 1024;
 const PART = DEFAULT_LIMITS.uploadPartBytes;
 const TOTAL = 2 * PART + MiB;
 const SESSION_MS = DEFAULT_LIMITS.uploadSessionTtlSeconds * 1000;
+const WALK_KEPT = { walkId: WALK, uploadId: null, partBytes: 0, partCount: 0, parts: [] };
 
 const worker: Fetch = (request) => exports.default.fetch(request);
 
@@ -195,16 +196,33 @@ describe("each refusal the Worker can give the phone", () => {
     await refusedWith("too_large", { ...take, bytes: maxWalkBytes(DEFAULT_LIMITS) + 1 });
   });
 
-  it("upload_in_progress when the walk already has an open upload", async () => {
+  it("no refusal when the walk already has an open upload whose start answer never reached the phone: the walk goes through that upload", async () => {
     await seedWalk(WALK, "uploading");
-    await uploadApi("https://api.test", worker).start(WALK, TOTAL);
-    await refusedWith("upload_in_progress", await recordTake());
+    const lost = await uploadApi("https://api.test", worker).start(WALK, TOTAL);
+    const take = await recordTake();
+    expect(await sendTake(deps(), take, WALK)).toEqual({ walkId: WALK });
+    expect((await latest()).upload?.uploadId).toBe(lost.value?.uploadId);
+    expect((await env.MEDIA.head(`originals/${WALK}/walk.mp4`))?.size).toBe(TOTAL);
+    expect(await walkState(WALK)).toBe("queued");
   });
 
-  it("not_mp4 for a take that is not MP4, and starts over next time", async () => {
+  it("no refusal when its own upload was stopped and the server holds another open upload for the walk: the restart sends through that one", async () => {
+    await seedWalk(WALK, "uploading");
+    const api = uploadApi("https://api.test", worker);
+    const take = await recordTake();
+    const mine = (await api.start(WALK, TOTAL)).value?.uploadId ?? "";
+    await takes.saveUpload(take.id, { walkId: WALK, uploadId: mine, partBytes: PART, partCount: 3, parts: [] });
+    await api.abort(mine);
+    const other = (await api.start(WALK, TOTAL)).value?.uploadId ?? "";
+    expect(await sendTake(deps(), take, WALK)).toEqual({ walkId: WALK });
+    expect((await latest()).upload?.uploadId).toBe(other);
+    expect(await walkState(WALK)).toBe("queued");
+  });
+
+  it("not_mp4 for a take that is not MP4, and starts over on the same walk next time", async () => {
     await seedWalk(WALK, "uploading");
     const kept = await refusedWith("not_mp4", await recordTake(TOTAL, false));
-    expect(kept.upload).toBeNull();
+    expect(kept.upload).toEqual(WALK_KEPT);
   });
 
   it("too_many_tries when storage keeps refusing a part, waiting longer between tries, then starts over and sends", async () => {
@@ -222,7 +240,7 @@ describe("each refusal the Worker can give the phone", () => {
     const tries = DEFAULT_LIMITS.uploadMaxTriesPerPart;
     expect(puts).toEqual(Array(tries).fill(1));
     expect(pauses).toEqual(Array.from({ length: tries }, (_, i) => RETRY_MS * (i + 1)));
-    expect(kept.upload).toBeNull();
+    expect(kept.upload).toEqual(WALK_KEPT);
     expect(await sendTake(deps(), kept, WALK)).toEqual({ walkId: WALK });
   });
 
@@ -239,7 +257,7 @@ describe("each refusal the Worker can give the phone", () => {
       return storage(request);
     };
     const kept = await refusedWith("invalid_part_number", { ...wrong, bytes: 4 * PART }, { put: counting });
-    expect(kept.upload).toBeNull();
+    expect(kept.upload).toEqual(WALK_KEPT);
     expect(await sendTake(deps(), kept, WALK)).toEqual({ walkId: WALK });
   });
 
@@ -259,31 +277,36 @@ describe("each refusal the Worker can give the phone", () => {
     expect((await latest()).upload?.walkId).toBe(WALK);
   });
 
-  it("upload_expired after the upload ran out of time, then starts over and sends", async () => {
+  const sentFresh = async (take: Take, old: string | null) => {
+    expect(await sendTake(deps(), take, WALK)).toEqual({ walkId: WALK });
+    const upload = (await latest()).upload;
+    expect(upload?.walkId).toBe(WALK);
+    expect(upload?.uploadId).not.toBe(old);
+    expect(upload?.parts.map((p) => p.partNumber)).toEqual([1, 2, 3]);
+    const stored = await env.MEDIA.get(`originals/${WALK}/walk.mp4`);
+    expect(stored?.size).toBe(TOTAL);
+    expect(await walkState(WALK)).toBe("queued");
+  };
+
+  it("upload_expired: a saved upload that ran out of time is stopped, and a fresh one on the same walk sends at once with no refusal", async () => {
     await seedWalk(WALK, "uploading");
     await refusedWith("offline", await recordTake(), { put: dropAt2 });
+    const old = (await latest()).upload?.uploadId ?? null;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + SESSION_MS + 1000);
-    const kept = await refusedWith("upload_expired", await latest());
-    expect(kept.upload).toBeNull();
-    expect(await sendTake(deps(), kept, WALK)).toEqual({ walkId: WALK });
+    await sentFresh(await latest(), old);
+    expect(await uploadApi("https://api.test", worker).abort(old ?? "")).toEqual({ code: "upload_aborted" });
   });
 
-  it("upload_aborted when the upload was stopped, and starts over next time", async () => {
+  it("upload_aborted: a saved upload that was stopped gives way to a fresh one on the same walk, sent at once with no refusal", async () => {
     await seedWalk(WALK, "uploading");
     await refusedWith("offline", await recordTake(), { put: dropAt2 });
     const open = await latest();
-    await worker(
-      new Request("https://api.test/api/uploads/abort", {
-        method: "POST",
-        body: JSON.stringify({ uploadId: open.upload?.uploadId }),
-      }),
-    );
-    const kept = await refusedWith("upload_aborted", open);
-    expect(kept.upload).toBeNull();
+    await uploadApi("https://api.test", worker).abort(open.upload?.uploadId ?? "");
+    await sentFresh(open, open.upload?.uploadId ?? null);
   });
 
-  it("unknown_upload when the saved upload is not known to the Worker", async () => {
+  it("unknown_upload: a saved upload the Worker does not know gives way to a fresh one on the same walk, sent at once with no refusal", async () => {
     await seedWalk(WALK, "uploading");
     const take = await recordTake();
     const saved = await takes.saveUpload(take.id, {
@@ -293,7 +316,22 @@ describe("each refusal the Worker can give the phone", () => {
       partCount: 3,
       parts: [],
     });
-    expect((await refusedWith("unknown_upload", saved)).upload).toBeNull();
+    await sentFresh(saved, "no-such-upload");
+  });
+
+  it("refuses a fresh upload that dies too, once, keeping the walk", async () => {
+    await seedWalk(WALK, "uploading");
+    const take = await recordTake();
+    const starts: string[] = [];
+    const gone: Fetch = async (request) => {
+      if (new URL(request.url).pathname === "/api/uploads/part")
+        return Response.json({ error: { code: "unknown_upload", message: "That upload does not exist." } }, { status: 404 });
+      const uploadId = `ghost-${starts.push("start")}`;
+      return Response.json({ uploadId, partBytes: PART, partCount: 3, expiresAt: new Date(Date.now() + SESSION_MS).toISOString() });
+    };
+    const kept = await refusedWith("unknown_upload", take, { api: uploadApi("https://api.test", gone) });
+    expect(kept.upload).toEqual(WALK_KEPT);
+    expect(starts).toHaveLength(2);
   });
 
   it("parts_invalid when a saved part does not match what storage holds, then starts over and sends", async () => {
@@ -307,7 +345,7 @@ describe("each refusal the Worker can give the phone", () => {
       parts: upload.parts.map((p) => (p.partNumber === 1 ? { ...p, etag: "0".repeat(32) } : p)),
     });
     const kept = await refusedWith("parts_invalid", tampered);
-    expect(kept.upload).toBeNull();
+    expect(kept.upload).toEqual(WALK_KEPT);
     expect(await sendTake(deps(), kept, WALK)).toEqual({ walkId: WALK });
   });
 });

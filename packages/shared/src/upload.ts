@@ -6,7 +6,7 @@ const MAX_PART_NUMBER = 10_000;
 export const UploadId = z.string().regex(/^[A-Za-z0-9._~+/=-]{1,1024}$/);
 export const PartNumber = z.int().min(1).max(MAX_PART_NUMBER);
 
-export const StartUploadRequest = z.strictObject({ walkId: Id, totalBytes: z.int().positive() });
+export const StartUploadRequest = z.strictObject({ walkId: Id, totalBytes: z.int().positive().nullable() });
 
 export const StartUploadResponse = z.strictObject({
   uploadId: UploadId,
@@ -15,12 +15,16 @@ export const StartUploadResponse = z.strictObject({
   expiresAt: Timestamp,
 });
 
-export const PartLinkRequest = z.strictObject({ uploadId: UploadId, partNumber: PartNumber });
+export const PartLinkRequest = z.strictObject({
+  uploadId: UploadId,
+  partNumber: PartNumber,
+  bytes: z.int().positive().optional(),
+});
 
 export const PartLinkResponse = z.strictObject({
   url: z.url({ protocol: /^https?$/ }),
   method: z.literal("PUT"),
-  headers: z.strictObject({ "content-length": z.string().regex(/^[1-9]\d{0,11}$/) }),
+  headers: z.strictObject({ "content-length": z.string().regex(/^[1-9]\d{0,11}$/).optional() }),
   expiresAt: Timestamp,
 });
 

@@ -1,8 +1,8 @@
 import { GAP_KINDS, HINTS_FOR, SIDES } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { copy, longDate } from "../../src/copy.ts";
-import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, fixFirstOf, fixOrder, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
-import type { Gap, ResultFinding, Side, WalkResults } from "../../src/results.ts";
+import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, fixFirstOf, fixOrder, overAYearOld, partsToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
+import type { Gap, ResultFinding, Side, SideGap, WalkResults } from "../../src/results.ts";
 import { feet, finding, walk } from "./result-fakes.ts";
 import { SETTLED_GAPS, SETTLED_SIDE } from "./settled.ts";
 
@@ -18,6 +18,25 @@ describe("verdictOf", () => {
     for (const side of ["front", "right", "back", "left"] as const)
       for (const kind of GAP_KINDS)
         expect(verdictOf(walk([], [{ side, kind, hint: HINTS_FOR[kind][0]! }])).kind, `${side} ${kind}`).toBe("incomplete");
+  });
+
+  it("lists only side gaps while the corner words are drafts, and never shows green with a corner gap", () => {
+    const side: Gap = { side: "left", kind: "dark", hint: "more_light" };
+    const corner: Gap = { side: "back_left", kind: "missing", hint: "pan_corner" };
+    expect(verdictOf(walk([], [corner, side]))).toEqual({ kind: "incomplete", gaps: [side] });
+    expect(verdictOf(walk([], [corner]))).toEqual({ kind: "so_far" });
+    expect(verdictOf(walk([finding("a")], [corner])).kind).toBe("fix");
+    expect(verdictOf(walk([], []))).toEqual({ kind: "ready" });
+  });
+
+  it("lists corner gaps too when the corner words are shown, sides first, and asks for each part once in order", () => {
+    const side: Gap = { side: "left", kind: "dark", hint: "more_light" };
+    const right: Gap = { side: "front_right", kind: "missing", hint: "pan_corner" };
+    const back: Gap = { side: "back_left", kind: "missing", hint: "pan_corner" };
+    expect(verdictOf(walk([], [right]), undefined, true)).toEqual({ kind: "incomplete", gaps: [right] });
+    expect(verdictOf(walk([finding("a")], [back, side, right]), () => true, true)).toEqual({ kind: "incomplete", gaps: [side, back, right] });
+    expect(partsToWalk([back, side, right, back])).toEqual(["left", "front_right", "back_left"]);
+    expect(verdictOf(walk([], []), undefined, true)).toEqual({ kind: "ready" });
   });
 
   it("is ready only with no gap and nothing blocking", () => {
@@ -188,21 +207,21 @@ describe("gap lines", () => {
   });
 });
 
-describe("sidesToWalk", () => {
-  const gap = (side: Side, kind: Gap["kind"] = "missing"): Gap => ({ side, kind, hint: HINTS_FOR[kind][0]! });
+describe("partsToWalk", () => {
+  const gap = (side: Side, kind: Gap["kind"] = "missing"): SideGap => ({ side, kind, hint: HINTS_FOR[kind][0] as SideGap["hint"] });
 
   it("names each gapped side once, in walking order", () => {
-    expect(sidesToWalk([gap("left"), gap("back", "dark"), gap("back", "not_checked"), gap("front")])).toEqual(["front", "back", "left"]);
-    expect(sidesToWalk([gap("right", "first_five_feet")])).toEqual(["right"]);
+    expect(partsToWalk([gap("left"), gap("back", "dark"), gap("back", "not_checked"), gap("front")])).toEqual(["front", "back", "left"]);
+    expect(partsToWalk([gap("right", "first_five_feet")])).toEqual(["right"]);
   });
 
   it("names no side when there is no gap", () => {
-    expect(sidesToWalk([])).toEqual([]);
+    expect(partsToWalk([])).toEqual([]);
   });
 
   it("names every side when every side is gapped, so the whole house is never asked for at once", () => {
-    expect(sidesToWalk(SIDES.map((side) => gap(side)))).toEqual([...SIDES]);
-    expect(sidesToWalk([...SIDES].reverse().map((side) => gap(side, "dark")))).toEqual([...SIDES]);
-    expect(sidesToWalk([...SIDES.slice(0, 3).map((side) => gap(side)), gap("front", "dark")])).toEqual(["front", "right", "back"]);
+    expect(partsToWalk(SIDES.map((side) => gap(side)))).toEqual([...SIDES]);
+    expect(partsToWalk([...SIDES].reverse().map((side) => gap(side, "dark")))).toEqual([...SIDES]);
+    expect(partsToWalk([...SIDES.slice(0, 3).map((side) => gap(side)), gap("front", "dark")])).toEqual(["front", "right", "back"]);
   });
 });

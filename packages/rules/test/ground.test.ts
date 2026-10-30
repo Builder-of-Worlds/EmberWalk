@@ -86,6 +86,26 @@ describe("groundFeet", () => {
     expect(groundFeet({ y: 0.5, ...LEVEL, tiltBelowHorizonDegrees: -90 })).toBeNull();
   });
 
+  it("accepts a very narrow lens and a camera held low", () => {
+    expect(depthFeet(0.5, { ...LEVEL, tiltBelowHorizonDegrees: 20, verticalFovDegrees: 0.5 })).not.toBeNull();
+    expect(depthFeet(0.5, { ...LEVEL, tiltBelowHorizonDegrees: 20, cameraHeightFeet: 0.5 })).not.toBeNull();
+    expect(groundFeet({ y: 0.5, ...LEVEL, tiltBelowHorizonDegrees: 20, cameraHeightFeet: 1 })).not.toBeNull();
+  });
+
+  it("spreads a camera tipped above the horizon by the tilt error each way", () => {
+    const view = { verticalFovDegrees: 60, cameraHeightFeet: 4.5 };
+    const range = groundFeet({ y: 1, ...view, tiltBelowHorizonDegrees: -10 })!;
+    const nearest = depthFeet(1, { ...view, tiltBelowHorizonDegrees: -10 + TILT_ERROR_DEGREES, cameraHeightFeet: 4.5 - HEIGHT_ERROR_FEET })!;
+    const farthest = depthFeet(1, { ...view, tiltBelowHorizonDegrees: -10 - TILT_ERROR_DEGREES, cameraHeightFeet: 4.5 + HEIGHT_ERROR_FEET })!;
+    expect(range.low).toBeCloseTo(nearest, 6);
+    expect(range.high).toBeCloseTo(farthest, 6);
+  });
+
+  it("returns null rather than throwing when the tilt error pushes a tilt of -89.9 past -90", () => {
+    expect(groundFeet({ y: 1, verticalFovDegrees: 179.9, cameraHeightFeet: 4.5, tiltBelowHorizonDegrees: -89.9 })).toBeNull();
+    expect(() => groundFeet({ y: 0.5, verticalFovDegrees: 179.9, cameraHeightFeet: 4.5, tiltBelowHorizonDegrees: 89.9 })).not.toThrow();
+  });
+
   it("refuses a field of view of 180 degrees, and a camera height of zero even for one depth", () => {
     expect(() => groundFeet({ y: 0.5, ...LEVEL, verticalFovDegrees: 180 })).toThrow(RangeError);
     expect(() => depthFeet(0.5, { ...LEVEL, cameraHeightFeet: 0 })).toThrow(RangeError);

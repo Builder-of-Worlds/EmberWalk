@@ -22,7 +22,8 @@ MAX_TURN_DEG = 15
 EASE_S = 0.75
 TURN_IN = 36
 PAN_TURN_S = 2
-SWEEP_DEG = {"side": 45, "corner": 60}
+SWEEP_DEG = 45
+PAN_SIDES = ("front", "right", "back", "left")
 WALKABLE = ("porch", "deck", "landing")
 PARTS = "emberwalk.route-parts/1"
 TUFT_TRIES = 16000
@@ -148,8 +149,8 @@ def _walk_at(tau, dur, dist):
     return top * (tau - start + start * start / (2 * ease) - late * late / (2 * ease)), min(1.0, tau / ease, (dur - tau) / ease)
 
 
-def _pan_at(tau, p, kind):
-    sweep_s, a = p["pan_s"] - 2 * PAN_TURN_S, SWEEP_DEG[kind]
+def _pan_at(tau, p):
+    sweep_s, a = p["pan_s"] - 2 * PAN_TURN_S, SWEEP_DEG
     if tau < PAN_TURN_S:
         k = _smooth(tau / PAN_TURN_S)
         return (180 - a) * k, k
@@ -196,16 +197,20 @@ def ground_cover(spec):
 
 
 def _timeline(spec, p, path):
+    lap = path["s"][-1]
     stops = []
     after = 0.0
     for pan in house.pans(spec, p["standoff_in"]):
+        if pan["kind"] != "side" or pan["side"] not in PAN_SIDES:
+            continue
         after = _stop_s(path, pan["at_in"], after)
         stops.append((after, pan))
-    events, t, at = [], 0.0, 0.0
-    for stop_s, pan in stops + [(path["s"][-1], None)]:
+    t = lap / p["speed_in_s"] + EASE_S
+    events, at = [{"kind": "loop", "t0": 0.0, "t1": t, "s0": 0.0, "s1": lap}], 0.0
+    for stop_s, pan in stops + [(lap, None)]:
         if stop_s - at > 1e-6:
             dur = (stop_s - at) / p["speed_in_s"] + EASE_S
-            events.append({"kind": "loop", "t0": t, "t1": t + dur, "s0": at, "s1": stop_s})
+            events.append({"kind": "walk", "t0": t, "t1": t + dur, "s0": at, "s1": stop_s})
             t += dur
         at = stop_s
         if pan is not None:
@@ -220,13 +225,13 @@ def _pose(i, p, path, corners, surface, events, turns):
     e = events[k]
     spun = 360.0 * turns[k]
     tilt = p["tilt_deg"]
-    if e["kind"] == "loop":
+    if e["kind"] != "pan":
         d, gait = _walk_at(min(t - e["t0"], e["t1"] - e["t0"]), e["t1"] - e["t0"], e["s1"] - e["s0"])
         at = e["s0"] + d
         heading = _wall_heading(path, corners, at) + spun
     else:
         at, gait = e["s0"], 0.0
-        swing, out = _pan_at(t - e["t0"], p, e["pan"]["kind"])
+        swing, out = _pan_at(t - e["t0"], p)
         heading = _wall_heading(path, corners, at) + spun + swing
         tilt += (p["pan_tilt_deg"] - p["tilt_deg"]) * out
     (x, y), edge = _locate(path, at)
@@ -262,12 +267,10 @@ def check_samples(spec, samples):
 
 def _part(e, fps):
     out = {"kind": e["kind"]}
-    if e["kind"] == "loop":
+    if e["kind"] != "pan":
         out["loop_in"] = [round(e["s0"], 6), round(e["s1"], 6)]
     else:
-        pan = e["pan"]
-        out.update({"side": pan["side"]} if pan["kind"] == "side" else {"corner": pan["sides"]})
-        out["bearing_deg"] = pan["bearing_deg"]
+        out.update(side=e["pan"]["side"], bearing_deg=e["pan"]["bearing_deg"])
     out.update(start_s=round(e["t0"], 6), end_s=round(e["t1"], 6), start_frame=round(e["t0"] * fps) + 1, end_frame=round(e["t1"] * fps))
     return out
 

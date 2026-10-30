@@ -1,4 +1,4 @@
-import type { MotionSample, Side } from "@emberwalk/shared";
+import { cornerBetween, type MotionSample, type Side } from "@emberwalk/shared";
 import type { Pan } from "../../src/take-store.ts";
 
 const EVERY = 0.5;
@@ -27,7 +27,7 @@ export const sideWalkTake = (): { durationMs: number; motion: MotionSample[]; pa
     for (let s = 0; s < STEP_OUT; s += EVERY) take(90 * k, 5, 140);
     const startMs = t * 1000;
     for (let s = 0; s < PAN; s += EVERY) take(90 * k - 60 + (120 * s) / PAN, 5, 160 - 10 * k);
-    pans.push({ side, startMs, endMs: t * 1000 });
+    pans.push({ side, corner: cornerBetween(side, PAN_SIDES[(k + 1) % 4]!), startMs, endMs: t * 1000 });
   }
   take(0, 5, 140);
   return { durationMs: t * 1000, motion, pans };

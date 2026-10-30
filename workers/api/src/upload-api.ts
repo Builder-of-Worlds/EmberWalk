@@ -6,9 +6,9 @@ import {
   StartUploadRequest,
   StartUploadResponse,
 } from "@emberwalk/shared";
-import type { Limits } from "@emberwalk/shared";
+import type { CompletedPart, Limits } from "@emberwalk/shared";
 import { presign } from "@emberwalk/sigv4";
-import { checkOpen, checkParts, nextTry, planUpload } from "./upload-rules.ts";
+import { checkOpen, checkOpenParts, checkParts, nextTry, planOpenUpload, planUpload } from "./upload-rules.ts";
 import { uploadLimits } from "./upload-limits.ts";
 import type { Refusal, Result, UploadRecord } from "./upload-rules.ts";
 import type { UploadStore } from "./upload-store.ts";
@@ -47,7 +47,6 @@ type ErrorCode =
   | "method_not_allowed"
   | "unknown_walk"
   | "walk_not_uploading"
-  | "upload_in_progress"
   | "unknown_upload"
   | "parts_invalid"
   | "not_mp4";
@@ -63,7 +62,6 @@ const STATUS: Record<ErrorCode, number> = {
   unknown_walk: 404,
   unknown_upload: 404,
   walk_not_uploading: 409,
-  upload_in_progress: 409,
   upload_completed: 409,
   upload_aborted: 409,
   upload_expired: 410,
@@ -83,7 +81,6 @@ const MESSAGE: Record<ErrorCode, string> = {
   unknown_walk: "That walk does not exist.",
   unknown_upload: "That upload does not exist.",
   walk_not_uploading: "That walk is not waiting for its video.",
-  upload_in_progress: "That walk already has an upload under way.",
   upload_completed: "That upload is already finished.",
   upload_aborted: "That upload was stopped. Start a new one.",
   upload_expired: "That upload ran out of time. Start a new one.",
@@ -110,7 +107,11 @@ type Schema<T> = {
   safeParse(input: unknown): { data?: T; error?: { issues: Issue[] } };
 };
 
-const FIELD_REFUSAL: Record<string, ErrorCode> = { totalBytes: "invalid_size", partNumber: "invalid_part_number" };
+const FIELD_REFUSAL: Record<string, ErrorCode> = {
+  totalBytes: "invalid_size",
+  partNumber: "invalid_part_number",
+  bytes: "invalid_size",
+};
 
 const refusalFor = (issue: Issue | undefined, body: unknown): ErrorCode => {
   const field = issue?.path[0];
@@ -156,12 +157,30 @@ export const createUploadApi = (deps: UploadDeps) => {
     if (state !== "uploading") throw new Refused("walk_not_uploading");
   };
 
+  const answer = (record: UploadRecord): Response =>
+    Response.json(
+      StartUploadResponse.parse({
+        uploadId: record.uploadId,
+        partBytes: record.partBytes,
+        partCount: record.partCount,
+        expiresAt: new Date(record.expiresAt).toISOString(),
+      }),
+    );
+
+  const resumable = (open: UploadRecord, totalBytes: number | null): boolean =>
+    (open.totalBytes === null || open.totalBytes === totalBytes) &&
+    Object.values(open.tries).every((used) => used < limits.maxTriesPerPart);
+
   const start = async (request: Request): Promise<Response> => {
     const { walkId, totalBytes } = await readBody(request, StartUploadRequest);
-    const plan = orRefuse(planUpload(totalBytes, limits));
+    const plan = orRefuse(totalBytes === null ? planOpenUpload(limits) : planUpload(totalBytes, limits));
     await requireUploadingWalk(walkId);
     const open = await store.openFor(walkId);
-    if (open !== null && checkOpen(open, deps.now()).refusal === undefined) throw new Refused("upload_in_progress");
+    if (open !== null && checkOpen(open, deps.now()).refusal === undefined) {
+      if (resumable(open, totalBytes)) return answer(open);
+      await bucket.resumeMultipartUpload(open.key, open.uploadId).abort();
+      await store.put({ ...open, status: "aborted" });
+    }
 
     const created = await bucket.createMultipartUpload(keyFor(walkId));
     const now = deps.now();
@@ -178,14 +197,7 @@ export const createUploadApi = (deps: UploadDeps) => {
       tries: {},
     };
     await store.put(record);
-    return Response.json(
-      StartUploadResponse.parse({
-        uploadId: record.uploadId,
-        partBytes: record.partBytes,
-        partCount: record.partCount,
-        expiresAt: new Date(record.expiresAt).toISOString(),
-      }),
-    );
+    return answer(record);
   };
 
   const signPart = async (request: Request): Promise<Response> => {
@@ -194,7 +206,7 @@ export const createUploadApi = (deps: UploadDeps) => {
     const now = deps.now();
     orRefuse(checkOpen(record, now));
     await requireUploadingWalk(record.walkId);
-    const attempt = orRefuse(nextTry(record, body.partNumber, now, limits));
+    const attempt = orRefuse(nextTry(record, body.partNumber, now, limits, body.bytes));
     await store.put(attempt.record);
 
     const expiresSeconds = Math.min(limits.linkTtlSeconds, Math.floor((record.expiresAt - now) / 1000));
@@ -243,16 +255,26 @@ export const createUploadApi = (deps: UploadDeps) => {
     return Response.json({ walkId, bytes });
   };
 
+  const checkedParts = (record: UploadRecord, listed: CompletedPart[]): { parts: CompletedPart[]; totalBytes: number } => {
+    if (record.totalBytes !== null) {
+      const checked = checkParts(record, listed);
+      if (checked.refusal !== undefined) throw new Refused("parts_invalid");
+      return { parts: checked.value, totalBytes: record.totalBytes };
+    }
+    const checked = checkOpenParts(record, listed, limits);
+    if (checked.refusal === "too_large") throw new Refused("too_large");
+    if (checked.refusal !== undefined) throw new Refused("parts_invalid");
+    return checked.value;
+  };
+
   const complete = async (request: Request): Promise<Response> => {
     const body = await readBody(request, CompleteUploadRequest);
     const record = await load(body.uploadId);
     if (record.status === "completed" && (await walks.state(record.walkId)) === "uploading") {
-      return queue(record.walkId, record.totalBytes);
+      return queue(record.walkId, record.totalBytes ?? 0);
     }
     orRefuse(checkOpen(record, deps.now()));
-    const checked = checkParts(record, body.parts);
-    if (checked.refusal !== undefined) throw new Refused("parts_invalid");
-    const parts = checked.value;
+    const { parts, totalBytes } = checkedParts(record, body.parts);
 
     try {
       await bucket.resumeMultipartUpload(record.key, record.uploadId).complete(parts);
@@ -260,12 +282,12 @@ export const createUploadApi = (deps: UploadDeps) => {
       throw new Refused("parts_invalid");
     }
     const stored = await bucket.head(record.key);
-    if (stored === null || stored.size !== record.totalBytes || !(await isMp4(record.key))) {
+    if (stored === null || stored.size !== totalBytes || !(await isMp4(record.key))) {
       await bucket.delete(record.key);
       await store.put({ ...record, status: "aborted" });
       throw new Refused("not_mp4");
     }
-    await store.put({ ...record, status: "completed" });
+    await store.put({ ...record, totalBytes, status: "completed" });
     return queue(record.walkId, stored.size);
   };
 

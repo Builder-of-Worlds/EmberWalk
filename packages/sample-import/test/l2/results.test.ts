@@ -13,6 +13,7 @@ import { resetAll } from "../../../../workers/pipeline/test/fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, type Sighting, harness } from "../../../../workers/pipeline/test/harness.ts";
 import { importWalk, type Fetch } from "../../src/index.ts";
 import { hostRender } from "./files.ts";
+import { getFixedStandIn } from "./get-fixed-stand-in.ts";
 
 const ORIGIN = "https://api.test";
 const VISITOR = "d".repeat(64);
@@ -36,6 +37,7 @@ const apiEnv = () => ({
   R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID ?? "",
   R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY ?? "",
   PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }) },
+  GET_FIXED: getFixedStandIn,
 });
 
 const phone: Fetch = (request) => api.fetch(request as Parameters<typeof api.fetch>[0], apiEnv());

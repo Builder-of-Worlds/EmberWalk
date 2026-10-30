@@ -10,9 +10,9 @@ export type HttpResponse = { status: number; retryAfter: string | null; text: st
 
 export type Transport = (req: HttpRequest) => Promise<HttpResponse>;
 
-export type FetchTransportOptions = { baseUrl: string; apiKey: string; fetch?: typeof fetch };
+export type FetchTransportOptions = { baseUrl: string; apiKey: string; fetch?: typeof fetch; timeoutMs?: number };
 
-export function fetchTransport({ baseUrl, apiKey, fetch: doFetch = fetch }: FetchTransportOptions): Transport {
+export function fetchTransport({ baseUrl, apiKey, fetch: doFetch = fetch, timeoutMs }: FetchTransportOptions): Transport {
   if (apiKey.trim() === "") throw new TypeError("the Meta API key is empty");
   const root = baseUrl.replace(/\/+$/, "");
   return async (req) => {
@@ -24,7 +24,8 @@ export function fetchTransport({ baseUrl, apiKey, fetch: doFetch = fetch }: Fetc
     } else if ("form" in req) {
       body = req.form;
     }
-    const res = await doFetch(`${root}${req.path}`, { method: req.method, headers, ...(body === undefined ? {} : { body }) });
+    const signal = timeoutMs === undefined ? {} : { signal: AbortSignal.timeout(timeoutMs) };
+    const res = await doFetch(`${root}${req.path}`, { method: req.method, headers, ...(body === undefined ? {} : { body }), ...signal });
     return { status: res.status, retryAfter: res.headers.get("retry-after"), text: await res.text() };
   };
 }

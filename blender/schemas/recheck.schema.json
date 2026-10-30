@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk recheck stills for the hero house's after scene",
+  "description": "One still per Required Now hazard of the before scene, rendered with the after scene from the before walk's camera pose at the frame where the hazard's mask area is largest. area_px is the hazard's mask area in the after still: 0 for a removed hazard, its new box's pixels for a fixed one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "synthetic", "label", "before", "scene", "stills"],
+  "properties": {
+    "schema": {"const": "emberwalk.recheck/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "before": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "stills": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hazard_id", "before_frame", "pose", "file", "sha256", "area_px"],
+        "properties": {
+          "hazard_id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+          "before_frame": {"type": "integer", "minimum": 1},
+          "pose": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pos_in", "heading_deg", "tilt_deg", "roll_deg"],
+            "properties": {
+              "pos_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "heading_deg": {"type": "number"},
+              "tilt_deg": {"type": "number"},
+              "roll_deg": {"type": "number"}
+            }
+          },
+          "file": {"type": "string", "pattern": "^synthetic-recheck-[a-z0-9]+(-[a-z0-9]+)*\\.png$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "area_px": {"type": "integer", "minimum": 0},
+          "box_px": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}}
+        }
+      }
+    }
+  }
+}

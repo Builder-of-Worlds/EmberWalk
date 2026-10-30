@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Concept, FindingLabel, PLANT_CONCEPTS } from "@emberwalk/shared";
-import { evaluate, loadState, rank, RULES, RulesRefusal, SEVERITY, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
-import { CASES, ZZ } from "./support.ts";
+import { evaluate, loadState, rank, RULES, RulesRefusal, SEVERITY, severityOf, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
+import { CASES, query, ZZ } from "./support.ts";
 
 type TruthHazard = { id: string; concept: string; distance_ft: number; band: string; contact: boolean; label: string; rule: string };
 const truth = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/test-yard/truth.json", import.meta.url), "utf8")) as {
@@ -108,16 +108,16 @@ describe("evaluate", () => {
 
   it('chimney and wall get a rule that makes findings for them: a chimney and a wall observation each give one finding with its citation', () => {
     const found = evaluate([seen({ id: "chimney", concept: "chimney", flags: ["near_chimney"] }, 0), seen({ id: "wall", concept: "house_wall" }, 0)], "ca");
-    expect(found.map((f) => [f.observationId, f.concept, f.band, f.label, f.citations])).toEqual([
+    expect(found.map((f) => [f.observationId, f.concept, f.band, f.label, f.citations.filter((c) => !c.startsWith("California"))])).toEqual([
       ["chimney", "chimney", "zone_0", "required_now", ["14 CCR 1299.03(a)(2)", "PRC 4291(a)(2)", "Gov. Code 51182(a)(2)"]],
       ["wall", "house_wall", "zone_0", "recommended", ["CAL FIRE Zone 0 guidance"]],
     ]);
   });
 
-  it("drops what no rule covers: a chimney with no branch near it, things past 100 feet, a covered wood pile past 5 feet", () => {
+  it("drops what no rule covers: a chimney past the house, things past 100 feet, a covered wood pile past 5 feet", () => {
     const found = evaluate(
       [
-        seen({ id: "chimney", concept: "chimney", contact: "yes" }, 0),
+        seen({ id: "chimney", concept: "chimney", contact: "yes" }, 12),
         seen({ id: "far", concept: "shed" }, 120),
         seen({ id: "covered", concept: "wood_pile", flags: ["covered"] }, 12),
         seen({ id: "fine", concept: "shrub", plantState: "alive", spacing: "ok" }, 20),
@@ -142,6 +142,14 @@ describe("evaluate", () => {
     expect(SEVERITY.map((s) => s.score)).toEqual([...SEVERITY.map((s) => s.score)].sort((a, b) => b - a));
   });
 
+  it("gives roof debris 8, patio furniture under a deck 6, a shed 5, a trash can 4 and an unlisted case 2", () => {
+    expect(severityOf(query({ concept: "roof_debris" }))).toBe(8);
+    expect(severityOf(query({ concept: "patio_furniture", flags: ["under_deck"] }))).toBe(6);
+    expect(severityOf(query({ concept: "shed" }))).toBe(5);
+    expect(severityOf(query({ concept: "trash_can" }))).toBe(4);
+    expect(severityOf(query({ concept: "patio_furniture" }))).toBe(2);
+  });
+
   it("refuses a negative distance, an unknown concept, a share or confidence outside 0 to 1, a blank or repeated id", () => {
     const bad: Observation[][] = [
       [seen({ id: "a", concept: "shed", distanceFeet: { low: -2, high: 1 } })],
@@ -152,6 +160,11 @@ describe("evaluate", () => {
       [seen({ id: "a", concept: "shed" }), seen({ id: "a", concept: "trash_can" })],
     ];
     for (const list of bad) expect(() => evaluate(list, "ca")).toThrow();
+  });
+
+  it("takes an id of 100 characters and refuses 101", () => {
+    expect(evaluate([seen({ id: "a".repeat(100), concept: "shed" }, 3)], "ca")[0]!.observationId).toHaveLength(100);
+    expect(() => evaluate([seen({ id: "a".repeat(101), concept: "shed" }, 3)], "ca")).toThrow();
   });
 });
 

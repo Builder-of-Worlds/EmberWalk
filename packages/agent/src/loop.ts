@@ -4,15 +4,18 @@ import {
   findingsForWalk,
   getJob,
   getWalk,
+  giveBackUse,
   jobCrews,
   logStep,
   MAX_JOB_CREWS,
   messagesForJob,
   saveDraft,
+  takeUse,
   saveJobCrews,
   setJobStatus,
+  type UseKind,
 } from "@emberwalk/db";
-import { MetaRefused, type MetaClient, sparkToolCall, type Tool, type ToolTurn, type ToolUse, withToolResults } from "@emberwalk/meta";
+import { MetaHttpError, MetaNetworkError, MetaRefused, type MetaClient, sparkToolCall, type Tool, type ToolTurn, type ToolUse, withToolResults } from "@emberwalk/meta";
 import type { AgentJob, Crew, Finding, Trade } from "@emberwalk/shared";
 import { lengthRefusal, missingReason, missingStills, type PhotoStore, withWork } from "./drafts.ts";
 import { AGENT_TOOLS, type DraftRequestArgs, type FindCrewsArgs } from "./tools.ts";
@@ -25,6 +28,7 @@ export const MAX_TURNS = 6;
 export const MAX_OUTPUT_TOKENS = 4000;
 export const REASONING_EFFORT = "medium";
 export const INPUT_TOKEN_ESTIMATE = 3000;
+export const MAX_DRAFT_RUNS_PER_JOB = 3;
 
 export type CrewDirectory = { near(trade: Trade, zip: string, n: number): Promise<Crew[]> };
 
@@ -44,6 +48,13 @@ export class AgentOff extends Error {
   constructor() {
     super("the Get It Fixed agent is off");
     this.name = "AgentOff";
+  }
+}
+
+export class RateLimited extends Error {
+  constructor(what: string) {
+    super(`${what} has reached its limit`);
+    this.name = "RateLimited";
   }
 }
 
@@ -135,6 +146,38 @@ export async function runTurns(t: Turns): Promise<TurnsEnd> {
   return { ended: "turn_cap", why: `stopped at the cap of ${MAX_TURNS} requests`, requests };
 }
 
+const isOutage = (err: unknown): boolean => err instanceof MetaHttpError || err instanceof MetaNetworkError || (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError"));
+
+export async function giveBackOnOutage<T>(deps: Pick<AgentDeps, "client" | "db">, kind: UseKind, subjectId: string, run: (client: AgentDeps["client"]) => Promise<T>): Promise<T> {
+  let answered = false;
+  const client: AgentDeps["client"] = {
+    call: async (call) => {
+      const result = await deps.client.call(call);
+      answered = true;
+      return result;
+    },
+  };
+  try {
+    return await run(client);
+  } catch (err) {
+    if (!answered && isOutage(err)) await giveBackUse(deps.db, kind, subjectId);
+    throw err;
+  }
+}
+
+export type KeptCrews = { crews: Crew[]; detail: string };
+
+export async function keepCrews(deps: Pick<AgentDeps, "db" | "directory">, job: AgentJobRecord, synthetic: boolean): Promise<KeptCrews> {
+  const offered = await deps.directory.near(job.trade, job.zip, MAX_JOB_CREWS);
+  const real = synthetic ? offered.filter((c) => !c.sample) : [];
+  const crews = offered.filter((c) => !real.includes(c)).slice(0, MAX_JOB_CREWS);
+  if (crews.length > 0) await saveJobCrews(deps.db, job.id, crews);
+  const notes = [`kept ${crews.length} of ${offered.length} crews the directory gave`];
+  if (real.length > 0) notes.push(`dropped ${real.length} that are not samples, since this is a synthetic walk`);
+  if (crews.length < MAX_JOB_CREWS) notes.push(`fewer than ${MAX_JOB_CREWS}`);
+  return { crews, detail: notes.join("; ") };
+}
+
 export async function runJob(deps: AgentDeps, jobId: string): Promise<JobOutcome> {
   if (deps.enabled !== true) throw new AgentOff();
   const { db } = deps;
@@ -144,8 +187,11 @@ export async function runJob(deps: AgentDeps, jobId: string): Promise<JobOutcome
   if (walk === null) throw new DbRefused(`walk ${job.walkId} does not exist`);
   const findings = (await findingsForWalk(db, job.walkId)).filter((f) => job.findingIds.includes(f.id));
   let crews = await jobCrews(db, job.id);
-  let searched = crews.length > 0;
+  const picked = crews.length > 0;
+  let searched = false;
   const drafted = new Set((await messagesForJob(db, job.id)).map((m) => m.crewId));
+  if (picked && crews.every((c) => drafted.has(c.id))) return { jobId: job.id, status: job.status, ended: "finished", requests: 0, drafts: drafted.size };
+  if (!(await takeUse(db, "draft_run", job.id, MAX_DRAFT_RUNS_PER_JOB))) throw new RateLimited(`drafting for job ${job.id}`);
 
   const at = () => deps.now().toISOString();
   const step = stepLog(deps, job.id);
@@ -155,14 +201,11 @@ export async function runJob(deps: AgentDeps, jobId: string): Promise<JobOutcome
     if (args.trade !== job.trade) return refuse(`this job is for ${job.trade}, not ${args.trade}`);
     if (args.zip !== job.zip) return refuse(`this job is in ZIP ${job.zip}, not ${args.zip}`);
     searched = true;
-    const offered = await deps.directory.near(job.trade, job.zip, MAX_JOB_CREWS);
-    const real = walk.synthetic ? offered.filter((c) => !c.sample) : [];
-    crews = offered.filter((c) => !real.includes(c)).slice(0, MAX_JOB_CREWS);
-    if (crews.length > 0) await saveJobCrews(db, job.id, crews);
-    const notes = [`kept ${crews.length} of ${offered.length} crews the directory gave`];
-    if (real.length > 0) notes.push(`dropped ${real.length} that are not samples, since this is a synthetic walk`);
-    if (crews.length < MAX_JOB_CREWS) notes.push(`fewer than ${MAX_JOB_CREWS}`);
-    return { ran: true, output: { crews: crews.map((c) => ({ id: c.id, name: c.name, channels: channelsOf(c) })) }, detail: notes.join("; ") };
+    const output = () => ({ crews: crews.map((c) => ({ id: c.id, name: c.name, channels: channelsOf(c) })) });
+    if (picked) return { ran: true, output: output(), detail: `gave the ${crews.length} crews already picked for this job` };
+    const kept = await keepCrews(deps, job, walk.synthetic);
+    crews = kept.crews;
+    return { ran: true, output: output(), detail: kept.detail };
   };
 
   const draftRequest = async (args: DraftRequestArgs): Promise<UseResult> => {
@@ -184,18 +227,20 @@ export async function runJob(deps: AgentDeps, jobId: string): Promise<JobOutcome
 
   const use = (u: ToolUse): Promise<UseResult> => (u.name === "find_crews" ? findCrews(u.args as FindCrewsArgs) : draftRequest(u.args as DraftRequestArgs));
 
-  const end = await runTurns({
-    client: deps.client,
-    walkId: job.walkId,
-    content: walk.synthetic ? "synthetic" : "real",
-    instructions: INSTRUCTIONS,
-    input: [userText(jobText(job, findings))],
-    tools: AGENT_TOOLS,
-    use,
-    step,
-  });
+  const end = await giveBackOnOutage(deps, "draft_run", job.id, (client) =>
+    runTurns({
+      client,
+      walkId: job.walkId,
+      content: walk.synthetic ? "synthetic" : "real",
+      instructions: INSTRUCTIONS,
+      input: [userText(jobText(job, findings))],
+      tools: AGENT_TOOLS,
+      use,
+      step,
+    }),
+  );
   const drafts = (await messagesForJob(db, job.id)).length;
-  const status = drafts > 0 ? "waiting_on_homeowner" : "planning";
+  const status = job.status === "planning" && drafts > 0 ? "waiting_on_homeowner" : job.status;
   const left = drafts > 0 ? `${drafts} drafts wait for the homeowner` : "no draft, so the job stays in planning";
   await step("finish", "", end.ended === "finished", `${end.why}; ${left}`);
   await setJobStatus(db, job.id, status, at());

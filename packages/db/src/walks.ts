@@ -62,29 +62,49 @@ export const NewWalk = Walk.pick({ id: true, visitorId: true, language: true, ju
 
 export type NewWalk = z.input<typeof NewWalk>;
 
-export const createWalk = async (db: D1Database, input: NewWalk): Promise<WalkRecord> => {
+export class WalkLimitReached extends Error {
+  constructor(visitorId: string) {
+    super(`visitor ${visitorId} has started as many walks as allowed today`);
+    this.name = "WalkLimitReached";
+  }
+}
+
+export type DailyCap = { since: string; most: number };
+
+const INSERT_WALK =
+  "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic) SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?";
+const UNDER_CAP =
+  " WHERE (SELECT COUNT(*) FROM walks WHERE visitor_id = ? AND part_of IS NULL AND id NOT IN (SELECT walk_id FROM walk_parts) AND synthetic = 0 AND state <> 'failed' AND created_at >= ?) < ?";
+const INSERT_PART = "INSERT INTO walk_parts (walk_id, part_of, part) SELECT ?, ?, ? WHERE changes() = 1";
+
+export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap): Promise<WalkRecord> => {
   const walk = NewWalk.parse(input);
-  const result = await db
-    .prepare(
-      "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic, part_of, part_side) VALUES (?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(
-      walk.id,
-      walk.visitorId,
-      walk.language,
-      walk.jurisdiction,
-      walk.device.camera,
-      walk.device.width,
-      walk.device.height,
-      walk.synthetic ? 1 : 0,
-      walk.partOf?.walkId ?? null,
-      walk.partOf?.side ?? null,
-    )
-    .run();
+  const values = [
+    walk.id,
+    walk.visitorId,
+    walk.language,
+    walk.jurisdiction,
+    walk.device.camera,
+    walk.device.width,
+    walk.device.height,
+    walk.synthetic ? 1 : 0,
+  ];
+  const insert =
+    cap === undefined
+      ? db.prepare(`${INSERT_WALK} WHERE true ON CONFLICT (id) DO NOTHING`).bind(...values)
+      : db.prepare(`${INSERT_WALK}${UNDER_CAP} ON CONFLICT (id) DO NOTHING`).bind(...values, walk.visitorId, cap.since, cap.most);
+  const parts = walk.partOf === null ? [] : [db.prepare(INSERT_PART).bind(walk.id, walk.partOf.walkId, walk.partOf.side)];
+  const result = (await db.batch([insert, ...parts]))[0]!;
+  if (cap !== undefined && result.meta.changes === 0 && (await getWalk(db, walk.id)) === null) throw new WalkLimitReached(walk.visitorId);
   requireOne(result.meta.changes, walk.id, "new");
   const created = await getWalk(db, walk.id);
   if (created === null) throw new DbRefused(`walk ${walk.id} was not stored`);
   return created;
+};
+
+export const markWalkReal = async (db: D1Database, walkId: string): Promise<void> => {
+  const result = await db.prepare("UPDATE walks SET synthetic = 0 WHERE id = ?").bind(Id.parse(walkId)).run();
+  requireOne(result.meta.changes, walkId, "stored");
 };
 
 export const claimWalk = async (db: D1Database, walkId: string): Promise<boolean> => {

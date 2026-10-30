@@ -28,6 +28,8 @@
     "was the risk of damage or destruction when burnable material covered more than a quarter of the first five feet around a home.",
     "IBHS surveyed 252 buildings and ran 17 controlled tests on plants in that zone.",
     "IBHS findings, Dec. 10th, 2025; IBHS Zone 0 research",
+    "Under California's Safer from Wildfires rule, in force since October 2022, insurers must offer lower premiums for listed safety work, like clearing the first five feet.",
+    "California Code of Regulations, title 10, section 2644.9.",
     "Insurance",
     "Proof you did the work",
     "Since October 2022, California's Safer from Wildfires rule has required insurers to reward listed wildfire safety work in their rates, including keeping the first five feet around your home clear and meeting the state's defensible space law.",
@@ -76,9 +78,11 @@
     "EmberWalk checks what it sees against California's defensible space rules, zone by zone, and lists every problem with the rule behind it.",
     "Fix what matters first",
     "Each item is marked Required Now or Recommended, starting with what's closest to your home. Mark each one planned or done as you go.",
+    "Film one walk: EmberWalk guides you around the house",
     "Your results, and any side of the house the walk missed",
     "Each finding: what to do, how urgent, and your progress",
     "After the walk",
+    "It goes in order: you walk, you get your list, and each step after it shows here when it is built.",
     "No calling around. Nothing goes out without your okay.",
     "Walk",
     "Your list",
@@ -101,6 +105,10 @@
     "Which describes you best?",
     "We'll email you about EmberWalk's launch and updates. Privacy Policy",
     "Questions: hello@emberwalk.app"
+  ],
+  "held": [
+    "We line up the work, so you don't have to",
+    "No calling around. No chasing quotes. EmberWalk finds licensed crews near you, sends them exactly what needs doing, and keeps following up until the work gets done. Nothing goes out without your okay."
   ],
   "placeholder": "you@example.com",
   "options": [

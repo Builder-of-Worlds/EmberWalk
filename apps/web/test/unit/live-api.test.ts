@@ -45,6 +45,14 @@ describe("apiResults", () => {
     expect(verdictOf(results!)).toEqual({ kind: "incomplete", gaps });
   });
 
+  it("brings the drawing's pins onto the phone, and reads a body without pins as none", async () => {
+    const pins = [{ findingId: liveFindingId(1), side: "back", band: "zone_2", position: 0.4, feet: 40 }] as const;
+    const { walks } = serving(() => Response.json(liveBody(LIVE_WALK, 2, { pins: [...pins] })));
+    expect((await apiResults(walks, BASE)(LIVE_WALK))?.pins).toEqual(pins);
+    const bare = serving(() => Response.json(liveBody(LIVE_WALK, 2)));
+    expect((await apiResults(bare.walks, BASE)(LIVE_WALK))?.pins ?? []).toEqual([]);
+  });
+
   it("gives null for a walk that is unknown or not done yet", async () => {
     for (const [code, status] of [["unknown_walk", 404], ["walk_not_done", 409]] as const) {
       const { walks } = serving(() => refusal(code, status));

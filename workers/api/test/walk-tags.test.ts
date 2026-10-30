@@ -63,8 +63,21 @@ describe("adding tags to a walk", () => {
     expect(reply.json).toEqual({ walkId: WALK, tags: sent.length });
     const kept = await tagsForWalk(env.DB, WALK);
     expect(kept).toEqual(sent);
-    expect(kept.map((t) => `${t.kind} ${t.label}`).slice(-4)).toEqual(["pan front", "pan left", "pan back", "pan right"]);
+    expect(kept.map((t) => `${t.kind} ${t.label}`).slice(-4)).toEqual(["pan front left corner", "pan back left corner", "pan back right corner", "pan front right corner"]);
     expect(kept.every((t) => t.samples.every((s) => typeof s.light === "number"))).toBe(true);
+  });
+
+  it("stores the light readings of a guided walk's tags, which carry no compass samples, and reads them back per tag", async () => {
+    const sent = [
+      tag(1, { label: "front", samples: [], light: [{ t: 1, light: 180 }, { t: 1.1, light: 175.5 }] }),
+      tag(2, { label: "left", samples: [], light: [{ t: 2, light: 12 }] }),
+      tag(3, { label: "back", samples: [] }),
+    ];
+    const reply = await post(WALK, { tags: sent });
+    expect(reply.json).toEqual({ walkId: WALK, tags: 3 });
+    const kept = await tagsForWalk(env.DB, WALK);
+    expect(kept).toEqual(sent);
+    expect(kept.map((t) => t.light?.length)).toEqual([2, 1, undefined]);
   });
 
   it("leaves the walk waiting for its video", async () => {
@@ -127,6 +140,8 @@ describe("refusing a bad tags request", () => {
     ["tags that are not a list", { tags: tag(1) }],
     ["a field beside tags", { tags: [tag(1)], extra: true }],
     ["a tag that ends before it starts", { tags: [tag(1, { startSeconds: 5, endSeconds: 5 })] }],
+    ["a light reading above 255", { tags: [tag(1, { light: [{ t: 1, light: 256 }] })] }],
+    ["a light reading with a compass heading", { tags: [tag(1, { light: [{ t: 1, light: 9, headingDegrees: 3 } as never] })] }],
     ["a property line on a loop tag", { tags: [tag(1, { propertyLine: { t: 1, at: { x: 0.1, y: 0.1 } } })] }],
     ["a tilt out of range", { tags: [tag(1, { samples: [{ t: 0, tiltDegrees: 200, headingDegrees: 0 }] })] }],
     ["a light reading out of range", { tags: [tag(1, { samples: [{ t: 0, tiltDegrees: 0, headingDegrees: 0, light: 256 }] })] }],

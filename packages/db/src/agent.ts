@@ -1,6 +1,6 @@
 import { AgentJob, Crew, FollowUp, Id, OutgoingMessage, Text, Timestamp, Zip } from "@emberwalk/shared";
 import { z } from "zod";
-import { DbRefused } from "./errors.ts";
+import { CapReached, DbRefused } from "./errors.ts";
 
 export const MAX_JOB_CREWS = 3;
 
@@ -183,12 +183,28 @@ export const editDraft = async (db: D1Database, messageId: string, change: { sub
   requireOne(result.meta.changes, `message ${messageId} is not a draft`);
 };
 
-export const approveMessage = async (db: D1Database, messageId: string, at: string): Promise<void> => {
-  const result = await db
-    .prepare("UPDATE agent_messages SET status = 'approved', approved_at = ? WHERE id = ? AND status = 'draft'")
-    .bind(Timestamp.parse(at), Id.parse(messageId))
-    .run();
-  requireOne(result.meta.changes, `message ${messageId} is not a draft waiting for approval`);
+export const Approval = z.strictObject({ visitorId: z.string().regex(/^[0-9a-f]{64}$/), photoKeys: z.array(z.string().min(1).max(420)).min(1).max(50) });
+export type Approval = z.infer<typeof Approval>;
+
+const UNDER_EMAIL_CAP =
+  "WHERE (SELECT channel FROM agent_messages WHERE id = ?) <> 'email' OR (SELECT count(*) FROM message_approvals a JOIN agent_messages m ON m.id = a.message_id WHERE a.visitor_id = ? AND m.channel = 'email' AND substr(a.approved_at, 1, 10) = ?) < ?";
+
+export const approveMessage = async (db: D1Database, messageId: string, at: string, approval: Approval, emailsPerDay = Number.MAX_SAFE_INTEGER): Promise<void> => {
+  const by = Approval.parse(approval);
+  const id = Id.parse(messageId);
+  const when = Timestamp.parse(at);
+  const results = await db
+    .batch([
+      db
+        .prepare(`INSERT INTO message_approvals (message_id, visitor_id, approved_at, photo_keys) SELECT ?, ?, ?, ? ${UNDER_EMAIL_CAP}`)
+        .bind(id, by.visitorId, when, JSON.stringify(by.photoKeys), id, by.visitorId, when.slice(0, 10), z.int().min(1).parse(emailsPerDay)),
+      db.prepare("UPDATE agent_messages SET status = 'approved', approved_at = ? WHERE id = ? AND status = 'draft' AND EXISTS (SELECT 1 FROM message_approvals WHERE message_id = ?)").bind(when, id, id),
+    ])
+    .catch((error: unknown) => {
+      throw new DbRefused(`message ${messageId} was not approved: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  if (results[0]?.meta.changes === 0) throw new CapReached(`message ${messageId} was not approved: ${emailsPerDay} emails are approved for this visitor today`);
+  requireOne(results[1]?.meta.changes ?? 0, `message ${messageId} is not a draft waiting for approval`);
 };
 
 export const markSent = async (db: D1Database, messageId: string, at: string, how: z.infer<typeof SentHow>): Promise<void> => {

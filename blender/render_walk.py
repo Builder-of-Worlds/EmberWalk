@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import bpy
 
-from ewscene import paths
+from ewscene import output, paths
 
 
 def main():
@@ -20,13 +20,19 @@ def main():
     parser.add_argument("--still", type=int)
     args = parser.parse_args(paths.script_args())
     scene = bpy.context.scene
+    try:
+        output.built(scene, bpy.data.filepath)
+        if args.still is None:
+            output.video(scene.render)
+    except output.OutputError as e:
+        print("EW_ERROR %s" % e, file=sys.stderr)
+        sys.exit(3)
     scene.eevee.taa_render_samples = args.samples
     out = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     started = time.monotonic()
     if args.still is not None:
-        scene.render.image_settings.media_type = "IMAGE"
-        scene.render.image_settings.file_format = "PNG"
+        output.png(scene.render)
         scene.frame_set(args.still)
         scene.render.filepath = out
         bpy.ops.render.render(write_still=True)

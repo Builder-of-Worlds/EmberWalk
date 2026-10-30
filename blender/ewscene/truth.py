@@ -75,6 +75,14 @@ def _check_box(where, hit, width, height):
         raise MaskPassError("%s: area_px %s does not fit a box of %d px" % (where, area, (right - left) * (bottom - top)))
 
 
+def _findings(doc):
+    return doc["hazards"] + doc.get("structure_hazards", [])
+
+
+def _ids(doc):
+    return {h["id"] for h in _findings(doc)}
+
+
 def _check_pass(mask_pass, doc, walk):
     if not isinstance(mask_pass, dict) or mask_pass.get("schema") != PASS_SCHEMA:
         raise MaskPassError("not an %s document" % PASS_SCHEMA)
@@ -84,7 +92,7 @@ def _check_pass(mask_pass, doc, walk):
     frames = mask_pass.get("frames")
     if not isinstance(frames, list) or [f.get("frame") if isinstance(f, dict) else None for f in frames] != list(range(1, walk["frame_count"] + 1)):
         raise MaskPassError("frames must run 1 to %d with none missing" % walk["frame_count"])
-    ids = {h["id"] for h in doc["hazards"]}
+    ids = _ids(doc)
     for f in frames:
         found = f.get("boxes")
         if not isinstance(found, dict) or set(found) != ids:
@@ -94,13 +102,30 @@ def _check_pass(mask_pass, doc, walk):
                 _check_box("frame %d, %s" % (f["frame"], hazard_id), hit, cam["width_px"], cam["height_px"])
 
 
+def without_ids(mask_pass, doc, names):
+    """The pass minus the boxes of the ids in names that the doc no longer lists.
+
+    Any other id is left in, so the check still refuses it."""
+    frames = mask_pass.get("frames") if isinstance(mask_pass, dict) else None
+    if not isinstance(frames, list):
+        return mask_pass
+    keep = _ids(doc)
+    out = dict(mask_pass)
+    out["frames"] = [
+        dict(f, boxes={k: v for k, v in f["boxes"].items() if k in keep or k not in names})
+        if isinstance(f, dict) and isinstance(f.get("boxes"), dict) else f
+        for f in frames
+    ]
+    return out
+
+
 def attach_boxes(doc, mask_pass, walk):
     _check_pass(mask_pass, doc, walk)
     samples = walk["samples"]
     out = json.loads(json.dumps(doc))
     out["visible_rule"] = VISIBLE_RULE_MASK
     out["box_source"] = BOX_SOURCE
-    for h in out["hazards"]:
+    for h in _findings(out):
         rows = [(f["frame"], f["boxes"][h["id"]]) for f in mask_pass["frames"] if f["boxes"][h["id"]] is not None]
         h["frame_boxes"] = [
             {"frame": n, "t": samples[n - 1]["t"], "box_px": hit["box_px"], "area_px": hit["area_px"]} for n, hit in rows

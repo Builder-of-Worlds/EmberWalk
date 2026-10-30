@@ -12,16 +12,19 @@ export const CONTACT_MARGIN = 0.06;
 export const MERGE_HEADING_DEGREES = 30;
 export const CHIMNEY_FEET = 10;
 export const MAX_TRACKS = 16;
+export const MASK_BANDS = 32;
 
 type Box = [number, number, number, number];
 type Frame = { frame: number; box: Box; confidence: number };
 type Contacted = z.infer<typeof Contact>;
+type Bands = (number | null)[];
+type Masks = Record<string, Record<number, Bands>>;
 
 export type Proof = { clipId: string; frame: number; box: Box; confidence: number; inside: boolean };
 export type Kept = { observation: Observation; trackIds: string[]; proof: Proof; notes: string[] };
 export type Dropped = { trackIds: string[]; reason: string };
 export type Observed = { kept: Kept[]; dropped: Dropped[] };
-export type ObserveInput = { clips: Clip[]; tracks: Track[]; tags: Tag[]; startByClip: Record<string, number> };
+export type ObserveInput = { clips: Clip[]; tracks: Track[]; tags: Tag[]; startByClip: Record<string, number>; masks?: Masks };
 
 type Candidate = {
   tracks: Track[];
@@ -34,7 +37,9 @@ type Candidate = {
   notes: string[];
 };
 
-const NEVER: readonly Concept[] = ["house_wall", "chimney"];
+const NEVER: readonly Concept[] = ["house_wall"];
+const ON_THE_HOUSE: readonly Concept[] = ["chimney", "wood_deck"];
+const AT_HOUSE: FeetRange = { low: 0, high: 0 };
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -59,7 +64,7 @@ const turn = (from: number, to: number) => Math.abs((((to - from) % 360) + 540) 
 const hull = (boxes: Box[]): Box | null =>
   boxes.length === 0
     ? null
-    : [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))];
+    : [Math.min(...boxes.map(([x0]) => x0)), Math.min(...boxes.map(([, y0]) => y0)), Math.max(...boxes.map(([, , x1]) => x1)), Math.max(...boxes.map(([, , , y1]) => y1))];
 
 const boxesOn = (tracks: Track[], concept: Concept): Map<number, Box> => {
   const byFrame = new Map<number, Box[]>();
@@ -80,6 +85,41 @@ export const contactOf = (concept: Concept, frames: Frame[], walls: Map<number, 
   return "no";
 };
 
+const checkMasks = (masks: Masks, ids: Set<string>) => {
+  for (const [id, frames] of Object.entries(masks)) {
+    if (!ids.has(id)) throw new Error(`masks for a track not given: ${id}`);
+    for (const [frame, row] of Object.entries(frames)) {
+      if (row.length !== MASK_BANDS) throw new Error(`the mask of track ${id} on frame ${frame} needs ${MASK_BANDS} bands`);
+      if (row.some((v) => v !== null && !(v >= 0 && v <= 1))) throw new Error(`the mask of track ${id} on frame ${frame} has a row outside 0 to 1`);
+    }
+  }
+};
+
+const lower = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b));
+
+const wallMasksOn = (tracks: Track[], masks: Masks): Map<number, Bands> => {
+  const byFrame = new Map<number, Bands>();
+  for (const track of tracks.filter((t) => t.concept === "house_wall"))
+    for (const [key, row] of Object.entries(masks[track.id] ?? {})) {
+      const held = byFrame.get(Number(key));
+      byFrame.set(Number(key), held === undefined ? row : row.map((v, band) => lower(v, held[band] ?? null)));
+    }
+  return byFrame;
+};
+
+export const maskContactOf = (frames: Frame[], own: Record<number, Bands> | undefined, walls: Map<number, Bands>): Contacted | null => {
+  const gaps = frames.flatMap((f) => {
+    const mine = own?.[f.frame];
+    const wall = walls.get(f.frame);
+    if (mine === undefined || wall === undefined) return [];
+    return [mine.flatMap((v, band) => (v === null || wall[band] == null ? [] : [Math.abs(v - wall[band]!)]))];
+  });
+  if (gaps.length < MIN_FRAMES) return null;
+  const shared = gaps.filter((g) => g.length > 0);
+  if (shared.filter((g) => g.some((gap) => gap <= CONTACT_MARGIN)).length >= MIN_FRAMES) return "yes";
+  return shared.length >= MIN_FRAMES ? "no" : "not_checked";
+};
+
 const horizontalFov = (clip: Clip) => verticalFov({ width: clip.height, height: clip.width });
 
 export function observe(input: ObserveInput): Observed {
@@ -87,6 +127,8 @@ export function observe(input: ObserveInput): Observed {
   const tracks = input.tracks.map((t) => TrackSchema.parse(t));
   const tags = input.tags.map((t) => TagSchema.parse(t));
   if (new Set(tracks.map((t) => t.id)).size !== tracks.length) throw new Error("every track needs its own id");
+  const masks = input.masks ?? {};
+  checkMasks(masks, new Set(tracks.map((t) => t.id)));
   for (const track of tracks) {
     if (!clips.has(track.clipId)) throw new Error(`track ${track.id} comes from a clip not given: ${track.clipId}`);
     if (!(input.startByClip[track.clipId]! >= 0)) throw new Error(`clip ${track.clipId} has no start in the walk`);
@@ -136,17 +178,22 @@ export function observe(input: ObserveInput): Observed {
       notes.push("placed on frames cut off by the picture's edge");
     }
     const walls = boxesOn(inClip(clip), "house_wall");
-    const contact = contactOf(track.concept, frames, walls);
-    const placed = frames.flatMap((f) => {
-      const view = viewAt(clip, f.frame);
-      if (view === null) return [];
-      const ground = groundFeet({ y: f.box[3], ...view });
-      if (ground === null) return [];
-      if (clip.kind === "pan") return homeFeet === null ? [] : [{ ground, wall: feetFromWall({ kind: "pan", y: f.box[3], homeFeet }, view)! }];
-      const wall = walls.get(f.frame);
-      const fromWall = wall === undefined ? null : feetFromWall({ kind: "loop", y: f.box[3], wallY: wall[3] }, view);
-      return fromWall === null ? [] : [{ ground, wall: fromWall }];
-    });
+    const onHouse = ON_THE_HOUSE.includes(track.concept);
+    const contact = onHouse
+      ? "not_checked"
+      : (maskContactOf(frames, masks[track.id], wallMasksOn(inClip(clip), masks)) ?? contactOf(track.concept, frames, walls));
+    const placeFrames = () =>
+      frames.flatMap((f) => {
+        const view = viewAt(clip, f.frame);
+        if (view === null) return [];
+        const ground = groundFeet({ y: f.box[3], ...view });
+        if (ground === null) return [];
+        if (clip.kind === "pan") return homeFeet === null ? [] : [{ ground, wall: feetFromWall({ kind: "pan", y: f.box[3], homeFeet }, view)! }];
+        const wall = walls.get(f.frame);
+        const fromWall = wall === undefined ? null : feetFromWall({ kind: "loop", y: f.box[3], wallY: wall[3] }, view);
+        return fromWall === null ? [] : [{ ground, wall: fromWall }];
+      });
+    const placed = onHouse ? [{ ground: AT_HOUSE, wall: AT_HOUSE }] : placeFrames();
     if (placed.length === 0) {
       drop(clip.kind === "pan" && homeFeet === null ? "no wall in the loop, so a pan object cannot be placed" : "no wall, no tilt or only the horizon on its frames, so its distance is unknown");
       continue;

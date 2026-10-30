@@ -56,6 +56,8 @@ export const PIN_MS = 2600;
 export const LOOP_SPAN = 2.5;
 export const LOOP_LAG = 0.8;
 export const LIT_EARLY = 0.002;
+export const FINISH_LAG = 1.2;
+export const FINISH_DONE = 0.98;
 export const REGIONS = [
   [[8, 0], [46, 0], [46, 22], [40, 34], [44, 45], [60, 39], [82, 32], [85, 34], [66, 54], [66, 58.5], [3, 58.5], [3, 45], [18, 45], [16, 24]],
   [[3, 54], [27, 54], [31, 48.5], [37, 53], [64, 52], [82.5, 33], [99, 55], [99, 60], [3, 60]],
@@ -434,6 +436,172 @@ export function loop(card, gsap, trigger) {
   paintLoop(ring, steps, 0);
 }
 
+export function finishState(p) {
+  const f = clamp(p) || 0;
+  return { f, passed: f >= FINISH_DONE };
+}
+
+export function paintFinish(card, p) {
+  const { f, passed } = finishState(p);
+  card.style.setProperty("--f", f.toFixed(3));
+  card.classList.toggle("passed", passed);
+}
+
+function layoutTop(el) {
+  let top = 0;
+  for (let node = el; node; node = node.offsetParent) top += node.offsetTop;
+  return top;
+}
+
+export function finish(card, gsap, trigger, win) {
+  gsap.registerPlugin(trigger);
+  trigger.create({
+    trigger: card,
+    start: () => layoutTop(card) - win.innerHeight * 0.85,
+    end: () => layoutTop(card) + card.offsetHeight - win.innerHeight,
+    scrub: FINISH_LAG,
+    onUpdate: (self) => paintFinish(card, self.progress),
+  });
+  paintFinish(card, 0);
+}
+
+export const TURN_SPAN = 0.75;
+export const TURN_LAG = 0.8;
+
+const turnParts = (p, count, i) => {
+  const t = (clamp(p) || 0) * count - i;
+  return { come: i === 0 ? 1 : between(t, -0.12, 0.02), go: i === count - 1 ? 0 : between(t, 0.72, 0.86) };
+};
+
+export function turnState(p, count, i) {
+  const { come, go } = turnParts(p, count, i);
+  return { x: 1 - come - go, shown: Math.min(come, 1 - go) };
+}
+
+export function paintTurn(section, cards, split, p) {
+  cards.forEach((card, i) => {
+    const { x, shown } = turnState(p, cards.length, i);
+    card.style.setProperty("--x", x.toFixed(3));
+    card.style.setProperty("--o", shown.toFixed(3));
+    card.classList.toggle("on", shown > 0.5);
+  });
+  section.style.setProperty("--head", (1 - turnParts(p, cards.length, split - 1).go).toFixed(3));
+  section.style.setProperty("--sub", turnParts(p, cards.length, split).come.toFixed(3));
+  section.style.setProperty("--drift", (clamp(p) || 0).toFixed(3));
+}
+
+export function carousel(section, gsap, trigger, onTurn) {
+  const cards = [...section.querySelectorAll(".stat")];
+  const split = section.querySelectorAll(".cost .stat").length;
+  section.classList.toggle("turning", true);
+  gsap.registerPlugin(trigger);
+  trigger.create({
+    trigger: section,
+    start: "top top",
+    end: `+=${cards.length * TURN_SPAN * 100}%`,
+    pin: section,
+    anticipatePin: 1,
+    scrub: TURN_LAG,
+    onUpdate: (self) => {
+      paintTurn(section, cards, split, self.progress);
+      onTurn();
+    },
+  });
+  paintTurn(section, cards, split, 0);
+}
+
+export const STEP_LEAD = 0.5;
+export const STEP_PARK = 0.25;
+
+export function stepState(p, count, i) {
+  const t = (clamp(p) || 0) * (count + STEP_LEAD) - STEP_LEAD - i;
+  const last = i === count - 1;
+  const come = between(t, 0, 0.25);
+  const go = last ? 0 : between(t, 0.7, 0.95);
+  const shown = Math.min(between(t, 0.1, 0.3), last ? 1 : 1 - between(t, 0.72, 0.9));
+  return { scale: STEP_PARK + (1 - STEP_PARK) * (come - go), shown, leaving: go > 0 };
+}
+
+export function paintSteps(section, steps, p) {
+  steps.forEach((step, i) => {
+    const { scale, shown, leaving } = stepState(p, steps.length, i);
+    step.style.setProperty("--s", scale.toFixed(3));
+    step.style.setProperty("--o", shown.toFixed(3));
+    step.classList.toggle("on", shown > 0.5);
+    step.classList.toggle("leaving", leaving);
+  });
+  section.style.setProperty("--drift", (clamp(p) || 0).toFixed(3));
+}
+
+export function stepper(section, gsap, trigger) {
+  const steps = [...section.querySelectorAll(".step")];
+  section.classList.toggle("stepping", true);
+  gsap.registerPlugin(trigger);
+  trigger.create({
+    trigger: section,
+    start: "top top",
+    end: `+=${(steps.length + STEP_LEAD) * TURN_SPAN * 100}%`,
+    pin: section,
+    anticipatePin: 1,
+    scrub: TURN_LAG,
+    onUpdate: (self) => paintSteps(section, steps, self.progress),
+  });
+  paintSteps(section, steps, 0);
+}
+
+export const COUNT_MS = 2400;
+export const COUNT_LINE = 0.8;
+
+const countEase = (t) => 1 - (1 - t) ** 3;
+
+export function countFrame(number, unit, t) {
+  const at = clamp(t) || 0;
+  if (/^[\d,]+$/.test(number)) return { number: Math.round(Number(number.replace(/,/g, "")) * countEase(at)).toLocaleString("en-US"), unit };
+  const k = Math.ceil(at * (number.length + unit.length));
+  return { number: number.slice(0, k), unit: unit.slice(0, Math.max(0, k - number.length)) };
+}
+
+export const countNow = (top, vh, shown) => shown && top < vh * COUNT_LINE;
+
+export function counts(win, figures, shown = () => true) {
+  const parts = figures.map((el) => {
+    const text = [...el.childNodes].find((node) => node.nodeType === 3);
+    const small = el.querySelector("small");
+    return { el, text, small, number: text.textContent.trim(), gap: small ? " " : "", unit: small ? small.textContent : "", state: "rest" };
+  });
+  const paint = (part, t) => {
+    const frame = countFrame(part.number, part.unit, t);
+    part.text.textContent = frame.number + part.gap;
+    if (part.small) part.small.textContent = frame.unit;
+  };
+  const run = (part) => {
+    part.state = "running";
+    let begun = 0;
+    const step = (now) => {
+      begun ||= now;
+      const t = (now - begun) / COUNT_MS;
+      paint(part, t);
+      if (t < 1) win.requestAnimationFrame(step);
+      else part.state = "done";
+    };
+    win.requestAnimationFrame(step);
+  };
+  let first = true;
+  const check = () => {
+    for (const part of parts) {
+      const top = part.el.getBoundingClientRect().top;
+      if (first) {
+        part.state = top > win.innerHeight ? "set" : "done";
+        if (part.state === "set") paint(part, 0);
+      }
+      if (part.state === "set" && countNow(top, win.innerHeight, shown(part.el))) run(part);
+    }
+    first = false;
+  };
+  win.addEventListener("scroll", check, { passive: true });
+  return check;
+}
+
 export const LIVE = {
   walk: (doc, win, el) => whenShown(doc, () => walk(doc, el)),
   zones: (doc, win, el) => zones(win, el),
@@ -527,13 +695,20 @@ export function setupSignup(doc, win, fetchImpl) {
 
 export function start(doc, win, fetchImpl) {
   const still = reduced(win);
-  const [opening, apart, plot, after] = ["opening", "apart", "plot", "after"].map((id) => doc.getElementById(id));
+  const [opening, apart, plot, stats, how, after, end] = ["opening", "apart", "plot", "stats", "how", "after", "finish"].map((id) => doc.getElementById(id));
   setupSignup(doc, win, fetchImpl);
   if (apart) paintApart(win, apart, still);
   if (plot) placeWalker(plot);
   if (still) return;
+  const turning = stats && win.gsap && win.ScrollTrigger;
+  const figures = [...doc.querySelectorAll("[data-count]")];
+  const shown = (el) => !turning || el.closest(".stat").classList.contains("on");
+  const check = figures.length ? counts(win, figures, shown) : () => {};
+  if (turning) carousel(stats, win.gsap, win.ScrollTrigger, check);
+  if (how && win.gsap && win.ScrollTrigger) stepper(how, win.gsap, win.ScrollTrigger);
   if (opening) paintOpening(win, opening);
   if (after && win.gsap && win.ScrollTrigger) loop(after, win.gsap, win.ScrollTrigger);
+  if (end && win.gsap && win.ScrollTrigger) finish(end, win.gsap, win.ScrollTrigger, win);
   doc.documentElement.classList.add("js");
   watch(doc, win, ".rise", IN_VIEW, rise);
   const begun = new Set();

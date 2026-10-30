@@ -89,9 +89,10 @@ describe("lookup", () => {
     expect(citations(query({ concept: "dry_grass", flags: ["cut_short"] }, 50))).toEqual([]);
   });
 
-  it("finds the chimney only with a branch near it, and the house wall only in its first 5 feet", () => {
-    for (const feet of [0, 10, 50]) expect(citations(query({ concept: "chimney", contact: "yes" }, feet))).toEqual([]);
-    expect(citations(query({ concept: "chimney", flags: ["near_chimney"] }, 50))).toEqual([]);
+  it("finds the chimney's branch rule only with a branch near it, and the house wall only in its first 5 feet", () => {
+    const branchOnly = (q: Parameters<typeof citations>[0]) => citations(q).filter((c) => !c.startsWith("California"));
+    for (const feet of [0, 10, 50]) expect(branchOnly(query({ concept: "chimney", contact: "yes" }, feet))).toEqual([]);
+    expect(branchOnly(query({ concept: "chimney", flags: ["near_chimney"] }, 50))).toEqual([]);
     expect(citations(query({ concept: "house_wall", contact: "yes" }, 0))).toEqual(["CAL FIRE Zone 0 guidance"]);
     for (const feet of [10, 50]) expect(citations(query({ concept: "house_wall", contact: "yes" }, feet))).toEqual([]);
   });

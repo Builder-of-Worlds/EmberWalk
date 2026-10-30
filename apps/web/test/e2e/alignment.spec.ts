@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { copy } from "../../src/copy.ts";
 import { resultsFor, ROUTES } from "../../src/router.ts";
 import { LIVE_WALK, liveBodyAt } from "../unit/result-fakes.ts";
+import { offCentre } from "./geometry.ts";
 
 const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
 
@@ -58,4 +59,41 @@ test("headings, card titles, labels and captions are centred, the Home walk card
   await rows.first().locator("[data-part=sentence] a").click();
   await expect(page.locator("main.one-finding")).toBeVisible();
   await expectCentred(page.locator("main.one-finding > .label, main.one-finding > .sentence, main.one-finding [data-part=status]"));
+});
+
+const screens: [string, (page: Page) => Promise<void>][] = [
+  [
+    "Record",
+    async (page) => {
+      await page.goto(`/${ROUTES.record}`);
+      await expect(page.getByRole("button", { name: copy.record.start })).toBeVisible();
+    },
+  ],
+  [
+    "Results",
+    async (page) => {
+      await page.goto("/");
+      await page.getByRole("link", { name: copy.home.sample }).click();
+      await expect(page.locator(".proof img").first()).toBeVisible();
+    },
+  ],
+  [
+    "Finding",
+    async (page) => {
+      await page.goto("/");
+      await page.getByRole("link", { name: copy.home.sample }).click();
+      await page.locator("li.finding a").first().click();
+      await expect(page.locator("main.one-finding")).toBeVisible();
+    },
+  ],
+];
+
+test('centred insides: each title and subtitle on the results screen is centred', async ({ page }) => {
+  const found: string[] = [];
+  for (const [screen, reach] of screens) {
+    await reach(page);
+    expect(page.viewportSize()?.width).toBe(390);
+    for (const line of await page.evaluate(offCentre)) found.push(`${screen}: ${line}`);
+  }
+  expect(found).toEqual([]);
 });

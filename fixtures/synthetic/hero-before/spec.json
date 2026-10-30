@@ -90,6 +90,18 @@
     {"id": "driveway", "kind": "driveway", "material": "concrete", "min_in": [30, -1380], "max_in": [330, 0], "height_in": 0},
     {"id": "road", "kind": "road", "material": "asphalt", "min_in": [-1500, -1500], "max_in": [2220, -1380], "height_in": 0}
   ],
+  "trees": [
+    {"id": "tree-south-west-oak", "asset": "scripted:lot_tree", "at_in": [-400, -500], "trunk_in": 30, "canopy_in": 300, "height_in": 420, "branches": []},
+    {"id": "tree-south-west-conifer", "asset": "scripted:lot_tree", "at_in": [-800, -700], "trunk_in": 24, "canopy_in": 200, "height_in": 520, "branches": []},
+    {"id": "tree-south-east-conifer", "asset": "scripted:lot_tree", "at_in": [1600, -700], "trunk_in": 24, "canopy_in": 200, "height_in": 540, "branches": []},
+    {"id": "tree-south-east-oak", "asset": "scripted:lot_tree", "at_in": [1400, -300], "trunk_in": 30, "canopy_in": 320, "height_in": 440, "branches": []},
+    {"id": "tree-north-east-oak", "asset": "scripted:lot_tree", "at_in": [1200, 1100], "trunk_in": 30, "canopy_in": 320, "height_in": 440, "branches": []},
+    {"id": "tree-north-east-conifer", "asset": "scripted:lot_tree", "at_in": [1500, 1500], "trunk_in": 24, "canopy_in": 200, "height_in": 560, "branches": []},
+    {"id": "tree-north-west-conifer", "asset": "scripted:lot_tree", "at_in": [-800, 1500], "trunk_in": 24, "canopy_in": 200, "height_in": 520, "branches": []},
+    {"id": "tree-north-west-oak", "asset": "scripted:lot_tree", "at_in": [-1000, 1000], "trunk_in": 36, "canopy_in": 360, "height_in": 480, "branches": []},
+    {"id": "tree-west-oak", "asset": "scripted:lot_tree", "at_in": [-500, 400], "trunk_in": 30, "canopy_in": 300, "height_in": 420, "branches": []},
+    {"id": "tree-east-conifer", "asset": "scripted:lot_tree", "at_in": [1300, 400], "trunk_in": 24, "canopy_in": 200, "height_in": 520, "branches": []}
+  ],
   "lot": {"min_in": [-1500, -1500], "max_in": [2220, 2280]},
   "look": {
     "siding": {"material": "polyhaven:weathered_plank_siding", "colour": "#ccb196", "tint": [1.0, 1.0, 1.0]},
@@ -97,7 +109,7 @@
     "roof": {"material": "polyhaven:grey_roof_01", "colour": "#313030", "tint": [1.0, 1.0, 1.0]},
     "ground": {"material": "polyhaven:withered_grass", "tint": [0.85, 0.6, 0.36]},
     "concrete": {"material": "polyhaven:concrete_floor_02", "tint": [0.85, 0.83, 0.8]},
-    "light": {"hdri": "polyhaven:dreifaltigkeitsberg", "rotation_deg": 55, "sky": {"horizon": "#a9bccb", "zenith": "#4f7bb0", "strength": 1.0, "zenith_at": 0.22,
+    "light": {"hdri": "polyhaven:dry_meadow", "rotation_deg": 55, "sky": {"horizon": "#a9bccb", "zenith": "#4f7bb0", "strength": 1.0, "zenith_at": 0.12,
               "clouds": {"colour": "#e2e6e9", "cover": 0.3, "scale": 3.0}}}
   },
   "hazards": [
@@ -138,8 +150,8 @@
       "side": "front",
       "distance_in": 0,
       "along_in": 30,
-      "size_in": [300, 6, 5],
-      "elevation_in": 104,
+      "size_in": [300, 14, 11],
+      "elevation_in": 101,
       "band": "0_5",
       "contact": true,
       "label": "required_now",
@@ -333,10 +345,10 @@
     "tilt_deg": 12,
     "pan_tilt_deg": 3,
     "speed_in_s": 30,
-    "pan_s": 12,
+    "pan_s": 10,
     "fps": 15,
-    "width_px": 1920,
-    "height_px": 1080,
+    "width_px": 1280,
+    "height_px": 720,
     "focal_mm": 26,
     "sensor_width_mm": 36
   }

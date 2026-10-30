@@ -1,0 +1,13 @@
+{
+  "name": "emberwalk-directory-tests",
+  "compatibility_date": "2026-08-15",
+  "account_id": "755646338ba02dbe2d3409c5a557fa15",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emberwalk-db",
+      "database_id": "2a57e3df-79dd-4886-adfb-ef2967b95bf6",
+      "migrations_dir": "../../migrations"
+    }
+  ]
+}

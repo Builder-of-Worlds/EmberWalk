@@ -1,13 +1,25 @@
 MIN_MASK_PX = 200
-LEVEL_STEP = 60
+LEVEL_STEP = 5
+CAPACITY = 255 // LEVEL_STEP
 
 
 class MaskError(Exception):
     pass
 
 
+def assign(ids):
+    ids = list(ids)
+    if len(set(ids)) != len(ids):
+        raise MaskError("a hazard id is used twice")
+    if len(ids) > CAPACITY:
+        raise MaskError("%d hazards need more levels than the %d a mask pass holds" % (len(ids), CAPACITY))
+    return {hazard_id: k + 1 for k, hazard_id in enumerate(sorted(ids))}
+
+
 def level_to_linear(index):
     encoded = index * LEVEL_STEP / 255.0
+    if encoded <= 0.04045:
+        return encoded / 12.92
     return ((encoded + 0.055) / 1.055) ** 2.4
 
 

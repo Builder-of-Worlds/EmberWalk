@@ -40,7 +40,7 @@ Anyone who asks by email to be removed is deleted with this statement, run again
 DELETE FROM signups WHERE email = lower('person@example.com');
 ```
 
-Run it with `npx wrangler d1 execute emberwalk --remote --command "<the statement>"`.
+Run it with `npx wrangler d1 execute emberwalk-db --remote --command "<the statement>"`.
 
 ## Show or correct what is held about a person
 

@@ -716,6 +716,35 @@ describe("the page, live parts", () => {
     expect([ring.vars.get("--p"), lit()]).toEqual(["1.000", [true, true, true, true, true, true, true]]);
   });
 
+  it("maps the scroll to the finish line's light and marks it passed only at the end", () => {
+    expect(P.finishState(0)).toEqual({ f: 0, passed: false });
+    expect(P.finishState(0.5)).toEqual({ f: 0.5, passed: false });
+    expect(P.finishState(0.979)).toEqual({ f: 0.979, passed: false });
+    expect(P.finishState(0.98)).toEqual({ f: 0.98, passed: true });
+    expect(P.finishState(-2)).toEqual({ f: 0, passed: false });
+    expect(P.finishState(3)).toEqual({ f: 1, passed: true });
+    expect(P.finishState(Number.NaN)).toEqual({ f: 0, passed: false });
+  });
+
+  it("scrubs the finish line card with a damped lag as it scrolls into view, starting dim", () => {
+    const card = Object.assign(new Node(), { offsetTop: 500, offsetHeight: 400, offsetParent: { offsetTop: 2000, offsetParent: null } });
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    P.finish(card, gsap, trigger, { innerHeight: 800 });
+    expect(gsap.plugins).toEqual([trigger]);
+    const [vars] = trigger.made as unknown as { start: () => number; end: () => number; onUpdate: (self: { progress: number }) => void }[];
+    expect({ ...vars, start: vars.start(), end: vars.end(), onUpdate: typeof vars.onUpdate }).toEqual({ trigger: card, start: 1820, end: 2100, scrub: 1.2, onUpdate: "function" });
+    card.offsetTop = 600;
+    expect([vars.start(), vars.end()]).toEqual([1920, 2200]);
+    expect([card.vars.get("--f"), card.classes.has("passed")]).toEqual(["0.000", false]);
+    vars.onUpdate({ progress: 0.4 });
+    expect([card.vars.get("--f"), card.classes.has("passed")]).toEqual(["0.400", false]);
+    vars.onUpdate({ progress: 1 });
+    expect([card.vars.get("--f"), card.classes.has("passed")]).toEqual(["1.000", true]);
+    vars.onUpdate({ progress: 0.2 });
+    expect([card.vars.get("--f"), card.classes.has("passed")]).toEqual(["0.200", false]);
+  });
+
   it("brings a card in, and takes it out up or down by the side it left", () => {
     const card = new Node();
     P.rise(card, true, false);
@@ -861,5 +890,128 @@ describe("the page, start", () => {
     expect([observers, timers]).toEqual([[], []]);
     expect(walking.svg.children).toEqual([]);
     expect(form.listeners).toHaveLength(0);
+  });
+});
+
+describe("the page, counting the statistics", () => {
+  const steps = (number: string, unit: string) => {
+    const seenFrames: string[] = [];
+    for (let k = 0; k <= 200; k += 1) {
+      const frame = P.countFrame(number, unit, k / 200);
+      const text = `${frame.number}|${frame.unit}`;
+      if (seenFrames[seenFrames.length - 1] !== text) seenFrames.push(text);
+    }
+    return seenFrames;
+  };
+
+  it("counts a whole number up from 0 to its total with its commas, only ever stepping up, slowing at the end", () => {
+    expect(P.countFrame("16,264", "", 0)).toEqual({ number: "0", unit: "" });
+    expect(P.countFrame("16,264", "", 1)).toEqual({ number: "16,264", unit: "" });
+    const values = steps("18,804", "").map((text) => Number(text.split("|")[0].replace(/,/g, "")));
+    expect(values.every((v, i) => i === 0 || v > values[i - 1])).toBe(true);
+    expect(values.length).toBeGreaterThan(100);
+    expect(Number(P.countFrame("18,804", "", 0.5).number.replace(/,/g, ""))).toBeGreaterThan(18804 * 0.8);
+    expect(P.countFrame("18,804", "", 0.9).number).not.toBe("18,804");
+  });
+
+  it("types a decimal one character at a time, then spells out its unit letter by letter", () => {
+    expect(steps("3.7", "million")).toEqual(["|", "3|", "3.|", "3.7|", "3.7|m", "3.7|mi", "3.7|mil", "3.7|mill", "3.7|milli", "3.7|millio", "3.7|million"]);
+  });
+
+  it("holds the start before 0 and the total after 1, and reads a broken time as the start", () => {
+    expect([P.countFrame("16,264", "", -1), P.countFrame("16,264", "", 2), P.countFrame("16,264", "", Number.NaN)]).toEqual([
+      { number: "0", unit: "" },
+      { number: "16,264", unit: "" },
+      { number: "0", unit: "" },
+    ]);
+    expect([P.countFrame("3.7", "million", -1), P.countFrame("3.7", "million", 2)]).toEqual([
+      { number: "", unit: "" },
+      { number: "3.7", unit: "million" },
+    ]);
+  });
+
+  it("moves each statistic card by the scroll alone: held in its share, sliding and fading out before the next slides and fades in, the first never coming in and the last never leaving", () => {
+    const at = (p: number, i: number) => {
+      const s = P.turnState(p, 5, i);
+      return [Number(s.x.toFixed(3)), Number(s.shown.toFixed(3))];
+    };
+    const slot = (i: number, t: number) => (i + t) / 5;
+    expect([at(0, 0), at(0, 1), at(0, 4)]).toEqual([[0, 1], [1, 0], [1, 0]]);
+    expect([at(slot(1, 0.5), 0), at(slot(1, 0.5), 1), at(slot(1, 0.5), 2)]).toEqual([[-1, 0], [0, 1], [1, 0]]);
+    const out = slot(0, 0.8);
+    expect(at(out, 0)[1], "the leaving card is part way out").toBeGreaterThan(0.2);
+    expect(at(out, 0)[1]).toBeLessThan(0.5);
+    expect(at(out, 0)[0], "the leaving card is part way to its side").toBeLessThan(-0.2);
+    expect(at(out, 1), "the coming card waits at its side, unseen").toEqual([1, 0]);
+    const into = slot(0, 0.94);
+    expect(at(into, 0), "the leaving card is gone to its side").toEqual([-1, 0]);
+    expect(at(into, 1)[1], "the coming card is part way in").toBeGreaterThan(0.2);
+    expect(at(into, 1)[1]).toBeLessThan(0.5);
+    expect(at(into, 1)[0], "the coming card is part way from its side").toBeGreaterThan(0.2);
+    for (let p = 0; p <= 1; p += 0.005) expect([0, 1, 2, 3, 4].filter((i) => P.turnState(p, 5, i).shown > 0.5).length, `one card in front at ${p.toFixed(3)}`).toBeLessThanOrEqual(1);
+    expect(at(slot(0, 0.4), 0)).toEqual(at(slot(0, 0.7), 0));
+    expect([at(1, 4), at(2, 4)]).toEqual([[0, 1], [0, 1]]);
+    expect([Number.NaN, -1].map((p) => at(p, 0))).toEqual([[0, 1], [0, 1]]);
+  });
+
+  it("pins the statistics section, never its rising card, and brings one card to the front at a time as ScrollTrigger scrubs", () => {
+    const cost = nodes(3);
+    const proof = nodes(3);
+    const section = node("section", { ".stat": [...cost, ...proof], ".cost .stat": cost });
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    let turns = 0;
+    P.carousel(section, gsap, trigger, () => turns++);
+    expect([gsap.plugins, [...section.classes]]).toEqual([[trigger], ["turning"]]);
+    const [vars] = trigger.made;
+    expect({ ...vars, onUpdate: typeof vars.onUpdate }).toEqual({ trigger: section, start: "top top", end: "+=450%", pin: section, anticipatePin: 1, scrub: 0.8, onUpdate: "function" });
+    const cards = [...cost, ...proof];
+    const state = () => [on(cards), cards.map((card) => card.vars.get("--x")), cards.map((card) => card.vars.get("--o")), section.vars.get("--head"), section.vars.get("--sub"), section.vars.get("--drift")];
+    expect(state()).toEqual([[true, false, false, false, false, false], ["0.000", "1.000", "1.000", "1.000", "1.000", "1.000"], ["1.000", "0.000", "0.000", "0.000", "0.000", "0.000"], "1.000", "0.000", "0.000"]);
+    vars.onUpdate({ progress: 3.5 / 6 });
+    expect(state()).toEqual([[false, false, false, true, false, false], ["-1.000", "-1.000", "-1.000", "0.000", "1.000", "1.000"], ["0.000", "0.000", "0.000", "1.000", "0.000", "0.000"], "0.000", "1.000", "0.583"]);
+    const part = (v: unknown) => Number(v) > 0.2 && Number(v) < 0.5;
+    vars.onUpdate({ progress: 2.8 / 6 });
+    const [, , o, head, sub] = state();
+    expect([part(o[2]), part(head), o[3], sub], "the third card and its heading are part way out, the fourth and its heading not yet in").toEqual([true, true, "0.000", "0.000"]);
+    vars.onUpdate({ progress: 2.94 / 6 });
+    const [, , o2, head2, sub2] = state();
+    expect([o2[2], head2, part(o2[3]), part(sub2)], "the third card and its heading are out, the fourth and its heading part way in").toEqual(["0.000", "0.000", true, true]);
+    expect(turns).toBe(3);
+  });
+
+  it("parks every step small at its side before its turn, grows it to full size before it counts as in front, and never lets the last step go", () => {
+    const at = (p: number, i: number) => {
+      const s = P.stepState(p, 3, i);
+      return [Number(s.scale.toFixed(3)), Number(s.shown.toFixed(3)), s.leaving];
+    };
+    expect([at(0, 0), at(0, 1), at(0, 2)]).toEqual([[0.25, 0, false], [0.25, 0, false], [0.25, 0, false]]);
+    const slot = (i: number, t: number) => (t + i + P.STEP_LEAD) / (3 + P.STEP_LEAD);
+    expect(at(slot(0, 0.5), 0)).toEqual([1, 1, false]);
+    expect(P.stepState(slot(1, 0.2), 3, 1).scale).toBeGreaterThanOrEqual(0.849);
+    expect(P.stepState(slot(1, 0.19), 3, 1).shown).toBeLessThan(0.5);
+    expect(at(slot(0, 0.95), 0)).toEqual([0.25, 0, true]);
+    expect(at(1, 2)).toEqual([1, 1, false]);
+    expect([Number.NaN, -1, 2].map((p) => at(p, 0))).toEqual([[0.25, 0, false], [0.25, 0, false], [0.25, 0, true]]);
+  });
+
+  it("pins the how it works section and paints each step's size, fade and front from the scrub", () => {
+    const steps = nodes(3);
+    const section = node("section", { ".step": steps });
+    const gsap = fakeGsap();
+    const trigger = fakeTrigger();
+    P.stepper(section, gsap, trigger);
+    expect([gsap.plugins, [...section.classes]]).toEqual([[trigger], ["stepping"]]);
+    const [vars] = trigger.made;
+    expect({ ...vars, onUpdate: typeof vars.onUpdate }).toEqual({ trigger: section, start: "top top", end: "+=262.5%", pin: section, anticipatePin: 1, scrub: 0.8, onUpdate: "function" });
+    const state = () => [on(steps), steps.map((step) => step.classes.has("leaving")), steps.map((step) => step.vars.get("--s")), steps.map((step) => step.vars.get("--o")), section.vars.get("--drift")];
+    expect(state()).toEqual([[false, false, false], [false, false, false], ["0.250", "0.250", "0.250"], ["0.000", "0.000", "0.000"], "0.000"]);
+    vars.onUpdate({ progress: (1.5 + P.STEP_LEAD) / (3 + P.STEP_LEAD) });
+    expect(state()).toEqual([[false, true, false], [true, false, false], ["0.250", "1.000", "0.250"], ["0.000", "1.000", "0.000"], "0.571"]);
+  });
+
+  it("starts counting a figure only once its card is shown and its top has passed 80% of the screen", () => {
+    expect(P.COUNT_MS).toBe(2400);
+    expect([P.countNow(799, 1000, true), P.countNow(800, 1000, true), P.countNow(-500, 1000, true), P.countNow(100, 1000, false)]).toEqual([true, false, true, false]);
   });
 });

@@ -1,7 +1,7 @@
 import { type Detections, detectionsForClip, getWalk, replaceCoverageGaps, tagsForWalk } from "@emberwalk/db";
 import { MetaHttpError, MetaRefused, samePlaceCall } from "@emberwalk/meta";
-import { type Coverage, type CoverageGap, type CoverageInput, type SideState, CoverageRecord, coverageKey, coverageOf, gapHint } from "@emberwalk/rules";
-import { type Clip, type Concept, type Gap, type MotionSample, type Side, SIDES, type Tag, tagSide } from "@emberwalk/shared";
+import { type Coverage, type CoverageGap, type CoverageInput, type SideState, closesByVideo, COVERAGE_SETTINGS, CoverageRecord, coverageKey, coverageOf, gapHint } from "@emberwalk/rules";
+import { type Clip, type Concept, CORNERS, type Gap, type MotionSample, type Side, SIDES, type Tag, tagCorner, tagSide } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
 import { clipStart } from "./prepare.ts";
 import { lookKey } from "./storage.ts";
@@ -10,7 +10,8 @@ import { retrying, whyNotChecked } from "./tracks.ts";
 const LOOK_MARGIN_SECONDS = 2;
 const MIN_LOOP_SECONDS = 5;
 
-type Look = { same: boolean; confidence: number } | { notChecked: string };
+type Seen = { same: boolean; confidence: number };
+type Look = (Seen & { halfway?: Seen; halfwayNotChecked?: string }) | { notChecked: string };
 export type Checked = {
   coverage: "checked" | "not_checked";
   loop: "closed" | "open" | "not_checked";
@@ -24,11 +25,25 @@ export const sideLight = (tags: Tag[]): Record<Side, number | null> =>
   bySide((side) => {
     const seen = tags
       .filter((t) => t.kind === "loop" && tagSide(t) === side)
-      .flatMap((t) => t.samples.flatMap((s) => (s.light === undefined ? [] : [s.light])));
+      .flatMap((t) => [...t.samples.flatMap((s) => (s.light === undefined ? [] : [s.light])), ...(t.light ?? []).map((reading) => reading.light)]);
     return seen.length === 0 ? null : seen.reduce((sum, light) => sum + light, 0) / seen.length;
   });
 
-const pansOf = (tags: Tag[]): number => new Set(tags.filter((t) => t.kind === "pan").map((t) => tagSide(t) ?? t.id)).size;
+const sideTagsOf = (tags: Tag[]): NonNullable<CoverageInput["sideTags"]> =>
+  tags.flatMap((tag) => {
+    const side = tag.kind === "loop" ? tagSide(tag) : null;
+    return side === null ? [] : [{ side, startSeconds: tag.startSeconds, endSeconds: tag.endSeconds }];
+  });
+
+const pansOf = (tags: Tag[]): number => new Set(tags.filter((t) => t.kind === "pan").map((t) => tagCorner(t) ?? tagSide(t) ?? t.id)).size;
+
+export const cornerGapsOf = (tags: Tag[]): Gap[] => {
+  const pans = tags.filter((t) => t.kind === "pan");
+  const parted = tags.some((t) => tagSide(t) !== null || tagCorner(t) !== null);
+  if (!parted || !pans.every((t) => tagCorner(t) !== null)) return [];
+  const panned = new Set(pans.map(tagCorner));
+  return CORNERS.filter((corner) => !panned.has(corner)).map((corner) => ({ side: corner, kind: "missing", hint: "pan_corner" }));
+};
 
 const sideStates = (result: Coverage, light: Record<Side, number | null>, notChecked: readonly Concept[]): Record<Side, SideState> => {
   const whole = result.loop === "closed" && notChecked.length === 0 && result.gaps.every((gap) => gap.side !== null);
@@ -45,27 +60,34 @@ export const notCheckedConcepts = (detections: Detections[]): Concept[] => [
 const whyLookFailed = (error: unknown): string =>
   error instanceof MetaHttpError || error instanceof MetaRefused ? whyNotChecked(error, "Muse Spark") : "the look at the loop could not be made";
 
-const lookAtLoop = async (deps: Deps, walkId: string, clip: Clip, seconds: number): Promise<Look> => {
+const lookAtLoop = async (deps: Deps, walkId: string, clip: Clip, seconds: number, halfwayToo: boolean): Promise<Look> => {
   if (seconds < MIN_LOOP_SECONDS) return { notChecked: "the loop is too short to compare its start and its end" };
-  const keys = [lookKey(walkId, clip.id, 0), lookKey(walkId, clip.id, 1)];
-  const times = [LOOK_MARGIN_SECONDS, seconds - LOOK_MARGIN_SECONDS];
+  const keys = [lookKey(walkId, clip.id, 0), lookKey(walkId, clip.id, 1), ...(halfwayToo ? [lookKey(walkId, clip.id, 2)] : [])];
+  const times = [LOOK_MARGIN_SECONDS, seconds - LOOK_MARGIN_SECONDS, ...(halfwayToo ? [seconds / 2] : [])];
   try {
     const made = await deps.media.stills({
       input: await deps.signer.get(clip.file),
       stills: await Promise.all(times.map(async (time, i) => ({ time, output: await deps.signer.put(keys[i] as string), regions: [] }))),
     });
     if (!made.ok) return { notChecked: made.failure.message };
-    const [first, last] = await Promise.all(
+    const [first, last, middle] = (await Promise.all(
       keys.map(async (key) => {
         const stored = await deps.bucket.get(key);
         if (stored === null) throw new Error(`the still ${key} is missing`);
         return new Uint8Array(await stored.arrayBuffer());
       }),
-    );
+    )) as [Uint8Array, Uint8Array, Uint8Array | undefined];
     const walk = await getWalk(deps.db, walkId);
     const content = walk?.synthetic === false ? "real" : "synthetic";
-    const answer = await retrying(deps, () => deps.meta().call(samePlaceCall({ first: first as Uint8Array, last: last as Uint8Array, content, walkId })));
-    return { same: answer.value.same, confidence: answer.value.confidence };
+    const compare = async (a: Uint8Array, b: Uint8Array) =>
+      (await retrying(deps, () => deps.meta().call(samePlaceCall({ first: a, last: b, content, walkId })))).value;
+    const end = await compare(first, last);
+    if (middle === undefined || !end.same || end.confidence < COVERAGE_SETTINGS.lookConfidence) return end;
+    try {
+      return { ...end, halfway: await compare(first, middle) };
+    } catch (error) {
+      return { ...end, halfwayNotChecked: whyLookFailed(error) };
+    }
   } catch (error) {
     return { notChecked: whyLookFailed(error) };
   } finally {
@@ -92,7 +114,7 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     wallFrames = (detections.get(loopClip.id) as Detections).tracks
       .filter((t) => t.concept === "house_wall")
       .flatMap((t) => t.frames.map((f) => ({ t: startSeconds + f.frame / loopClip.fps, box: f.box, confidence: f.confidence })));
-    look = await lookAtLoop(deps, walkId, loopClip, seconds);
+    look = await lookAtLoop(deps, walkId, loopClip, seconds, closesByVideo(loop));
   }
 
   const light = sideLight(tags);
@@ -104,6 +126,7 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     light,
     look: "same" in look ? look : null,
     notChecked,
+    sideTags: sideTagsOf(tags),
   });
 
   const sides = sideStates(result, light, notChecked);
@@ -123,6 +146,6 @@ export const checkCoverage = async (deps: Deps, walkId: string, clips: Clip[]): 
     const kind = gap.kind as Gap["kind"];
     return [{ side: gap.side, kind, hint: gapHint(kind, samplesWithin(samples, gap.where)) }];
   });
-  await replaceCoverageGaps(deps.db, walkId, sideGaps);
+  await replaceCoverageGaps(deps.db, walkId, [...sideGaps, ...cornerGapsOf(tags)]);
   return { coverage: result.coverage, loop: result.loop, gaps: result.gaps.length, sides };
 };

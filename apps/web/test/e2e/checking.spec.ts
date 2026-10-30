@@ -179,13 +179,14 @@ test("with reduced motion the trail holds still, and waiting for signal it keeps
   await everyButtonReachable(page);
 });
 
-test("a failed walk shows its own failure and Record a Walk, and never opens results, at 390 px", async ({ page }) => {
+test("a failed walk shows its own failure and Send My Walk for the same video, never Record a Walk, and never opens results, at 390 px", async ({ page }) => {
   const walk: Walk = { state: { name: "failed", step: "score" }, asked: 0 };
   await standInApi(page, walk);
   await sendATake(page);
 
   await expect(page.getByRole("alert")).toHaveText(FAILED);
-  await expect(page.getByRole("link", { name: copy.send.recordWalk })).toBeVisible();
+  await expect(page.getByRole("button", { name: copy.leaves.send })).toBeVisible();
+  await expect(page.getByRole("link", { name: copy.send.recordWalk })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.send.title);
   await page.waitForTimeout(2500);
   expect(walk.asked).toBe(1);

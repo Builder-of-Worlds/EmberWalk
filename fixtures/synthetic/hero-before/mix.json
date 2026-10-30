@@ -1,0 +1,21 @@
+{
+  "schema": "emberwalk.mix-list/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-before",
+  "frame_count": 4724,
+  "credits_total": 0,
+  "sam_cost_total_nano_usd": 0,
+  "chunks": [
+    {"start": 1, "end": 2039, "part": "loop", "source": "blender"},
+    {"start": 2040, "end": 2806, "part": "walk-1", "source": "blender"},
+    {"start": 2807, "end": 2956, "part": "pan-left", "source": "blender"},
+    {"start": 2957, "end": 3475, "part": "walk-2", "source": "blender"},
+    {"start": 3476, "end": 3625, "part": "pan-back", "source": "blender"},
+    {"start": 3626, "end": 4068, "part": "walk-3", "source": "blender"},
+    {"start": 4069, "end": 4218, "part": "pan-right", "source": "blender"},
+    {"start": 4219, "end": 4505, "part": "walk-4", "source": "blender"},
+    {"start": 4506, "end": 4655, "part": "pan-front", "source": "blender"},
+    {"start": 4656, "end": 4724, "part": "walk-5", "source": "blender"}
+  ]
+}

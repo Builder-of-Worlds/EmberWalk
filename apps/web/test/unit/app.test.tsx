@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
 import { copy } from "../../src/copy.ts";
 import { findingFor, findingIdsIn, recordPartFor, recordPartIn, resultsFor, routeFor, ROUTES, sendFor } from "../../src/router.ts";
-import { testDeps } from "./fakes.ts";
+import { testDeps, UNASKED_PORTFOLIO } from "./fakes.ts";
 import { render, settle } from "./render.ts";
+
+const UNROUTED = ["#/homes", "#/map", "#/map/x"];
 
 const setOnline = (online: boolean) => {
   Object.defineProperty(navigator, "onLine", { configurable: true, get: () => online });
@@ -65,10 +67,21 @@ describe("recordPartFor and recordPartIn", () => {
   });
 
   it("open the whole walk for an unknown side, a malformed walk id, or anything extra", () => {
-    for (const hash of [`#/record/${WALK}/roof`, `#/record/${WALK}/Back`, "#/record/walk-1/back", `#/record/${WALK}`, `#/record/${WALK}/`, `#/record/${WALK}/back/x`, "#/record/%E0%A4%A/back", ROUTES.record]) {
+    for (const hash of [`#/record/${WALK}/roof`, `#/record/${WALK}/Back`, `#/record/${WALK}/back_left`, `#/record/${WALK}/front_right`, "#/record/walk-1/back", `#/record/${WALK}`, `#/record/${WALK}/`, `#/record/${WALK}/back/x`, "#/record/%E0%A4%A/back", ROUTES.record]) {
       expect(recordPartIn(hash), hash).toBeNull();
       expect(routeFor(hash), hash).toBe("record");
     }
+  });
+
+  it("round trip one corner only while corners are allowed, and still refuse anything else", () => {
+    for (const side of ["front_right", "back_right", "back_left", "front_left"] as const) {
+      const hash = recordPartFor(WALK, side);
+      expect(hash).toBe(`#/record/${WALK}/${side}`);
+      expect(recordPartIn(hash, true)).toEqual({ walkId: WALK, side });
+      expect(recordPartIn(hash)).toBeNull();
+    }
+    expect(recordPartIn(recordPartFor(WALK, "left"), true)).toEqual({ walkId: WALK, side: "left" });
+    for (const hash of [`#/record/${WALK}/front-right`, `#/record/${WALK}/front_right/x`, "#/record/walk-1/front_right"]) expect(recordPartIn(hash, true), hash).toBeNull();
   });
 });
 
@@ -115,5 +128,30 @@ describe("App", () => {
     expect(view.host.querySelector("h1")?.textContent).toBe(copy.home.title);
     expect(view.host.querySelector("input[type=radio]")).toBeNull();
     await view.unmount();
+  });
+
+  it.each(UNROUTED)("treats %s like any unknown address and opens the home screen", async (hash) => {
+    expect(routeFor(hash)).toBe(routeFor("#/nowhere"));
+    window.location.hash = hash;
+    const view = await render(<App deps={testDeps()} />);
+    expect(view.host.querySelector("h1")?.textContent).toBe(copy.home.title);
+    expect(view.host.querySelector("main.homes, main.map-screen")).toBeNull();
+    await view.unmount();
+  });
+
+  it("asks for no homes on any screen an address can reach", async () => {
+    const asked: string[] = [];
+    for (const hash of [...Object.values(ROUTES), ...UNROUTED]) {
+      window.location.hash = hash;
+      const portfolio = { homes: async () => (asked.push(hash), { value: [] }) };
+      const view = await render(<App deps={testDeps({ portfolio })} />);
+      await settle(() => new Promise((r) => setTimeout(r, 20)));
+      await view.unmount();
+    }
+    expect(asked).toEqual([]);
+  });
+
+  it("the test portfolio refuses loudly when a screen asks it for homes without a test's answer", () => {
+    expect(() => testDeps().portfolio.homes()).toThrow(UNASKED_PORTFOLIO);
   });
 });

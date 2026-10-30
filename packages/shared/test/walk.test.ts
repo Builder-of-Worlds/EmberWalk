@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   Clip,
   Concept,
+  Corner,
+  CORNERS,
+  cornerBetween,
+  cornerLabel,
   Gap,
+  isCorner,
+  LightReading,
+  Part,
+  PARTS,
+  tagCorner,
   GAP_HINTS,
   GAP_KINDS,
   HINTS_FOR,
@@ -51,8 +60,8 @@ const frame = { frame: 0, box: [0.1, 0.2, 0.3, 0.4], mask: "clips/w1/m0.png", co
 
 describe("walk records", () => {
   it("lists the concepts from the design", () => {
-    expect(LOOP_CONCEPTS).toHaveLength(15);
-    expect(PAN_CONCEPTS).toHaveLength(8);
+    expect(LOOP_CONCEPTS).toHaveLength(26);
+    expect(PAN_CONCEPTS).toHaveLength(18);
     for (const c of PAN_CONCEPTS) roundTrips(Concept, c);
     refuses(Concept, "car");
   });
@@ -152,6 +161,28 @@ describe("walk records", () => {
     roundTrips(Tag, { ...tag, samples: [{ t: 10, tiltDegrees: -20, headingDegrees: 12, light: 140 }] });
   });
 
+  it("carries the light the camera saw without the compass, as readings of a time and a light from 0 to 255, strict, at most 10,000 to a tag", () => {
+    for (const light of [0, 37.5, 255]) roundTrips(LightReading, { t: 1.5, light });
+    refusesMissingAndExtra(LightReading, { t: 1.5, light: 90 });
+    for (const bad of [{ light: -1 }, { light: 256 }, { light: Number.NaN }, { light: "bright" }, { light: null }, { t: -1 }, { t: "now" }]) {
+      refuses(LightReading, { t: 1.5, light: 90, ...bad });
+    }
+    roundTrips(Tag, { ...tag, light: [{ t: 10, light: 140 }, { t: 10.1, light: 0 }] });
+    roundTrips(Tag, { ...tag, light: [] });
+    roundTrips(Tag, tag);
+    refusesEach(Tag, tag, [
+      { light: [{ t: 10, light: 256 }] },
+      { light: [{ t: 10, light: 90, heading: 3 }] },
+      { light: [{ t: 10 }] },
+      { light: [{ t: 10, tiltDegrees: 0, headingDegrees: 0, light: 90 }] },
+      { light: "dark" },
+      { light: null },
+    ]);
+    const reading = { t: 10, light: 90 };
+    roundTrips(Tag, { ...tag, light: Array.from({ length: 10_000 }, () => reading) });
+    refuses(Tag, { ...tag, light: Array.from({ length: 10_001 }, () => reading) });
+  });
+
   it("reads the side a tag is labelled with, and no side from any other label", () => {
     for (const side of SIDES) expect(tagSide({ label: side })).toBe(side);
     for (const label of ["Walk", "back side", "Front", "corner 0", ""]) expect(tagSide({ label })).toBeNull();
@@ -182,7 +213,7 @@ describe("walk records", () => {
     for (const side of ["roof", "Front", "", null]) refuses(Side, side);
     for (const kind of GAP_KINDS) {
       for (const hint of GAP_HINTS) {
-        const gap = { side: "back", kind, hint };
+        const gap = { side: hint === "pan_corner" ? "back_left" : "back", kind, hint };
         if (HINTS_FOR[kind].includes(hint)) roundTrips(Gap, gap);
         else refuses(Gap, gap);
       }
@@ -192,17 +223,63 @@ describe("walk records", () => {
     refusesMissingAndExtra(Gap, gap);
     refusesEach(Gap, gap, [{ side: "roof" }, { kind: "smoke" }, { hint: "dance" }, { hint: "again" }]);
   });
+
+  it("names the four corners between the sides, and the eight parts as the loop's sides then the corners", () => {
+    expect(CORNERS).toEqual(["front_right", "back_right", "back_left", "front_left"]);
+    expect(PARTS).toEqual([...SIDES, ...CORNERS]);
+    for (const part of PARTS) roundTrips(Part, part);
+    for (const part of ["roof", "front right", "Front_right", "right_front", "", null]) refuses(Part, part);
+    for (const corner of CORNERS) roundTrips(Corner, corner);
+    for (const side of SIDES) refuses(Corner, side);
+    expect(PARTS.filter(isCorner)).toEqual([...CORNERS]);
+  });
+
+  it("finds the corner between two sides next to each other, and none between opposite sides or one side", () => {
+    expect(cornerBetween("front", "right")).toBe("front_right");
+    expect(cornerBetween("right", "front")).toBe("front_right");
+    expect(cornerBetween("right", "back")).toBe("back_right");
+    expect(cornerBetween("back", "left")).toBe("back_left");
+    expect(cornerBetween("left", "front")).toBe("front_left");
+    expect(cornerBetween("front", "back")).toBeNull();
+    expect(cornerBetween("left", "right")).toBeNull();
+    expect(cornerBetween("left", "left")).toBeNull();
+  });
+
+  it("reads the corner a pan is labelled with, and no corner from a side or any other label", () => {
+    for (const corner of CORNERS) {
+      expect(cornerLabel(corner)).toBe(`${corner.replace("_", " ")} corner`);
+      expect(tagCorner({ label: cornerLabel(corner) })).toBe(corner);
+      expect(tagSide({ label: cornerLabel(corner) })).toBeNull();
+    }
+    expect(cornerLabel("back_left")).toBe("back left corner");
+    for (const label of ["front", "front_right", "front right", "left front corner", "Front right corner", "front right corner ", "corner"]) {
+      expect(tagCorner({ label })).toBeNull();
+    }
+  });
+
+  it("asks for a corner pan only at a corner, and a side walk only along a side", () => {
+    expect(HINTS_FOR.missing).toEqual(["walk_side", "pan_corner"]);
+    roundTrips(Gap, { side: "back_left", kind: "missing", hint: "pan_corner" });
+    roundTrips(Gap, { side: "front_right", kind: "dark", hint: "more_light" });
+    roundTrips(Gap, { side: "front_right", kind: "not_checked", hint: "again" });
+    refuses(Gap, { side: "back_left", kind: "missing", hint: "walk_side" });
+    refuses(Gap, { side: "back", kind: "missing", hint: "pan_corner" });
+    refuses(Gap, { side: "back_left", kind: "dark", hint: "pan_corner" });
+  });
 });
 
 describe("the two part walk in the upload metadata", () => {
   const tags = sideWalk.tags.map((t) => Tag.parse({ ...t, walkId: id(1) }));
   const sidesOf = (kind: "loop" | "pan") => tags.filter((t) => t.kind === kind).map((t) => tagSide(t));
 
-  it("the synthetic sample's tags are the loop then the pans, one tag per side in walk order, each with light", () => {
+  it('"two part walk (inner loop, then corner pans)": the synthetic sample\'s tags are the loop, one tag per side, then one pan per corner, in walk order, each with light', () => {
     expect(sideWalk.synthetic).toBe(true);
     expect(tags.map((t) => t.kind)).toEqual(["loop", "loop", "loop", "loop", "pan", "pan", "pan", "pan"]);
     expect(sidesOf("loop")).toEqual(["front", "left", "back", "right"]);
-    expect(sidesOf("pan")).toEqual(sidesOf("loop"));
+    expect(sidesOf("pan")).toEqual([null, null, null, null]);
+    const loop = sidesOf("loop") as Side[];
+    expect(tags.filter((t) => t.kind === "pan").map((t) => tagCorner(t))).toEqual(loop.map((side, i) => cornerBetween(side, loop[(i + 1) % 4]!)));
+    expect(tags.filter((t) => t.kind === "pan").map((t) => tagCorner(t))).toEqual(["front_left", "back_left", "back_right", "front_right"]);
     for (const [i, t] of tags.entries()) {
       if (i > 0) expect(t.startSeconds).toBeGreaterThanOrEqual(tags[i - 1]!.endSeconds);
       expect(t.samples.length).toBeGreaterThan(0);

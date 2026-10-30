@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkOpen, checkParts, nextTry, partSize, planUpload } from "../src/upload-rules.ts";
+import { checkOpen, checkOpenParts, checkParts, nextTry, partSize, planOpenUpload, planUpload } from "../src/upload-rules.ts";
 import type { UploadLimits, UploadRecord } from "../src/upload-rules.ts";
 
 const MiB = 1024 * 1024;
@@ -131,5 +131,71 @@ describe("checkParts", () => {
     expect(checkParts(record(), [part(1), part(1), part(2)]).refusal).toBeDefined();
     expect(checkParts(record(), [part(1), part(2), part(3), part(4)]).refusal).toBeDefined();
     expect(checkParts(record(), [part(1), part(2), part(4)]).refusal).toBeDefined();
+  });
+});
+
+const open = (over: Partial<UploadRecord> = {}): UploadRecord => record({ totalBytes: null, partCount: 10, ...over });
+
+describe("an upload started before its size is known", () => {
+  it("plans the largest number of parts at the usual part size", () => {
+    expect(planOpenUpload(limits)).toEqual({ value: { partBytes: 10 * MiB, partCount: 10 } });
+  });
+
+  it("signs each part at the size the phone names, up to the part size", () => {
+    const first = nextTry(open(), 1, 1500, limits, 10 * MiB);
+    expect(first.value?.size).toBe(10 * MiB);
+    expect(first.value?.record.sizes).toEqual({ 1: 10 * MiB });
+    const last = nextTry(first.value!.record, 2, 1500, limits, 7);
+    expect(last.value?.size).toBe(7);
+    expect(last.value?.record.sizes).toEqual({ 1: 10 * MiB, 2: 7 });
+    expect(nextTry(open(), 10, 1500, limits, 1).refusal).toBeUndefined();
+  });
+
+  it("refuses a part with no size, a size over the part size, or a size that is not a positive whole number", () => {
+    for (const bad of [undefined, 0, -1, 1.5, 10 * MiB + 1, Number.NaN]) {
+      expect(nextTry(open(), 1, 1500, limits, bad)).toEqual({ refusal: "invalid_size" });
+    }
+    expect(nextTry(open(), 11, 1500, limits, 1)).toEqual({ refusal: "invalid_part_number" });
+  });
+
+  it("refuses a named size on a planned upload unless it is that part's size", () => {
+    expect(nextTry(record(), 3, 1500, limits, 5 * MiB).value?.size).toBe(5 * MiB);
+    expect(nextTry(record(), 3, 1500, limits, 10 * MiB)).toEqual({ refusal: "invalid_size" });
+    expect(nextTry(record(), 1, 1500, limits, 5 * MiB)).toEqual({ refusal: "invalid_size" });
+  });
+
+  it("works out the total at complete from the parts as signed", () => {
+    const parts = [
+      { partNumber: 2, etag: "b" },
+      { partNumber: 1, etag: "a" },
+      { partNumber: 3, etag: "c" },
+    ];
+    const signed = open({ sizes: { 1: 10 * MiB, 2: 10 * MiB, 3: 3 } });
+    expect(checkOpenParts(signed, parts, limits)).toEqual({
+      value: { parts: [parts[1], parts[0], parts[2]], totalBytes: 20 * MiB + 3 },
+    });
+    expect(checkOpenParts(open({ sizes: { 1: 9 } }), [{ partNumber: 1, etag: "a" }], limits)).toEqual({
+      value: { parts: [{ partNumber: 1, etag: "a" }], totalBytes: 9 },
+    });
+  });
+
+  it("refuses a gap, a repeat, a part never signed, or a short part before the last", () => {
+    const part = (partNumber: number) => ({ partNumber, etag: "x" });
+    const signed = open({ sizes: { 1: 10 * MiB, 2: 10 * MiB, 3: 5 } });
+    expect(checkOpenParts(signed, [part(1), part(3)], limits)).toEqual({ refusal: "invalid_part_number" });
+    expect(checkOpenParts(signed, [part(1), part(1)], limits)).toEqual({ refusal: "invalid_part_number" });
+    expect(checkOpenParts(signed, [part(1), part(2), part(3), part(4)], limits)).toEqual({ refusal: "invalid_part_number" });
+    expect(checkOpenParts(open({ sizes: { 1: 9, 2: 10 * MiB } }), [part(1), part(2)], limits)).toEqual({
+      refusal: "invalid_part_number",
+    });
+    expect(checkOpenParts(open(), [part(1)], limits)).toEqual({ refusal: "invalid_part_number" });
+  });
+
+  it("refuses a total over the walk limit", () => {
+    const tight = { ...limits, maxBytes: 20 * MiB + 2 };
+    const signed = open({ sizes: { 1: 10 * MiB, 2: 10 * MiB, 3: 3 } });
+    const parts = [1, 2, 3].map((partNumber) => ({ partNumber, etag: "x" }));
+    expect(checkOpenParts(signed, parts, tight)).toEqual({ refusal: "too_large" });
+    expect(checkOpenParts(signed, parts, { ...tight, maxBytes: 20 * MiB + 3 }).refusal).toBeUndefined();
   });
 });

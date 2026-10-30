@@ -30,6 +30,22 @@ describe("tags", () => {
     expect((await tagsForWalk(env.DB, WALK))[0]).toEqual(pan);
   });
 
+  it("keeps the light readings of a tag, in order, and reads a tag stored with none as a tag with no readings", async () => {
+    const lit = tag({ kind: "loop", label: "front", light: [{ t: 1, light: 120 }, { t: 1.1, light: 0 }, { t: 1.2, light: 255 }] });
+    await addTag(env.DB, lit);
+    await addTag(env.DB, tag({ id: "7a0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02", startSeconds: 20, endSeconds: 30, kind: "loop", label: "left" }));
+    const tags = await tagsForWalk(env.DB, WALK);
+    expect(tags[0]).toEqual(lit);
+    expect(tags[1]?.light).toBeUndefined();
+    expect(await env.DB.prepare("SELECT light FROM tags WHERE id = ?").bind(tags[1]?.id).first("light")).toBe("[]");
+  });
+
+  it("refuses a light column that is not JSON", async () => {
+    await expect(
+      env.DB.prepare("INSERT INTO tags (id, walk_id, kind, start_seconds, end_seconds, label, light) VALUES (?, ?, 'loop', 0, 5, 'front', 'dark')").bind(TAG, WALK).run(),
+    ).rejects.toThrow();
+  });
+
   it("refuses a tag that ends before it starts", async () => {
     await expect(addTag(env.DB, tag({ startSeconds: 9, endSeconds: 3 }))).rejects.toThrow();
   });

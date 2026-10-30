@@ -4,9 +4,15 @@ import {
   FaultReportRequest,
   FaultReportResponse,
   HealthResponse,
+  GAP_KINDS,
+  HINTS_FOR,
+  isCorner,
   JudgeSampleResponse,
+  LOOP_CONCEPTS,
+  PARTS,
   PreviewRequest,
   PreviewResponse,
+  previewPath,
   RecheckLinkRequest,
   RecheckLinkResponse,
   ReportRequest,
@@ -81,6 +87,8 @@ describe("api contracts", () => {
       { partOf: { walkId: id(1), side: "back", extra: 1 } },
       { partOf: id(1) },
     ]);
+    roundTrips(StartWalkRequest, { ...req, partOf: null, startKey: id(2) });
+    refusesEach(StartWalkRequest, req, [{ startKey: "take-1" }, { startKey: null }, { startKey: 7 }, { startKey: `${id(2)}0` }]);
     roundTrips(StartWalkResponse, { walkId: id(1), state: { name: "recording" } });
     refusesMissingAndExtra(StartWalkResponse, { walkId: id(1), state: { name: "recording" } });
   });
@@ -114,7 +122,32 @@ describe("api contracts", () => {
     for (const finding of [unsaid,{ ...result, voiceNote: "x".repeat(2001) }, { ...result, voiceNote: "  " }, { ...result, voiceNote: 7 }]) {
       refuses(WalkResultsResponse, { ...results, findings: [finding] });
     }
+    for (const preview of [null, previewPath(id(1), id(10))]) roundTrips(WalkResultsResponse, { ...results, findings: [{ ...result, preview }] });
+    roundTrips(WalkResultsResponse, { ...results, parts: [{ walkId: id(2), side: "right" }], findings: [{ ...result, preview: previewPath(id(2), id(10)) }] });
+    for (const preview of [previewPath(id(1), id(11)), previewPath(id(3), id(10)), stillPath(id(1), id(10)), "previews/w1/10.png", 7]) {
+      refuses(WalkResultsResponse, { ...results, findings: [{ ...result, preview }] });
+    }
+    for (const secondCheck of [null, { verdict: "agrees", reason: "The photo shows wood against the wall." }, { verdict: "flags", reason: "x".repeat(300) }]) {
+      roundTrips(WalkResultsResponse, { ...results, findings: [{ ...result, secondCheck }] });
+    }
+    for (const secondCheck of [{ verdict: "maybe", reason: "Unsure." }, { verdict: "flags", reason: "  " }, { verdict: "flags", reason: "x".repeat(301) }, { verdict: "agrees" }, { verdict: "agrees", reason: "Fine.", model: "x" }]) {
+      refuses(WalkResultsResponse, { ...results, findings: [{ ...result, secondCheck }] });
+    }
     roundTrips(WalkResultsResponse, { ...results, findings: [], notChecked: [] });
+
+    const pin = { findingId: id(10), side: "back", band: "zone_0", position: 0.25, feet: 0 };
+    roundTrips(WalkResultsResponse, { ...results, pins: [pin] });
+    roundTrips(WalkResultsResponse, { ...results, pins: [] });
+    for (const pins of [
+      [{ ...pin, findingId: id(11) }],
+      [{ ...pin, band: "zone_1" }],
+      [pin, pin],
+      [{ ...pin, latitude: 38.58, longitude: -121.49 }],
+      [{ ...pin, position: { x: 0.2, y: 0.8 } }],
+      [{ ...pin, feet: -1 }],
+    ]) {
+      refuses(WalkResultsResponse, { ...results, pins });
+    }
     for (const loop of ["closed", "open", "not_checked"]) roundTrips(WalkResultsResponse, { ...results, loop });
     roundTrips(WalkResultsResponse, { ...results, coverage: "checked", loop: "closed", notChecked: [] });
     expect(WalkResultsResponse.parse(results).loop).toBeUndefined();
@@ -132,7 +165,7 @@ describe("api contracts", () => {
     refusesEach(WalkResultsResponse, results, [
       { notChecked: ["car"] },
       { view: "simple" },
-      { pins: [] },
+      { pins: [{}] },
       { coverage: "checked" },
       { coverage: "checked", notChecked: [], gaps },
       { coverage: "checked", notChecked: ["chimney"], gaps: [] },
@@ -161,10 +194,38 @@ describe("api contracts", () => {
       { findings: [{ ...result, sources: [{ ...result.sources[0], url: "http://bof.fire.ca.gov/" }] }] },
     ]);
     expect(stillPath(id(1), id(10))).toBe(`/api/walks/${id(1)}/stills/${id(10)}`);
+    expect(previewPath(id(1), id(10))).toBe(`/api/walks/${id(1)}/previews/${id(10)}`);
     expect(VISITOR_HEADER).toBe("x-emberwalk-visitor");
 
     roundTrips(JudgeSampleResponse, { walk, findings: [finding] });
     refusesMissingAndExtra(JudgeSampleResponse, { walk, findings: [finding] });
+  });
+
+  it("names every loop concept that went unchecked, and no more", () => {
+    const results = { walkId: id(1), walkedOn: "2026-10-27", synthetic: true, coverage: "not_checked", gaps: [], parts: [], findings: [] };
+    expect(LOOP_CONCEPTS.length).toBeGreaterThan(15);
+    roundTrips(WalkResultsResponse, { ...results, notChecked: [...LOOP_CONCEPTS] });
+    roundTrips(WalkResultsResponse, { ...results, notChecked: LOOP_CONCEPTS.slice(0, 16) });
+    refuses(WalkResultsResponse, { ...results, notChecked: [...LOOP_CONCEPTS, "chimney"] });
+    refuses(WalkResultsResponse, { ...results, notChecked: [...LOOP_CONCEPTS.slice(1), "roof"] });
+    refuses(WalkResultsResponse, { ...results, coverage: "checked", loop: "closed", notChecked: [...LOOP_CONCEPTS] });
+  });
+
+  it("carries a part walk and a gap for every side and corner, one each", () => {
+    const results = { walkId: id(1), walkedOn: "2026-10-27", synthetic: false, coverage: "not_checked", gaps: [], findings: [], notChecked: [] };
+    const parts = PARTS.map((side, i) => ({ walkId: id(20 + i), side }));
+    const start = { language: "en", jurisdiction: "ca_sra", device: walk.device, synthetic: false, visitorId: FP };
+    roundTrips(WalkResultsResponse, { ...results, parts });
+    roundTrips(StartWalkRequest, { ...start, partOf: { walkId: id(2), side: "back_left" } });
+    refuses(StartWalkRequest, { ...start, partOf: { walkId: id(2), side: "back left" } });
+    refuses(WalkResultsResponse, { ...results, parts: [...parts, { walkId: id(40), side: "front" }] });
+    refuses(WalkResultsResponse, { ...results, parts: [parts[4], { ...parts[4]!, walkId: id(41) }] });
+    const gaps = PARTS.flatMap((side) =>
+      GAP_KINDS.map((kind) => ({ side, kind, hint: kind === "missing" ? (isCorner(side) ? "pan_corner" : "walk_side") : HINTS_FOR[kind][0] })),
+    );
+    expect(gaps).toHaveLength(32);
+    roundTrips(WalkResultsResponse, { ...results, parts: [], gaps });
+    refuses(WalkResultsResponse, { ...results, parts: [], gaps: [...gaps, gaps[0]] });
   });
 
   it("adds a tapped object", () => {

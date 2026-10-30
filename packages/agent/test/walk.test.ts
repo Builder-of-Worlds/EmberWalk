@@ -8,7 +8,7 @@ import { type AgentDeps, AgentOff } from "../src/loop.ts";
 import { planJobs, PlanRefused, runWalk, TRADE_FOR } from "../src/plan.ts";
 import { type Outbox, sendApproved, SendRefused } from "../src/send.ts";
 import { finalAnswer, toolAnswer } from "./shaped/answers.ts";
-import { agentDeps, crew, NOW, resetDb, seedWalk, WALK, ZIP } from "./support.ts";
+import { agentDeps, crew, HOMEOWNER, NOW, resetDb, seedWalk, WALK, ZIP } from "./support.ts";
 
 const TRADES = ["brush_clearing", "debris_hauling", "fencing"] as const;
 const CREWS: Crew[] = TRADES.flatMap((trade, t) => [1, 2, 3, 4].map((k) => crew(t * 10 + k, { trade })));
@@ -103,7 +103,7 @@ describe("runWalk on test yard 2", () => {
   it("sends an approved message once through the outbox and marks it sent", async () => {
     await walkAll();
     const [first] = await allMessages();
-    await approveMessage(env.DB, first!.id, NOW.toISOString());
+    await approveMessage(env.DB, first!.id, NOW.toISOString(), HOMEOWNER);
     const outbox = spyOutbox();
     await sendApproved({ db: env.DB, outbox, now: () => NOW }, first!.id);
     expect(outbox.sent).toEqual([[first!.id, first!.crewId]]);
@@ -122,7 +122,7 @@ describe("runWalk on test yard 2", () => {
     const messages = await allMessages();
     expect(messages.map((m) => [m.channel, m.status])).toEqual(crews.map(() => ["text", "draft"]));
     const [first] = messages;
-    await approveMessage(env.DB, first!.id, NOW.toISOString());
+    await approveMessage(env.DB, first!.id, NOW.toISOString(), HOMEOWNER);
     const outbox = spyOutbox();
     await sendApproved({ db: env.DB, outbox, now: () => NOW }, first!.id);
     expect(outbox.sent).toEqual([[first!.id, first!.crewId]]);
@@ -237,12 +237,51 @@ describe("TRADE_FOR", () => {
   });
 });
 
+const chimney = (...ruleIds: string[]): Partial<Finding> => ({
+  concept: "chimney",
+  band: "zone_0",
+  distanceFeet: { low: 0, high: 0 },
+  contact: "not_checked",
+  ruleIds,
+  label: "recommended",
+  instruction: "Make sure the chimney has a spark arrester.",
+  plantState: null,
+});
+
+describe("TRADE_FOR for the chimney", () => {
+  const ARRESTER = ["ca-chimney-spark-arrester-cawuic-z0", "ca-chimney-spark-arrester-cabc-z0"];
+
+  it("sends a missing spark arrester to a handyman, one job for both of its rules", async () => {
+    const [arrester] = await seedWalk({ synthetic: true, findings: [chimney(...ARRESTER)] });
+    const { deps, requests } = agentDeps({ answers: [], crews: CREWS });
+    const { jobs, homeowner } = await planJobs(deps, WALK, ZIP);
+    expect(jobs.map((j) => [j.trade, j.findingIds])).toEqual([["handyman", [arrester!.id]]]);
+    expect(homeowner).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+
+  it("keeps a chimney finding that cites the branch rule a homeowner task with no job", async () => {
+    const [branches] = await seedWalk({ synthetic: true, findings: [chimney("ca-chimney-branches-ccr-z0")] });
+    const { deps } = agentDeps({ answers: [], crews: CREWS });
+    expect(await planJobs(deps, WALK, ZIP)).toEqual({ jobs: [], homeowner: [branches] });
+    expect(await jobsForWalk(env.DB, WALK)).toEqual([]);
+  });
+
+  it("makes the job from the arrester finding only when a finding cites both rules", async () => {
+    const [both] = await seedWalk({ synthetic: true, findings: [chimney("ca-chimney-branches-ccr-z0", ARRESTER[0]!)] });
+    const { deps } = agentDeps({ answers: [], crews: CREWS });
+    const { jobs, homeowner } = await planJobs(deps, WALK, ZIP);
+    expect(jobs.map((j) => [j.trade, j.findingIds])).toEqual([["handyman", [both!.id]]]);
+    expect(homeowner).toEqual([]);
+  });
+});
+
 describe("nothing is sent without the homeowner's yes", () => {
   it("refuses every unapproved draft without calling the outbox or changing D1", async () => {
     const { outbox: loopOutbox } = await walkAll();
     expect(loopOutbox.sent).toEqual([]);
     const [approved, ...drafts] = await allMessages();
-    await approveMessage(env.DB, approved!.id, NOW.toISOString());
+    await approveMessage(env.DB, approved!.id, NOW.toISOString(), HOMEOWNER);
     const outbox = spyOutbox();
     const deps = { db: env.DB, outbox, now: () => NOW };
     await sendApproved(deps, approved!.id);
@@ -257,7 +296,7 @@ describe("nothing is sent without the homeowner's yes", () => {
   it("leaves a message approved when the outbox fails", async () => {
     await walkAll();
     const [m] = await allMessages();
-    await approveMessage(env.DB, m!.id, NOW.toISOString());
+    await approveMessage(env.DB, m!.id, NOW.toISOString(), HOMEOWNER);
     await expect(sendApproved({ db: env.DB, outbox: spyOutbox(true), now: () => NOW }, m!.id)).rejects.toThrow("the outbox is down");
     expect(await getMessage(env.DB, m!.id)).toMatchObject({ status: "approved", sentAt: null });
   });

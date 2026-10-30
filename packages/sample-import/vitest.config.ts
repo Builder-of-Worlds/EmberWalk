@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
+import { getFixedStandIn } from "../../workers/api/test/getfixed-stand-in.ts";
 import { pipelineStandIn } from "../../workers/api/test/pipeline-stand-in.ts";
 import { l2Project } from "./vitest.l2.ts";
 
@@ -14,7 +15,7 @@ export default defineConfig(async () => {
             cloudflareTest({
               wrangler: { configPath: "../../workers/api/wrangler.jsonc" },
               miniflare: {
-                workers: [pipelineStandIn],
+                workers: [pipelineStandIn, getFixedStandIn],
                 bindings: {
                   TEST_MIGRATIONS: migrations,
                   R2_ACCESS_KEY_ID: "test-key-id",

@@ -32,3 +32,21 @@ describe("visitorId", () => {
     expect(prefs.visitorId()).toBe(id);
   });
 });
+
+describe("agreedToSend", () => {
+  it("is off on a new phone, and once Send My Walk is tapped it stays on for every later visit", () => {
+    const storage = memoryStorage();
+    const prefs = storagePrefs(() => storage);
+    expect(prefs.agreedToSend()).toBe(false);
+    prefs.markAgreedToSend();
+    expect(prefs.agreedToSend()).toBe(true);
+    expect(storagePrefs(() => storage).agreedToSend()).toBe(true);
+    expect(storagePrefs(() => memoryStorage()).agreedToSend()).toBe(false);
+  });
+
+  it("holds for this visit when the phone refuses to store it", () => {
+    const prefs = storagePrefs(refusingStorage);
+    prefs.markAgreedToSend();
+    expect(prefs.agreedToSend()).toBe(true);
+  });
+});

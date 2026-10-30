@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
-import { copy } from "../copy.ts";
+import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import { STATUSES } from "../finding-marks.ts";
 import type { StatusKind } from "../finding-marks.ts";
+import type { MarkRequest } from "../fixed-api.ts";
+import { localDay } from "../mark-sync.ts";
 import type { ResultFinding, WalkResults } from "../results.ts";
 import { resultsFor, ROUTES } from "../router.ts";
+import { isSample } from "../samples.ts";
 import type { FindingIds } from "../router.ts";
+import { DetailLines, useView, ViewSwitch } from "./Detail.tsx";
+import { FixPreview, SecondCheckNote } from "./FixPreview.tsx";
 import { Photo } from "./Photo.tsx";
 import { StatusLine } from "./Status.tsx";
 
@@ -31,13 +36,44 @@ export const Finding = ({ findingIds }: { findingIds: FindingIds | null }) => {
   return found === null ? null : <OneFinding results={found.results} finding={found.finding} />;
 };
 
+const markRequest = (kind: StatusKind, note: string, doneOn: string | undefined): MarkRequest => ({
+  status: kind,
+  ...(kind === "fix_planned" && note !== "" ? { note: note.slice(0, 200) } : {}),
+  ...(kind === "done" && doneOn !== undefined ? { doneOn } : {}),
+});
+
 const StatusPicker = ({ results, finding }: Found) => {
   const deps = useDeps();
+  const live = !isSample(results.id);
+  const today = localDay(deps.clock.now());
   const [status, setStatus] = useState(() => deps.marks.statusOf(results.id, finding.id));
   const [note, setNote] = useState(status.note);
-  const choose = (kind: StatusKind, text = "") => {
-    deps.marks.setStatus(results.id, finding.id, kind, text);
-    setStatus(deps.marks.statusOf(results.id, finding.id));
+  const [askDay, setAskDay] = useState(false);
+  const [day, setDay] = useState(status.doneOn ?? today);
+  const [dayRefused, setDayRefused] = useState(false);
+  const [saving, setSaving] = useState<"saved" | "waiting" | "refused">("saved");
+
+  useEffect(() => {
+    if (!live) return;
+    let on = true;
+    void deps.sync.flush().then(() => on && setSaving(deps.sync.refused(finding.id) ? "refused" : deps.sync.waiting() > 0 ? "waiting" : "saved"));
+    return () => {
+      on = false;
+    };
+  }, [deps, live, finding.id]);
+
+  const choose = (kind: StatusKind, text = "", doneOn?: string) => {
+    const before = deps.marks.statusOf(results.id, finding.id);
+    deps.marks.setStatus(results.id, finding.id, kind, text, doneOn);
+    const kept = deps.marks.statusOf(results.id, finding.id);
+    setStatus(kept);
+    const changed = kept.kind !== before.kind || kept.note !== before.note || kept.doneOn !== before.doneOn;
+    if (live && changed) void deps.sync.mark(finding.id, markRequest(kind, kept.note, doneOn)).then(setSaving);
+  };
+  const pick = (kind: StatusKind) => {
+    setAskDay(kind === "done");
+    setDayRefused(false);
+    if (kind !== "done") choose(kind, kind === "fix_planned" ? note : "");
   };
   return (
     <section className="status-picker">
@@ -49,12 +85,34 @@ const StatusPicker = ({ results, finding }: Found) => {
             className="button toggle"
             type="button"
             aria-pressed={status.kind === kind}
-            onClick={() => choose(kind, kind === "fix_planned" ? note : "")}
+            onClick={() => pick(kind)}
           >
             {copy.status.kind[kind]}
           </button>
         ))}
       </div>
+      {askDay ? (
+        <form
+          className="note"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (day === "") return;
+            if (day > today) return setDayRefused(true);
+            setDayRefused(false);
+            setAskDay(false);
+            choose("done", "", day);
+          }}
+        >
+          <label htmlFor="done-day">{draft.status.doneDay}</label>
+          <input id="done-day" type="date" required max={today} value={day} onChange={(e) => setDay(e.target.value)} />
+          <button className="button" type="submit">
+            {copy.status.save}
+          </button>
+        </form>
+      ) : null}
+      {dayRefused ? <p role="status">{draft.status.futureDay}</p> : null}
+      {saving === "waiting" ? <p role="status">{draft.status.willSave}</p> : null}
+      {saving === "refused" ? <p role="status">{draft.status.refused}</p> : null}
       {status.kind === "fix_planned" ? (
         <form
           className="note"
@@ -88,11 +146,16 @@ const OneFinding = ({ results, finding }: Found) => {
     setRemoved(false);
   };
 
+  const [view, choose] = useView();
+
   return (
-    <main className="screen one-finding" data-finding={finding.id} data-removed={removed}>
+    <main className="screen one-finding" data-finding={finding.id} data-removed={removed} data-view={view}>
+      <ViewSwitch view={view} choose={choose} />
       <Photo proof={finding.proof} />
       <p className={`label ${finding.label}`}>{copy.results.label[finding.label]}</p>
       <p className="sentence">{finding.instruction}</p>
+      {view === "detailed" ? <DetailLines finding={finding} /> : null}
+      <SecondCheckNote check={finding.secondCheck} />
       {removed ? null : <StatusPicker results={results} finding={finding} />}
       {removed ? (
         <div className="removed">
@@ -118,6 +181,7 @@ const OneFinding = ({ results, finding }: Found) => {
               </li>
             ))}
           </ul>
+          {finding.preview ? <FixPreview preview={finding.preview} /> : null}
           {finding.voiceNote?.trim() ? (
             <>
               <h2>{copy.finding.said}</h2>

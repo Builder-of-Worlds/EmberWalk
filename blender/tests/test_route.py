@@ -1,10 +1,23 @@
 import copy
+import json
 import math
 import os
+import subprocess
 import unittest
+from unittest import mock
 
 import support
-from ewscene import house, route, schema
+from ewscene import chunks, house, motion, route, schema
+
+COVERAGE_JS = """
+import { readFileSync } from 'node:fs';
+import { coverageOf } from '@emberwalk/rules';
+const walk = JSON.parse(readFileSync(0, 'utf8'));
+const wallFrames = walk.loop.samples.map((s) => ({ t: s.t, box: [0.1, 0.3, 0.9, 0.8], confidence: 0.9 }));
+const light = { front: 120, right: 120, back: 120, left: 120 };
+console.log(JSON.stringify(coverageOf({ ...walk, wallFrames, light, look: { same: true, confidence: 0.9 }, notChecked: [] })));"""
+ROOF_LEVEL = {"gutter-leaves-front", "branch-by-chimney-right"}
+PAST_THE_STANDOFF = {"shed-right", "tall-grass-back", "wood-pile-far-left"}
 
 SPECS = {name: os.path.join(support.REPO_DIR, "fixtures", "synthetic", name + "-before", "spec.json") for name in ("hero", "mobile", "apartment")}
 BUILT = {}
@@ -70,7 +83,7 @@ def toward_wall(doc, p):
 class Normal(unittest.TestCase):
     def test_the_hero_route_reads_from_its_spec(self):
         p = route.params(spec())
-        self.assertEqual((p["standoff_in"], p["height_in"], p["fps"], p["width_px"], p["height_px"]), (132, 54, 15, 1920, 1080))
+        self.assertEqual((p["standoff_in"], p["height_in"], p["fps"], p["width_px"], p["height_px"]), (132, 54, 15, 1280, 720))
         self.assertTrue(10 <= p["pan_s"] <= 20)
 
     def test_one_sample_per_frame_in_order(self):
@@ -139,10 +152,10 @@ class Normal(unittest.TestCase):
         doc = spec()
         _, parts = built()
         pans = frames_of(parts, "pan")
-        want = house.pans(doc, 132)
-        self.assertEqual(len(pans), 12)
+        want = [w for w in house.pans(doc, 132) if w["kind"] == "side" and w["side"] in route.PAN_SIDES]
+        self.assertEqual(len(pans), 4)
         for got, w in zip(pans, want):
-            self.assertEqual(got.get("side") or got.get("corner"), w.get("side") or w.get("sides"))
+            self.assertEqual(got["side"], w["side"])
             self.assertEqual(got["bearing_deg"], w["bearing_deg"])
             self.assertAlmostEqual(got["end_s"] - got["start_s"], route.params(doc)["pan_s"], places=6)
 
@@ -206,6 +219,96 @@ class Normal(unittest.TestCase):
 
     def test_a_route_is_the_same_every_build(self):
         self.assertEqual(route.build(spec()), built())
+
+
+def walk_for_coverage(motion, parts):
+    """The walk as the pipeline's coverage step reads it: the loop parts' compass samples and the sides panned."""
+    loops = frames_of(parts, "loop")
+    samples = [{"t": s["t"], "headingDegrees": s["heading_deg"], "tiltDegrees": s["tilt_deg"]}
+               for p in loops for s in motion["samples"][p["start_frame"] - 1:p["end_frame"]]]
+    return {"loop": {"startSeconds": loops[0]["start_s"], "endSeconds": loops[-1]["end_s"], "samples": samples},
+            "pans": len({p.get("side") or str(p.get("corner")) for p in frames_of(parts, "pan")})}
+
+
+def coverage(walk):
+    run = subprocess.run(["node", "--input-type=module", "-e", COVERAGE_JS], cwd=support.REPO_DIR, input=json.dumps(walk),
+                         capture_output=True, text=True, timeout=120)
+    if run.returncode != 0:
+        raise AssertionError("coverageOf did not run: %s" % run.stderr[-1500:])
+    return json.loads(run.stdout)
+
+
+def framed(doc, motion):
+    return {h["id"]: chunks.hazard_frames(dict(doc, hazards=[h]), motion) for h in doc["hazards"]}
+
+
+class ShortestWalk(unittest.TestCase):
+    def test_the_hero_walk_is_one_unbroken_loop_then_one_pan_a_side(self):
+        """the shortest walk the coverage check accepts: one unbroken loop, then the pans"""
+        doc = spec()
+        _, parts = built()
+        kinds = [p["kind"] for p in parts["parts"]]
+        self.assertEqual(kinds[0], "loop")
+        self.assertNotIn("loop", kinds[1:])
+        self.assertEqual(frames_of(parts, "loop")[0]["loop_in"], [0.0, round(house.loop_length_in(doc, 132), 6)])
+        self.assertEqual(sorted(p["side"] for p in frames_of(parts, "pan")), sorted(route.PAN_SIDES))
+        self.assertEqual(route.params(doc)["pan_s"], route.PAN_S[0])
+
+    def test_coverage_of_accepts_the_hero_walk(self):
+        got = coverage(walk_for_coverage(*built()))
+        self.assertEqual((got["coverage"], got["loop"], got["gaps"]), ("checked", "closed", []))
+        self.assertEqual(sorted(got["sides"]), ["back", "front", "left", "right"])
+
+    def test_coverage_of_accepts_the_mobile_and_apartment_walks_inside_330_s(self):
+        for name in ("mobile", "apartment"):
+            motion, parts = built(name)
+            self.assertLessEqual(motion["duration_s"], route.MAX_S, name)
+            got = coverage(walk_for_coverage(motion, parts))
+            self.assertEqual((got["coverage"], got["loop"], got["gaps"]), ("checked", "closed", []), name)
+
+    def test_the_apartment_pans_at_the_minimum_to_fit_330_s(self):
+        doc = spec("apartment")
+        self.assertEqual(route.params(doc)["pan_s"], route.PAN_S[0])
+        doc["route"] = {"placeholder": True}
+        with self.assertRaisesRegex(house.HouseError, "over 330 s"):
+            route.build(doc)
+
+    def test_each_pan_sweeps_45_degrees_either_side_of_straight_out_from_the_house(self):
+        doc = spec()
+        with mock.patch.object(motion, "_wave", lambda *a, **k: 0.0):
+            steady, parts = route.build(doc)
+        for pan in frames_of(parts, "pan"):
+            facing = steady["samples"][pan["start_frame"] - 2]["heading_deg"]
+            sweep = [(s["heading_deg"] - facing) % 360 for s in steady["samples"]
+                     if pan["start_s"] + route.PAN_TURN_S <= s["t"] <= pan["end_s"] - route.PAN_TURN_S]
+            self.assertAlmostEqual(min(sweep), 135, delta=0.1, msg=pan["side"])
+            self.assertAlmostEqual(max(sweep), 225, delta=0.1, msg=pan["side"])
+
+    def test_coverage_of_refuses_the_walk_one_pan_shorter(self):
+        with mock.patch.object(route, "PAN_SIDES", route.PAN_SIDES[:-1]):
+            motion, parts = route.build(spec())
+        self.assertLess(motion["frame_count"], built()[0]["frame_count"])
+        got = coverage(walk_for_coverage(motion, parts))
+        self.assertEqual(got["coverage"], "not_checked")
+        self.assertEqual([(g["kind"], g["reason"]["measured"]) for g in got["gaps"]], [("pans_missing", 3)])
+
+    def test_coverage_of_refuses_a_pan_inside_the_loop(self):
+        motion, parts = built()
+        pan = frames_of(parts, "pan")[0]
+        cut = dict(parts, parts=[{"kind": "loop", "start_frame": 1, "end_frame": pan["start_frame"] - 1, "start_s": 0.0, "end_s": pan["start_s"]},
+                                 pan,
+                                 {"kind": "loop", "start_frame": pan["end_frame"] + 1, "end_frame": motion["frame_count"], "start_s": pan["end_s"], "end_s": motion["duration_s"]}])
+        got = coverage(walk_for_coverage(motion, cut))
+        self.assertEqual((got["coverage"], got["loop"], got["sides"]), ("not_checked", "not_checked", []))
+
+    def test_the_hero_walk_frames_every_hazard_below_the_roof_and_pans_to_the_far_ones(self):
+        doc = spec()
+        motion, parts = built()
+        seen = framed(doc, motion)
+        self.assertEqual({h for h, frames in seen.items() if not frames}, ROOF_LEVEL)
+        panned = {f for p in frames_of(parts, "pan") for f in range(p["start_frame"], p["end_frame"] + 1)}
+        for h in PAST_THE_STANDOFF:
+            self.assertTrue(seen[h] & panned, h)
 
 
 class Deck(unittest.TestCase):

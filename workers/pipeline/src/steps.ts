@@ -14,6 +14,8 @@ export const STEP = {
   coverage: "coverage",
   enterExplain: "enter explain",
   explain: "explain",
+  secondCheck: "second check",
+  preview: "preview",
   complete: "complete walk",
   deleteUploads: "delete uploads",
   fail: "fail walk",
@@ -33,7 +35,7 @@ export const lookingSteps = (kinds: string[]): string[] => [
   STEP.coverage,
 ];
 
-export const WRITING_STEPS: readonly string[] = [STEP.enterExplain, STEP.explain];
+export const WRITING_STEPS: readonly string[] = [STEP.enterExplain, STEP.explain, STEP.secondCheck, STEP.preview];
 
 const withCounts = (names: readonly string[]): string[] => names.flatMap((name) => [name, STEP.count(name)]);
 

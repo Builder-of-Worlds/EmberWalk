@@ -21,6 +21,7 @@
     "import": "node src/main.ts",
     "test": "vitest run",
     "test:full-render": "vitest run --config vitest.full-render.config.ts",
+    "test:hero": "vitest run --config vitest.hero.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

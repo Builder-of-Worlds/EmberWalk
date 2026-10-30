@@ -218,7 +218,8 @@ describe("JSON fingerprints", () => {
   it("keeps an existing Muse Spark fingerprint byte for byte", async () => {
     const { client } = setup({ answer: () => ok({ status: "completed", output: [] }) });
     const call = sparkCall({ instructions: "Say ok.", input: "ok", content: "synthetic", inputTokenEstimate: 10, maxOutputTokens: 16 }, () => 1);
-    const out = await client.call(call);
+    const recordedBody = { model: "muse-spark-1.3", store: false, instructions: "Say ok.", input: "ok", max_output_tokens: 16 };
+    const out = await client.call({ ...call, request: { method: "POST", path: "/responses", json: recordedBody }, read: () => 1 });
     expect(out.fingerprint).toBe("e61cc1e95b3649b16376d5d8094585cb83f36587ce2d0b91da100b02d855aa5e");
   });
 });

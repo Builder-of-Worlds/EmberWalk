@@ -5,13 +5,17 @@ import bmesh
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-from . import engine, fence, geom, house as house_spec, placement, route
-from .units import in_to_m
+from . import engine, fence, geom, house as house_spec, output, placement, route
+from .units import in_to_m, m_to_in
 
 HOUSE_DEPTH_IN = 360
 ROOF_RISE_IN = 54
 EAVE_IN = 14
 HAZARD_TAG = "ew_hazard_id"
+TREE_TAG = "ew_tree_id"
+CROWN_LOW = 0.22
+TIER_IN = 32
+OAK_FORK = (0.14, 0.2)
 
 
 def reset():
@@ -339,12 +343,8 @@ def render_settings(spec, samples):
     scene.frame_end = walk["duration_s"] * walk["fps"]
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.look = "AgX - Punchy"
-    im = scene.render.image_settings
-    im.media_type = "VIDEO"
-    im.file_format = "FFMPEG"
+    output.video(scene.render)
     ff = scene.render.ffmpeg
-    ff.format = "MPEG4"
-    ff.codec = "H264"
     ff.constant_rate_factor = "HIGH"
     ff.ffmpeg_preset = "GOOD"
     ff.gopsize = walk["fps"]
@@ -372,6 +372,9 @@ SIDING_GRAIN = 0.15
 ROOF_GRAIN = 0.85
 ROOF_THICK_IN = 6
 GUTTER_TALL_IN = 5
+MULCH_SLOPE = 1.6
+MULCH_LEAVES = 70
+MULCH_LEAF_IN = 2.0
 STEP_RISE_IN = 6
 HOUSE_EXPOSURE = 0.9
 SKY_ZENITH_Z = 0.6
@@ -395,6 +398,7 @@ STRUCTURE_LOOK = {
     "metal": ("#6a6d70", 0.45, 0.6),
     "gravel": ("#8f8b85", 1.0, 0.0),
     "masonry": ("#9a7f6b", 0.9, 0.0),
+    "wood": ("#7b5b3e", 0.85, 0.0),
 }
 ACCENTS = {
     "Dry leaves": ("#6e4a2a", 0.8, 0.0),
@@ -408,6 +412,8 @@ ACCENTS = {
     "Flue": ("#6f7173", 0.4, 0.8),
     "Window room": ("#cfc6b8", 0.9, 0.0),
     "Dry tufts": ("#bf9a5e", 0.9, 0.0),
+    "Conifer needles": ("#2d4a33", 0.8, 0.0),
+    "Oak leaves": ("#3f5232", 0.75, 0.0),
 }
 
 
@@ -518,10 +524,10 @@ def _rod(bm, a, b, r0, r1, segments=6):
     bmesh.ops.create_cone(bm, cap_ends=True, segments=segments, radius1=in_to_m(r0), radius2=in_to_m(r1), depth=in_to_m(axis.length), matrix=m)
 
 
-def _blob(bm, centre, radii, rng, rough=0.25):
+def _blob(bm, centre, radii, rng, rough=0.25, subdivisions=1):
     c = _v(centre)
     m = Matrix.Translation(c) @ Matrix.Diagonal([in_to_m(r) for r in radii] + [1.0])
-    for v in bmesh.ops.create_icosphere(bm, subdivisions=1, radius=1.0, matrix=m)["verts"]:
+    for v in bmesh.ops.create_icosphere(bm, subdivisions=subdivisions, radius=1.0, matrix=m)["verts"]:
         v.co = c + (v.co - c) * rng.uniform(1.0 - rough, 1.0)
 
 
@@ -587,14 +593,21 @@ def _gutter_leaves(size, rng):
     while x < w:
         r = rng.uniform(2.0, 3.5)
         cx = min(max(x + r * 0.6, r), w - r)
-        _blob(bm, (cx, d * (0.5 + rng.uniform(-0.1, 0.1)), h * 0.5), (r, d * 0.42, h * 0.5 * rng.uniform(0.75, 1.0)), rng)
+        heap = (r, d * rng.uniform(0.17, 0.21), h * rng.uniform(0.22, 0.3))
+        _blob(bm, _within((cx, d * 0.64, h * rng.uniform(0.62, 0.78)), heap, size), heap, rng)
+        spill = (r, d * 0.15, h * rng.uniform(0.2, 0.28))
+        _blob(bm, _within((cx, d - spill[1], h * rng.uniform(0.25, 0.4)), spill, size), spill, rng)
         x += r * rng.uniform(1.0, 1.5)
     return {"main": bm}
 
 
 def _vent_leaf_mulch(size, rng):
     w, d, h = size
-    bm = bmesh.new()
+    bm, leaves = bmesh.new(), bmesh.new()
+
+    def surface(u, t):
+        return h * math.sin(math.pi * u) ** 0.6 * (1 - t) ** MULCH_SLOPE
+
     nx, ny = 12, 6
     grid = []
     for j in range(ny + 1):
@@ -602,17 +615,25 @@ def _vent_leaf_mulch(size, rng):
         for i in range(nx + 1):
             u, t = i / float(nx), j / float(ny)
             jitter = rng.uniform(0.82, 1.0) if 0 < i < nx and j < ny else 1.0
-            row.append(bm.verts.new(_v((w * u, d * t, h * math.sin(math.pi * u) ** 0.6 * (1 - t ** 1.5) * jitter))))
+            row.append(bm.verts.new(_v((w * u, d * t, surface(u, t) * jitter))))
         grid.append(row)
     for j in range(ny):
         for i in range(nx):
             bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
-    for _ in range(18):
-        u, t = rng.uniform(0.2, 0.8), rng.uniform(0.0, 0.6)
+    for _ in range(8):
+        u, t = rng.uniform(0.2, 0.8), rng.uniform(0.0, 0.5)
         r = (rng.uniform(2.0, 3.5), rng.uniform(2.0, 3.5), rng.uniform(1.0, 2.0))
-        z = h * math.sin(math.pi * u) ** 0.6 * (1 - t ** 1.5) - r[2]
-        _blob(bm, _within((w * u, d * t, z), r, size), r, rng)
-    return {"main": bm}
+        _blob(bm, _within((w * u, d * t, surface(u, t) * 0.6), r, size), r, rng)
+    for _ in range(MULCH_LEAVES):
+        u, t = rng.uniform(0.04, 0.96), rng.uniform(0.0, 0.85)
+        _flake(leaves, _within((w * u, d * t, surface(u, t) + 0.5), (MULCH_LEAF_IN,) * 3, size), MULCH_LEAF_IN, rng)
+    return {"main": bm, "Dry leaves": leaves}
+
+
+def _flake(bm, p, leaf, rng):
+    turn = Euler((rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), rng.uniform(0, 2 * math.pi))).to_matrix()
+    corners = [turn @ Vector((sx * leaf, sy * leaf * 0.55, 0.0)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    bm.faces.new([bm.verts.new(_v(Vector(p) + c)) for c in corners])
 
 
 def _overhanging_branch(size, rng):
@@ -739,6 +760,127 @@ def _tall_dry_grass(size, rng):
                 pts = ((bx - ox, by - oy, 0), (bx + ox, by + oy, 0), (bx + math.cos(ang) * lean, by + math.sin(ang) * lean, tall))
                 bm.faces.new([bm.verts.new(_v((min(max(x, 0), w), min(max(y, 0), d), z))) for x, y, z in pts])
     return {"main": bm}
+
+
+def _fit_crown(bm, reach_in, top_in):
+    far = max(math.hypot(v.co.x, v.co.y) for v in bm.verts)
+    high = max(v.co.z for v in bm.verts)
+    across, up = in_to_m(reach_in) / far, in_to_m(top_in) / high
+    for v in bm.verts:
+        v.co = Vector((v.co.x * across, v.co.y * across, v.co.z * up))
+
+
+def _conifer_limb(bark, leaves, z, ang, length, rng):
+    d = Vector((math.cos(ang), math.sin(ang), 0.0))
+    base, tip = d * 2.0 + Vector((0, 0, z)), d * length + Vector((0, 0, z - length * 0.16))
+    mid = base.lerp(tip, 0.5) + Vector((0, 0, length * 0.06))
+    _rod(bark, base, mid, 1.2, 0.75, 5)
+    _rod(bark, mid, tip, 0.75, 0.25, 5)
+    for s in (0.25, 0.45, 0.65, 0.85):
+        r = length * rng.uniform(0.22, 0.3)
+        _blob(leaves, base.lerp(tip, s) + Vector((0, 0, r * 0.15)), (r, r, r * 0.5), rng, 0.3)
+    _leaves(leaves, tip, (length * 0.25, length * 0.25, length * 0.08), rng, 14, 2.4)
+
+
+def _conifer(bark, leaves, tree, rng):
+    h, reach, r0 = float(tree["height_in"]), tree["canopy_in"] / 2.0, tree["trunk_in"] / 2.0
+    spine = [Vector((rng.uniform(-1, 1) * r0 * 0.2 * k / 6.0, rng.uniform(-1, 1) * r0 * 0.2 * k / 6.0, h * k / 6.0)) for k in range(7)]
+    _rod(bark, (0, 0, 0), (0, 0, 18), r0 * 1.3, r0 * 1.05, 12)
+    for k, (a, b) in enumerate(zip(spine, spine[1:])):
+        _rod(bark, a, b, max(1.0, r0 * (1.0 - k / 6.0)), max(1.0, r0 * (1.0 - (k + 1) / 6.0)), 12)
+    low = h * CROWN_LOW
+    tiers = max(5, int((h - low) / TIER_IN))
+    for k in range(tiers):
+        u = min(max((k + rng.uniform(-0.15, 0.15)) / tiers, 0.0), 0.98)
+        spread = reach * (1.0 - u) ** 0.9 * (1.0 if k == 0 else rng.uniform(0.82, 1.0))
+        count = max(5, int(round(4 + 6 * spread / reach)))
+        turn = rng.uniform(0, 2 * math.pi)
+        for j in range(count):
+            ang = turn + (j + rng.uniform(-0.2, 0.2)) * 2 * math.pi / count
+            _conifer_limb(bark, leaves, low + (h - low) * 0.97 * u, ang, spread * rng.uniform(0.85, 1.0), rng)
+    _fit_crown(leaves, reach, h * 0.985)
+
+
+def _oak(bark, leaves, tree, rng):
+    h, reach, r0 = float(tree["height_in"]), tree["canopy_in"] / 2.0, tree["trunk_in"] / 2.0
+    fork_z = h * rng.uniform(*OAK_FORK)
+    span = h - fork_z
+    fork = Vector((rng.uniform(-1, 1) * r0 * 0.4, rng.uniform(-1, 1) * r0 * 0.4, fork_z))
+    _rod(bark, (0, 0, 0), (0, 0, 14), r0 * 1.35, r0 * 1.1, 12)
+    _rod(bark, (0, 0, 12), fork, r0 * 1.1, r0 * 0.85, 12)
+    limbs = rng.choice((4, 5))
+    turn = rng.uniform(0, 2 * math.pi)
+    for k in range(limbs):
+        ang = turn + (k + rng.uniform(-0.2, 0.2)) * 2 * math.pi / limbs
+        d = Vector((math.cos(ang), math.sin(ang), 0.0))
+        end = d * reach * rng.uniform(0.7, 0.9) + Vector((0, 0, h * rng.uniform(0.42, 0.7)))
+        mid = fork.lerp(end, 0.5) + Vector((rng.uniform(-6, 6), rng.uniform(-6, 6), span * 0.05))
+        _rod(bark, fork, mid, r0 * 0.7, r0 * 0.5, 8)
+        _rod(bark, mid, end, r0 * 0.5, r0 * 0.25, 8)
+        for _ in range(2):
+            twig = end + Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(0.2, 1))).normalized() * rng.uniform(25, 50)
+            _rod(bark, end, twig, r0 * 0.2, 0.6, 5)
+    centre_z, half = h * 0.62, h * 0.38
+    for _ in range(40 + int(reach / 4.0)):
+        r = reach * rng.uniform(0.2, 0.33)
+        while True:
+            v = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1)))
+            if 0.01 < v.length <= 1.0 and v.z > -0.55:
+                break
+        v *= rng.uniform(0.45, 1.0) ** 0.6 / v.length
+        centre = Vector((v.x * (reach - r), v.y * (reach - r), centre_z + v.z * max(half - r * 0.75, 0.0)))
+        _blob(leaves, centre, (r, r, r * 0.7), rng, 0.2, 2)
+        _leaves(leaves, centre, (r, r, r * 0.7), rng, 10, 3.0)
+    _fit_crown(leaves, reach, h)
+
+
+def _lot_tree(tree, rng, joints=()):
+    bark, leaves = bmesh.new(), bmesh.new()
+    form = house_spec.tree_form(tree)
+    (_conifer if form == "conifer" else _oak)(bark, leaves, tree, rng)
+    for joint in joints:
+        end = Vector(joint)
+        out = Vector((end.x, end.y, 0.0)).normalized()
+        start = out * tree["trunk_in"] * 0.4 + Vector((0, 0, max(end.z - 24.0, 36.0)))
+        mid = start.lerp(end, 0.5) + Vector((0, 0, 8.0))
+        _rod(bark, start, mid, 6.0, 4.5, 8)
+        _rod(bark, mid, end, 4.5, 3.5, 8)
+    return {"main": bark, "Conifer needles" if form == "conifer" else "Oak leaves": leaves}
+
+
+TREE_SCRIPTED = {"scripted:lot_tree": _lot_tree}
+
+
+def place_tree(tree, entry, manifests, cache, joints):
+    rng = random.Random(tree["id"])
+    root = _link(bpy.data.objects.new(tree["id"] + " root", None))
+    root.location = _v((tree["at_in"][0], tree["at_in"][1], 0))
+    for key, bm in TREE_SCRIPTED[tree["asset"]](tree, rng, joints).items():
+        obj = _mesh_object(tree["id"] if key == "main" else "%s %s" % (tree["id"], key.lower()), bm)
+        obj.data.materials.append(_hazard_material(tree["asset"], entry, manifests, cache) if key == "main" else plain_material(key, *ACCENTS[key]))
+        obj.data.shade_smooth()
+        obj.parent = root
+        obj[TREE_TAG] = tree["id"]
+    bpy.context.view_layer.update()
+    return root
+
+
+def branch_root(h, edge):
+    obj = bpy.data.objects[h["id"]]
+    (sx, sy), (nx, ny) = edge["start"], edge["n"]
+    points = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    out = [(m_to_in(p.x) - sx) * nx + (m_to_in(p.y) - sy) * ny for p in points]
+    far = [p for p, o in zip(points, out) if o > h["distance_in"] + h["size_in"][1] - 2.0]
+    return [m_to_in(sum(p[i] for p in far) / len(far)) for i in range(3)]
+
+
+def tree_record(spec):
+    out = []
+    for t in spec.get("trees", []):
+        objs = [o for o in bpy.data.objects if o.type == "MESH" and o.get(TREE_TAG) == t["id"]]
+        lo, hi = world_bounds(objs)
+        out.append({"id": t["id"], "form": house_spec.tree_form(t), "min_in": [round(m_to_in(c), 2) for c in lo], "max_in": [round(m_to_in(c), 2) for c in hi]})
+    return out
 
 
 HOUSE_SCRIPTED = {
@@ -1079,7 +1221,7 @@ def _steps(bm, s, structures):
         _box(bm, (a[0], a[1], 0), (b[0], b[1], top * (n - k) / (n + 1.0)))
 
 
-def _structure(s, structures, paints=None):
+def _structure(s, structures, paints=None, tagged=()):
     (x0, y0), (x1, y1), top = s["min_in"], s["max_in"], s["height_in"]
     bm = bmesh.new()
     if s["kind"] == "steps":
@@ -1095,7 +1237,10 @@ def _structure(s, structures, paints=None):
     if mat is None:
         colour, rough, metal = STRUCTURE_LOOK[s["material"]]
         mat = plain_material(s["material"].capitalize(), colour, rough, metal)
-    _mesh_object(s["id"], bm).data.materials.append(mat)
+    obj = _mesh_object(s["id"], bm)
+    obj.data.materials.append(mat)
+    if s["id"] in tagged:
+        obj[HAZARD_TAG] = s["id"]
 
 
 def _lot_ground(spec, mat):
@@ -1145,7 +1290,7 @@ def final_settings():
             "persistent_data": scene.render.use_persistent_data}
 
 
-def build_house(spec, catalog, manifests, motion, samples=16):
+def build_house(spec, catalog, manifests, motion, samples=16, findings=()):
     reset()
     bpy.context.scene.unit_settings.system = "IMPERIAL"
     look = spec["look"]
@@ -1170,15 +1315,24 @@ def build_house(spec, catalog, manifests, motion, samples=16):
     paints = {}
     if "concrete" in look:
         paints["concrete"] = pbr_material("Concrete texture", manifests[look["concrete"]["material"]], look["concrete"]["tint"])
+    if any(house_spec.burns(s) for s in spec["structures"]):
+        paints[house_spec.WOOD] = pbr_material("Wood planks", manifests[house_spec.WOOD_TEXTURE])
     for s in spec["structures"]:
-        _structure(s, spec["structures"], paints)
+        _structure(s, spec["structures"], paints, findings)
     _lot_ground(spec, pbr_material("Ground", manifests[look["ground"]["material"]], look["ground"]["tint"]))
     _ground_cover(spec)
     cache = {}
     standoff = route.params(spec)["standoff_in"]
-    for h in spec["hazards"] + spec.get("fixed", []):
+    trees = spec.get("trees", [])
+    carried = {b for t in trees for b in t["branches"]}
+    placed = {h["id"]: h for h in spec["hazards"] + spec.get("fixed", [])}
+    for h in placed.values():
         place_hazard(h, by_side[h["side"]], catalog, manifests, cache)
-        if h["asset"] == "scripted:overhanging_branch":
+        if h["asset"] == "scripted:overhanging_branch" and h["id"] not in carried:
             _branch_support(h, by_side[h["side"]], standoff, cache[h["asset"]], random.Random(h["id"] + " support"))
+    for t in trees:
+        at = t["at_in"]
+        joints = [[a - b for a, b in zip(branch_root(placed[b], by_side[placed[b]["side"]]), (at[0], at[1], 0))] for b in t["branches"] if b in placed]
+        place_tree(t, catalog[t["asset"]], manifests, cache, joints)
     camera(motion)
     house_render_settings(spec, motion, samples)

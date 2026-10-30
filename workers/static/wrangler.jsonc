@@ -5,6 +5,7 @@
   "account_id": "755646338ba02dbe2d3409c5a557fa15",
   "workers_dev": false,
   "preview_urls": false,
+  "routes": [{ "pattern": "emberwalk.app", "custom_domain": true }],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
@@ -13,12 +14,12 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "emberwalk",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "emberwalk-db",
+      "database_id": "2a57e3df-79dd-4886-adfb-ef2967b95bf6",
       "migrations_dir": "../../migrations"
     }
   ],
   "vars": {
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFnemk3q3LrVawvK"
   }
 }

@@ -18,6 +18,23 @@ export type SparkRequest = {
 };
 
 const Completed = z.object({ status: z.literal("completed") });
+const OutOfRoom = z.object({ status: z.literal("incomplete"), incomplete_details: z.object({ reason: z.literal("max_output_tokens") }) });
+
+export const REASONING_ROOM = { minimal: 1024, low: 4096, medium: 8192, high: 16384 } as const;
+type Effort = keyof typeof REASONING_ROOM;
+
+const effortOf = (extra: SparkRequest["extra"]): Effort => {
+  const effort = (extra?.["reasoning"] as { effort?: unknown } | undefined)?.effort;
+  return typeof effort === "string" && effort in REASONING_ROOM ? (effort as Effort) : "medium";
+};
+
+const answered = (raw: unknown): boolean => {
+  const output = (raw as { output?: unknown } | null)?.output;
+  if (!Array.isArray(output)) return true;
+  return output.some((item) => (item as { type?: unknown } | null)?.type === "function_call") || outputText(raw).trim() !== "";
+};
+
+export const sentOutputCap = (r: Pick<SparkRequest, "maxOutputTokens" | "extra">): number => r.maxOutputTokens + REASONING_ROOM[effortOf(r.extra)];
 
 export function sparkCost(raw: unknown): CostLine[] {
   const t = tokenUse(raw);
@@ -47,13 +64,15 @@ export function sparkCall<T>(r: SparkRequest, read: (raw: unknown) => T): Call<T
         store: false,
         instructions: r.instructions,
         input: r.input,
-        max_output_tokens: r.maxOutputTokens,
+        max_output_tokens: sentOutputCap(r),
       },
     },
-    estimateNano: sparkNano({ input: r.inputTokenEstimate, cachedInput: 0, output: r.maxOutputTokens }),
+    estimateNano: sparkNano({ input: r.inputTokenEstimate, cachedInput: 0, output: sentOutputCap(r) }),
     cost: sparkCost,
     read: (raw) => {
+      if (OutOfRoom.safeParse(raw).success) throw new MetaRefused("invalid_answer", "Muse Spark used its whole output allowance before it answered");
       if (!Completed.safeParse(raw).success) throw new MetaRefused("invalid_answer", "Muse Spark did not complete");
+      if (!answered(raw)) throw new MetaRefused("invalid_answer", "Muse Spark gave an empty answer");
       return read(raw);
     },
   };

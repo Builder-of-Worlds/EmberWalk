@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MetaRefused, SPARK_MODEL } from "@emberwalk/meta";
+import { MetaRefused, REASONING_ROOM, SPARK_MODEL } from "@emberwalk/meta";
 import { evaluate, rank, type Observation } from "@emberwalk/rules";
 import { explainRequest, MAX_FRAME_CHARACTERS, MAX_FRAMES, MAX_OUTPUT_TOKENS, ruleTable, type ExplainFinding, type ExplainInput } from "../src/index.ts";
 
@@ -62,7 +62,7 @@ describe("explainRequest, normal", () => {
     expect(json).toMatchObject({
       model: SPARK_MODEL,
       store: false,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
+      max_output_tokens: MAX_OUTPUT_TOKENS + REASONING_ROOM.low,
       reasoning: { effort: "low" },
       text: { format: { type: "json_schema", name: "emberwalk_explain", strict: false } },
     });

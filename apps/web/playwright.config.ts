@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const PORT = 4317;
-const JUDGE_PORT = 4318;
+const JUDGE_PORT = 4319;
 const executablePath = process.env.EMBERWALK_CHROMIUM || undefined;
 const GAP = /\.gap\.spec\./;
 const mainIgnore = process.env.EMBERWALK_GAPS === "1" ? [] : [GAP];

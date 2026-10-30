@@ -1,22 +1,28 @@
-import type { ViewPreference } from "@emberwalk/shared";
+import { isCorner, type ViewPreference } from "@emberwalk/shared";
 import { useEffect, useState } from "react";
-import { copy } from "../copy.ts";
+import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { draftWordsShown } from "../draft-words.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
 import { feetSaid } from "../distance.ts";
-import { bandsOf, dayOf, overAYearOld, sidesToWalk, verdictOf, withoutRemoved } from "../results.ts";
-import type { ResultFinding, Verdict, WalkResults } from "../results.ts";
-import { findingFor, recordPartFor, ROUTES } from "../router.ts";
+import { bandsOf, dayOf, overAYearOld, partsToWalk, verdictOf, withoutRemoved } from "../results.ts";
+import type { CornerGap, ResultFinding, ShownGap, Verdict, WalkResults } from "../results.ts";
+import { findingFor, fixFor, recordPartFor, ROUTES } from "../router.ts";
+import { useView, ViewSwitch } from "./Detail.tsx";
+import { HouseMap, numbering } from "./HouseMap.tsx";
 import { Photo } from "./Photo.tsx";
 import { StatusLine } from "./Status.tsx";
 
-const VIEWS: ViewPreference[] = ["simple", "detailed"];
-
-type Shown = { view: ViewPreference; resultsId: string; statusOf: (findingId: string) => FindingStatus };
+type Shown = { view: ViewPreference; resultsId: string; statusOf: (findingId: string) => FindingStatus; numbers: ReadonlyMap<string, number> };
 
 const Row = ({ finding, shown, listed }: { finding: ResultFinding; shown: Shown; listed: boolean }) => (
   <li className="finding" data-finding={finding.id}>
+    {shown.numbers.has(finding.id) ? (
+      <b className="number" aria-hidden="true">
+        {shown.numbers.get(finding.id)}
+      </b>
+    ) : null}
     <Photo proof={finding.proof} />
     <p data-part="sentence">
       <a href={findingFor(shown.resultsId, finding.id)}>{finding.instruction}</a>
@@ -61,28 +67,45 @@ const heading = (v: Verdict): string => {
   return v.kind === "fix" ? copy.results.fixFirst(v.first.length) : copy.results.ready;
 };
 
-const Body = ({ verdict, results, shown }: { verdict: Verdict; results: WalkResults; shown: Shown }) => {
+const isCornerGap = (gap: ShownGap): gap is CornerGap => isCorner(gap.side);
+
+const gapLine = (gap: ShownGap): string => (isCornerGap(gap) ? draft.corners.gap[gap.kind](gap.side) : copy.results.gap(gap));
+
+const gapHint = (gap: ShownGap): string => (isCornerGap(gap) ? draft.corners.hint(gap.side) : copy.results.hint[gap.hint](gap.side));
+
+const drawnOrder =(verdict: Verdict, results: WalkResults): ResultFinding[] => {
+  if (verdict.kind === "ready") return [];
+  const banded = bandsOf(results.findings).flatMap((b) => b.findings);
+  return verdict.kind === "fix" ? [...verdict.first, ...banded.filter((f) => !verdict.first.includes(f))] : banded;
+};
+
+const Body = ({ verdict, results, shown: plain }: { verdict: Verdict; results: WalkResults; shown: Shown }) => {
+  const order = drawnOrder(verdict, results);
+  const pins = results.pins ?? [];
+  const shown: Shown = { ...plain, numbers: numbering(order, pins) };
+  const house = <HouseMap findings={order} pins={pins} resultsId={results.id} />;
   if (verdict.kind === "incomplete")
     return (
       <>
         <ul className="lines">
           {verdict.gaps.map((gap) => (
             <li key={`${gap.side}-${gap.kind}`}>
-              <span>{copy.results.gap(gap)}</span>
-              {results.synthetic ? null : <p className="hint">{copy.results.hint[gap.hint](gap.side)}</p>}
+              <span>{gapLine(gap)}</span>
+              {results.synthetic ? null : <p className="hint">{gapHint(gap)}</p>}
             </li>
           ))}
         </ul>
         {results.synthetic
           ? null
-          : sidesToWalk(verdict.gaps).map((side, i) => (
-              <a key={side} className={i === 0 ? "button primary" : "button"} href={recordPartFor(results.id, side)}>
-                {copy.results.walkSide(side)}
+          : partsToWalk(verdict.gaps).map((part, i) => (
+              <a key={part} className={i === 0 ? "button primary" : "button"} href={recordPartFor(results.id, part)}>
+                {isCorner(part) ? draft.corners.panCorner(part) : copy.results.walkSide(part)}
               </a>
             ))}
         {results.findings.length > 0 ? (
           <section className="so-far">
             <h2>{copy.results.soFar}</h2>
+            {house}
             <Bands findings={results.findings} shown={shown} sub />
           </section>
         ) : null}
@@ -94,11 +117,18 @@ const Body = ({ verdict, results, shown }: { verdict: Verdict; results: WalkResu
         <p className="lead">{copy.results.lead}</p>
         <p className="count">{copy.results.inside(verdict.first.filter((f) => f.band === "zone_0").length)}</p>
         <p className="count">{copy.results.out(verdict.first.filter((f) => f.band === "zone_1").length)}</p>
+        {house}
         <Rows findings={verdict.first} shown={shown} listed />
         <Bands findings={results.findings} shown={shown} sub={false} />
       </>
     );
-  if (verdict.kind === "so_far") return <Bands findings={results.findings} shown={shown} sub={false} />;
+  if (verdict.kind === "so_far")
+    return (
+      <>
+        {order.length > 0 ? house : null}
+        <Bands findings={results.findings} shown={shown} sub={false} />
+      </>
+    );
   return (
     <>
       <p className="lead green">{copy.results.allClear}</p>
@@ -111,7 +141,7 @@ const Body = ({ verdict, results, shown }: { verdict: Verdict; results: WalkResu
 export const Results = ({ resultsId }: { resultsId: string | null }) => {
   const deps = useDeps();
   const [results, setResults] = useState<WalkResults | null>(null);
-  const [view, setView] = useState<ViewPreference>(() => deps.prefs.view());
+  const [view, choose] = useView();
 
   useEffect(() => {
     let live = true;
@@ -128,23 +158,13 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
   if (results === null) return null;
   const listed = withoutRemoved(results, deps.marks.removed(results.id));
   const statusOf = (findingId: string) => deps.marks.statusOf(results.id, findingId);
-  const verdict = verdictOf(listed, (f) => isRechecked(statusOf(f.id)));
-  const shown: Shown = { view, resultsId: results.id, statusOf };
+  const verdict = verdictOf(listed, (f) => isRechecked(statusOf(f.id)), draftWordsShown());
+  const shown: Shown = { view, resultsId: results.id, statusOf, numbers: new Map() };
   const notChecked = results.notChecked ?? [];
-  const choose = (chosen: ViewPreference) => {
-    deps.prefs.setView(chosen);
-    setView(chosen);
-  };
 
   return (
     <main className="screen results" data-verdict={verdict.kind} data-view={view}>
-      <div className="views" role="group" aria-label={copy.results.views}>
-        {VIEWS.map((v) => (
-          <button key={v} className="button toggle" type="button" aria-pressed={view === v} onClick={() => choose(v)}>
-            {copy.results[v]}
-          </button>
-        ))}
-      </div>
+      <ViewSwitch view={view} choose={choose} />
       <h1>{heading(verdict)}</h1>
       <p>{copy.results.walked(dayOf(results.walkedOn))}</p>
       {overAYearOld(results.walkedOn, deps.clock.now()) ? <p>{copy.results.old}</p> : null}
@@ -154,6 +174,11 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
             <li key={concept}>{copy.results.notChecked(concept)}</li>
           ))}
         </ul>
+      ) : null}
+      {listed.findings.length > 0 && !results.synthetic ? (
+        <a className={verdict.kind === "fix" ? "button primary" : "button"} data-part="get-it-fixed" href={fixFor(results.id)}>
+          {draft.fixed.title}
+        </a>
       ) : null}
       <Body verdict={verdict} results={listed} shown={shown} />
     </main>

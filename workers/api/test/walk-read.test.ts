@@ -1,8 +1,8 @@
 import { env, exports } from "cloudflare:workers";
-import { ErrorBody, stillPath, VISITOR_HEADER, WalkResultsResponse, WalkStatusResponse } from "@emberwalk/shared";
+import { ErrorBody, LOOP_CONCEPTS, previewKey, previewPath, secondCheckKey, stillPath, VISITOR_HEADER, WalkResultsResponse, WalkStatusResponse } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { coverageKey } from "@emberwalk/rules";
-import { completeWalk, setVoiceNotes, setWalkProgress } from "@emberwalk/db";
+import { addTag, completeWalk, setVoiceNotes, setWalkProgress } from "@emberwalk/db";
 import { handleWalkRead, READ_PATH } from "../src/walk-read.ts";
 import { emptyBucket } from "./route.ts";
 import { clearWalks, type DoneWalk, OWNER, seedCoverage, seedDonePart, seedDoneWalk, seedGap, seedWalk } from "./seed.ts";
@@ -117,6 +117,18 @@ describe("GET /api/walks/{walkId}/results", () => {
     const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
     expect(body.notChecked.filter((c) => c === "chimney")).toHaveLength(1);
   });
+
+  it("answers a walk where more than fifteen concepts went unchecked, naming each once", async () => {
+    const pan = (await env.DB.prepare("SELECT id FROM clips WHERE walk_id = ? AND kind = 'pan'").bind(WALK).first<{ id: string }>())!.id;
+    const missed = LOOP_CONCEPTS.filter((c) => c !== "wooden_fence");
+    await env.DB.batch(
+      missed.map((c) => env.DB.prepare("INSERT OR IGNORE INTO concept_runs (clip_id, concept, outcome, reason) VALUES (?, ?, 'not_checked', 'the clip was too dark')").bind(pan, c)),
+    );
+    const response = await get(`/api/walks/${WALK}/results`);
+    expect(response.status).toBe(200);
+    const body = WalkResultsResponse.parse(await response.json());
+    expect([...body.notChecked].sort()).toEqual([...missed].sort());
+  });
 });
 
 describe("results of a walk with a side that could not be checked", () => {
@@ -152,6 +164,22 @@ describe("results of a walk with a side that could not be checked", () => {
     expect(body.findings[2]!.proof.still).toBe(stillPath(PART, part.fence.id));
     const still = await get(body.findings[2]!.proof.still);
     expect(new Uint8Array(await still.arrayBuffer())).toEqual(part.stills.get(part.fence.id));
+  });
+
+  it("drops a corner's gap once a done part walk covers that corner, keeping its own gaps at that corner only, sides first", async () => {
+    await seedGap(WALK, "back_left", "missing", "pan_corner");
+    await seedGap(WALK, "front_right", "missing", "pan_corner");
+    await seedDonePart(WALK, PART, "back_left", 3);
+    await seedGap(PART, "back_left", "dark", "more_light");
+    await seedGap(PART, "front", "missing", "walk_side");
+    const body = await results();
+    expect(body.gaps).toEqual([
+      { side: "back", kind: "not_checked", hint: "again" },
+      { side: "left", kind: "dark", hint: "more_light" },
+      { side: "front_right", kind: "missing", hint: "pan_corner" },
+      { side: "back_left", kind: "dark", hint: "more_light" },
+    ]);
+    expect(body.parts).toEqual([{ walkId: PART, side: "back_left" }]);
   });
 
   it("takes only the newest done part walk of a side, and only its gaps on that side", async () => {
@@ -241,6 +269,54 @@ describe("results of a walk the coverage check has looked at", () => {
   });
 });
 
+describe("pins on the drawing of the house", () => {
+  const results = async () => WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+  const nameLoop = (label: string) => env.DB.prepare("UPDATE tags SET label = ? WHERE walk_id = ? AND kind = 'loop'").bind(label, WALK).run();
+  const loopTag = (k: number, label: string, start: number) =>
+    addTag(env.DB, {
+      id: `7c000000-0000-4000-8000-${String(k).padStart(12, "0")}`,
+      walkId: WALK,
+      kind: "loop",
+      startSeconds: start,
+      endSeconds: start + 30,
+      label,
+      samples: [{ t: start, tiltDegrees: 0, headingDegrees: 0 }],
+      propertyLine: null,
+    });
+
+  it("places one pin for a loop finding on the side its proof frame falls in, at its place along that side and its near edge in feet", async () => {
+    await nameLoop("back");
+    const body = await results();
+    expect(body.pins).toEqual([{ findingId: walk.brush.id, side: "back", band: "zone_1", position: 1 - 5 / 30, feet: 6 }]);
+    expect(body.findings).toHaveLength(2);
+  });
+
+  it("measures along the side clockwise, so a walk that went the other way round lands each pin on the same spot", async () => {
+    await nameLoop("back");
+    expect((await results()).pins).toEqual([expect.objectContaining({ side: "back", position: 1 - 5 / 30 })]);
+    await loopTag(1, "left", 33);
+    expect((await results()).pins).toEqual([expect.objectContaining({ side: "back", position: 1 - 5 / 30 })]);
+    await loopTag(2, "right", 63);
+    await env.DB.prepare("UPDATE tags SET label = 'right' WHERE id = ?").bind(`7c000000-0000-4000-8000-${String(1).padStart(12, "0")}`).run();
+    expect((await results()).pins).toEqual([expect.objectContaining({ side: "back", position: 5 / 30 })]);
+  });
+
+  it("places no pin while no loop tag names a side, for a pan finding, or for a thing 100 feet out or more, and keeps every row", async () => {
+    expect((await results()).pins).toEqual([]);
+    await nameLoop("back");
+    await env.DB.prepare("UPDATE findings SET distance_low = 100, distance_high = 100 WHERE id = ?").bind(walk.brush.id).run();
+    const body = await results();
+    expect(body.pins).toEqual([]);
+    expect(body.findings.map((f) => f.id)).toEqual([walk.fence.id, walk.brush.id]);
+  });
+
+  it("sends a pin as its finding, side, band, place and feet only, never a coordinate", async () => {
+    await nameLoop("back");
+    const body = (await (await get(`/api/walks/${WALK}/results`)).json()) as { pins: Record<string, unknown>[] };
+    expect(body.pins.map((p) => Object.keys(p).sort())).toEqual([["band", "feet", "findingId", "position", "side"]]);
+  });
+});
+
 describe("GET /api/walks/{walkId}/stills/{findingId}", () => {
   it("streams the finding's own blurred still as a JPEG", async () => {
     const response = await get(stillPath(WALK, walk.brush.id));
@@ -322,5 +398,91 @@ describe("walk reads that are refused", () => {
   it("refuses results whose finding has no box on its proof frame", async () => {
     await env.DB.prepare("UPDATE findings SET proof_frame = 30, proof_still = ? WHERE id = ?").bind(`stills/${WALK}/${walk.loop.id}/30.jpg`, walk.brush.id).run();
     await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
+  });
+});
+
+describe("See It Fixed previews and the second check", () => {
+  const EDITED = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 9, 0xff, 0xd9]);
+  const AGREES = { verdict: "agrees", reason: "Dead brush within 30 feet must go." };
+  const FLAGS = { verdict: "flags", reason: "Metal is not required here." };
+  const results = async (id = WALK) => WalkResultsResponse.parse(await (await get(`/api/walks/${id}/results`)).json());
+  const byId = (body: WalkResultsResponse) => new Map(body.findings.map((f) => [f.id, f]));
+  const PART = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c21";
+
+  it("links a finding's preview only when one was made, gives each its verdict, and streams the preview", async () => {
+    await env.MEDIA.put(previewKey(WALK, walk.brush.id), EDITED);
+    await env.MEDIA.put(secondCheckKey(WALK), JSON.stringify({ [walk.brush.id]: AGREES, [walk.fence.id]: FLAGS }));
+    const found = byId(await results());
+    expect(found.get(walk.brush.id)).toMatchObject({ preview: previewPath(WALK, walk.brush.id), secondCheck: AGREES });
+    expect(found.get(walk.fence.id)).toMatchObject({ secondCheck: FLAGS });
+    expect(found.get(walk.fence.id)).not.toHaveProperty("preview");
+    const response = await get(previewPath(WALK, walk.brush.id));
+    expect([response.status, response.headers.get("content-type")]).toEqual([200, "image/jpeg"]);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(EDITED);
+  });
+
+  it("leaves both out when neither was made", async () => {
+    for (const f of (await results()).findings) {
+      expect(f).not.toHaveProperty("preview");
+      expect(f).not.toHaveProperty("secondCheck");
+    }
+  });
+
+  it("drops a broken record or a bad entry and still answers the results", async () => {
+    await env.MEDIA.put(secondCheckKey(WALK), "not json");
+    expect((await results()).findings.every((f) => f.secondCheck === undefined)).toBe(true);
+    await env.MEDIA.put(secondCheckKey(WALK), JSON.stringify([AGREES]));
+    expect((await results()).findings.every((f) => f.secondCheck === undefined)).toBe(true);
+    await env.MEDIA.put(secondCheckKey(WALK), JSON.stringify({ [walk.brush.id]: { verdict: "maybe", reason: "?" }, [walk.fence.id]: FLAGS, "not-an-id": AGREES }));
+    const found = byId(await results());
+    expect(found.get(walk.brush.id)?.secondCheck).toBeUndefined();
+    expect(found.get(walk.fence.id)?.secondCheck).toEqual(FLAGS);
+  });
+
+  it("still answers the results when storage fails on the second check or on a preview, keeping whatever it could read", async () => {
+    await env.MEDIA.put(previewKey(WALK, walk.brush.id), EDITED);
+    await env.MEDIA.put(secondCheckKey(WALK), JSON.stringify({ [walk.brush.id]: AGREES }));
+    const failing = (what: "get" | "head", key: string): R2Bucket =>
+      Object.assign(Object.create(env.MEDIA) as R2Bucket, {
+        get: async (k: string) => (what === "get" && k === key ? Promise.reject(new Error("R2 answered 503")) : env.MEDIA.get(k)),
+        head: async (k: string) => (what === "head" && k === key ? Promise.reject(new Error("R2 answered 503")) : env.MEDIA.head(k)),
+      });
+    const path = `/api/walks/${WALK}/results`;
+    const read = async (bucket: R2Bucket) => {
+      const response = await handleWalkRead(request(path), { DB: env.DB, MEDIA: bucket }, READ_PATH.exec(path)!);
+      expect(response.status).toBe(200);
+      return byId(WalkResultsResponse.parse(await response.json())).get(walk.brush.id)!;
+    };
+    const noCheck = await read(failing("get", secondCheckKey(WALK)));
+    expect(noCheck).not.toHaveProperty("secondCheck");
+    expect(noCheck.preview).toBe(previewPath(WALK, walk.brush.id));
+    const noPreview = await read(failing("head", previewKey(WALK, walk.brush.id)));
+    expect(noPreview).not.toHaveProperty("preview");
+    expect(noPreview.secondCheck).toEqual(AGREES);
+  });
+
+  it("serves no preview for a finding without one, a vetoed finding, another walk's finding or a stranger", async () => {
+    await env.MEDIA.put(previewKey(WALK, walk.vetoed.id), EDITED);
+    await env.MEDIA.put(previewKey(WALK, walk.brush.id), EDITED);
+    await refused(await get(previewPath(WALK, walk.fence.id)), 404, "not_found");
+    await refused(await get(previewPath(WALK, walk.vetoed.id)), 404, "not_found");
+    await refused(await get(`/api/walks/${WALK}/previews/not-a-finding`), 404, "not_found");
+    const theirs = (await results(OTHER)).findings[0]!.id;
+    await env.MEDIA.put(previewKey(WALK, theirs), EDITED);
+    await refused(await get(previewPath(WALK, theirs)), 404, "not_found");
+    await refused(await get(previewPath(WALK, walk.brush.id), STRANGER), 404, "unknown_walk");
+    await refused(await get(previewPath(WALK, walk.brush.id), null), 400, "invalid_request");
+    await refused(await get(previewPath(WALK, walk.brush.id), OWNER, "POST"), 405, "method_not_allowed");
+    await env.DB.prepare("UPDATE walks SET state = 'processing', step = 'explain' WHERE id = ?").bind(WALK).run();
+    await refused(await get(previewPath(WALK, walk.brush.id)), 409, "walk_not_done");
+  });
+
+  it("links a part walk's preview and verdict under the part walk", async () => {
+    const part = await seedDonePart(WALK, PART, "back", 3);
+    await env.MEDIA.put(previewKey(PART, part.fence.id), EDITED);
+    await env.MEDIA.put(secondCheckKey(PART), JSON.stringify({ [part.fence.id]: FLAGS }));
+    const found = byId(await results()).get(part.fence.id)!;
+    expect(found).toMatchObject({ preview: previewPath(PART, part.fence.id), secondCheck: FLAGS });
+    expect(new Uint8Array(await (await get(found.preview!)).arrayBuffer())).toEqual(EDITED);
   });
 });

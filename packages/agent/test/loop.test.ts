@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
-import { getJob, jobCrews, messagesForJob, stepsForJob } from "@emberwalk/db";
-import type { MetaRefused } from "@emberwalk/meta";
+import { getJob, jobCrews, messagesForJob, setJobStatus, stepsForJob } from "@emberwalk/db";
+import { MetaHttpError, MetaNetworkError, type MetaRefused } from "@emberwalk/meta";
 import { beforeEach, describe, expect, it } from "vitest";
-import { AGENT_ENABLED_DEFAULT, AgentOff, MAX_TOOL_RETRIES, MAX_TURNS, REASONING_EFFORT, runJob } from "../src/loop.ts";
+import { AGENT_ENABLED_DEFAULT, AgentOff, MAX_DRAFT_RUNS_PER_JOB, MAX_TOOL_RETRIES, MAX_TURNS, RateLimited, REASONING_EFFORT, runJob } from "../src/loop.ts";
 import { AGENT_TOOLS } from "../src/tools.ts";
 import { finalAnswer, toolAnswer } from "./shaped/answers.ts";
 import { agentDeps, crew, crewId, findingId, JOB, lastUserText, resetDb, seedJob, seedWalk, toolOutputs, WALK, woodPile, ZIP } from "./support.ts";
@@ -25,6 +25,8 @@ const setup = async (o: { synthetic?: boolean } = {}) => {
 };
 
 const costRows = async () => (await env.DB.prepare("SELECT step, walk_id FROM cost_records").all<{ step: string; walk_id: string }>()).results;
+
+const usesOf = async (kind: string) => (await env.DB.prepare("SELECT count FROM get_it_fixed_uses WHERE kind = ? AND subject_id = ?").bind(kind, JOB).first<{ count: number }>())?.count ?? 0;
 
 beforeEach(resetDb);
 
@@ -98,6 +100,62 @@ describe("runJob with uses that fail the job's checks", () => {
       { error: `crew ${crewId(1)} already has a draft` },
       { error: `crew ${crewId(2)} has no text; use email` },
     ]);
+  });
+
+  it("moves a job to waiting on the homeowner only from planning, never back from waiting on a crew", async () => {
+    await setup();
+    const { deps } = agentDeps({ answers: [toolAnswer(find), drafts(1, 2), done, toolAnswer(find), drafts(3), done], crews: CREWS });
+    expect(await runJob(deps, JOB)).toMatchObject({ status: "waiting_on_homeowner", drafts: 2 });
+    await setJobStatus(env.DB, JOB, "waiting_on_crew", "2026-10-29T18:30:00.000Z");
+    expect(await runJob(deps, JOB)).toMatchObject({ status: "waiting_on_crew", drafts: 3 });
+    expect((await getJob(env.DB, JOB))?.status).toBe("waiting_on_crew");
+  });
+
+  it("asks Muse Spark nothing when every crew on the job already has a request", async () => {
+    await setup();
+    const { deps, requests } = agentDeps({ answers: [toolAnswer(find), drafts(1, 2, 3), done], crews: CREWS });
+    await runJob(deps, JOB);
+    expect(requests).toHaveLength(3);
+    expect(await runJob(deps, JOB)).toEqual({ jobId: JOB, status: "waiting_on_homeowner", ended: "finished", requests: 0, drafts: 3 });
+    expect(requests).toHaveLength(3);
+  });
+
+  it(`refuses a draft run past ${MAX_DRAFT_RUNS_PER_JOB} on one job, asking Muse Spark nothing`, async () => {
+    await setup();
+    const runs = Array.from({ length: MAX_DRAFT_RUNS_PER_JOB }, () => [toolAnswer(find), done]).flat();
+    const { deps } = agentDeps({ answers: [...runs, toolAnswer(find), done], crews: CREWS });
+    for (let i = 0; i < MAX_DRAFT_RUNS_PER_JOB; i++) expect(await runJob(deps, JOB)).toMatchObject({ drafts: 0, status: "planning" });
+    const steps = (await stepsForJob(env.DB, JOB)).length;
+    expect(steps).toBe(2 * MAX_DRAFT_RUNS_PER_JOB);
+    await expect(runJob(deps, JOB)).rejects.toBeInstanceOf(RateLimited);
+    expect(await stepsForJob(env.DB, JOB)).toHaveLength(steps);
+    expect((await getJob(env.DB, JOB))?.status).toBe("planning");
+  });
+
+  it("does not use up a draft run when Muse Spark is down: three outages, then a working run still drafts", async () => {
+    await setup();
+    const timeout = Object.assign(new Error("the request timed out"), { name: "TimeoutError" });
+    const outages = [new MetaHttpError(503, "busy", null), new MetaNetworkError("no route"), timeout];
+    const { deps } = agentDeps({ answers: [...outages, toolAnswer(find), drafts(1, 2, 3), done], crews: CREWS });
+    for (const outage of outages) await expect(runJob(deps, JOB)).rejects.toBe(outage);
+    expect(await usesOf("draft_run")).toBe(0);
+    expect(await runJob(deps, JOB)).toMatchObject({ status: "waiting_on_homeowner", drafts: 3 });
+    expect(await usesOf("draft_run")).toBe(1);
+  });
+
+  it("keeps the draft run spent when the failure is not an outage", async () => {
+    await setup();
+    const { deps } = agentDeps({ answers: [new Error("a bug in the transport")], crews: CREWS });
+    await expect(runJob(deps, JOB)).rejects.toThrow("a bug in the transport");
+    expect(await usesOf("draft_run")).toBe(1);
+  });
+
+  it("still counts a draft run that Muse Spark answered before it went down", async () => {
+    await setup();
+    const down = () => new MetaHttpError(502, "bad gateway", null);
+    const { deps } = agentDeps({ answers: Array.from({ length: MAX_DRAFT_RUNS_PER_JOB }, () => [toolAnswer(find), down()]).flat(), crews: CREWS });
+    for (let i = 0; i < MAX_DRAFT_RUNS_PER_JOB; i++) await expect(runJob(deps, JOB)).rejects.toBeInstanceOf(MetaHttpError);
+    await expect(runJob(deps, JOB)).rejects.toBeInstanceOf(RateLimited);
   });
 
   it("refuses a malformed turn, asks again naming the refusal, and finishes the job", async () => {

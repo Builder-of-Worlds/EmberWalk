@@ -1,8 +1,9 @@
-import { clipsForWalk } from "@emberwalk/db";
+import { clipsForWalk, getWalk } from "@emberwalk/db";
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { clipStart, prepareWalk, spansFor } from "../src/prepare.ts";
+import { parseRenders, renderCheck } from "../src/synthetic.ts";
 import { clipKey, originalKey } from "../src/storage.ts";
 import { freshWalkId, resetAll, seedOriginal, seedTag, seedWalk } from "./fixtures.ts";
 import { harness, testDeps } from "./harness.ts";
@@ -56,6 +57,68 @@ describe("clipStart", () => {
 
   it("gives 0 for a kind with no clip, never a guessed start", () => {
     expect(clipStart([tag("loop", 5, 9)], "pan")).toBe(0);
+  });
+});
+
+describe("prepareWalk decides on the server whether a walk is a sample house", () => {
+  const walkSeeded = async (synthetic: boolean) => {
+    const walkId = freshWalkId();
+    await seedWalk(walkId, { state: "processing", synthetic });
+    await seedOriginal(walkId);
+    return walkId;
+  };
+  const synthetic = async (walkId: string) => (await getWalk(env.DB, walkId))?.synthetic;
+
+  it("keeps a walk marked as a sample when its video is a known sample render", async () => {
+    const walkId = await walkSeeded(true);
+    expect((await prepareWalk(deps(), walkId)).ok).toBe(true);
+    expect(await synthetic(walkId)).toBe(true);
+  });
+
+  it("marks a walk that claims to be a sample but is not a known render as real footage, and refuses it on free credits", async () => {
+    harness.syntheticRender = false;
+    const walkId = await walkSeeded(true);
+    expect(await prepareWalk(deps(), walkId)).toEqual({
+      ok: false,
+      failure: { code: "real_footage_not_allowed", message: "Real footage is not accepted yet." },
+    });
+    expect(await synthetic(walkId)).toBe(false);
+    expect(harness.probed).toEqual([]);
+  });
+
+  it("refuses real footage while billing is free credits, before any video work", async () => {
+    const walkId = await walkSeeded(false);
+    expect(await prepareWalk(deps(), walkId)).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
+    expect(harness.probed).toEqual([]);
+  });
+
+  it("checks real footage once billing is paid", async () => {
+    harness.billing = "paid";
+    harness.syntheticRender = false;
+    const walkId = await walkSeeded(true);
+    expect((await prepareWalk(deps(), walkId)).ok).toBe(true);
+    expect(await synthetic(walkId)).toBe(false);
+  });
+});
+
+describe("renderCheck", () => {
+  const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+  const sha256 = async (data: Uint8Array) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  it("knows a stored video only by its exact sha256 and size", async () => {
+    await env.MEDIA.put("renders/a.mp4", bytes);
+    const known = { sha256: await sha256(bytes), bytes: bytes.length };
+    expect(await renderCheck(env.MEDIA, [known])("renders/a.mp4")).toBe(true);
+    expect(await renderCheck(env.MEDIA, [{ ...known, bytes: 6 }])("renders/a.mp4")).toBe(false);
+    expect(await renderCheck(env.MEDIA, [{ ...known, sha256: "0".repeat(64) }])("renders/a.mp4")).toBe(false);
+    expect(await renderCheck(env.MEDIA, [known])("renders/missing.mp4")).toBe(false);
+    expect(await renderCheck(env.MEDIA, [])("renders/a.mp4")).toBe(false);
+  });
+
+  it("reads the list of renders as sha256:bytes pairs and drops anything else", () => {
+    const sha = "a".repeat(64);
+    expect(parseRenders(` ${sha}:12, nonsense, ${"b".repeat(63)}:3, ${sha}:0`)).toEqual([{ sha256: sha, bytes: 12 }]);
+    expect(parseRenders(undefined)).toEqual([]);
   });
 });
 

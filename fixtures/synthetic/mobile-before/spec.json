@@ -13,6 +13,12 @@
     "siding": "fiber cement lap",
     "terrain": "foothill lot",
     "area": "State Responsibility Area",
+    "roof": {
+      "eave_in": 12,
+      "blocks": [
+        {"min_in": [0, 0], "max_in": [720, 336], "ridge": "east_west", "rise_in": 42}
+      ]
+    },
     "features": {
       "gutters": false,
       "windows": [

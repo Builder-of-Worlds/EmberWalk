@@ -67,4 +67,16 @@ describe("fetchTransport", () => {
   it("refuses an empty key", () => {
     expect(() => fetchTransport({ baseUrl: "https://api.example.test/v1", apiKey: " " })).toThrow(/empty/);
   });
+
+  it("gives up on a call that outlasts its timeout, and waits on every call when none is given", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const hanging: typeof fetch = (_url, init) => {
+      signals.push(init?.signal ?? undefined);
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)));
+    };
+    const timed = fetchTransport({ baseUrl: "https://api.example.test/v1", apiKey: "test-key", fetch: hanging, timeoutMs: 20 });
+    await expect(timed({ method: "GET", path: "/models" })).rejects.toMatchObject({ name: "TimeoutError" });
+    void fetchTransport({ baseUrl: "https://api.example.test/v1", apiKey: "test-key", fetch: hanging })({ method: "GET", path: "/models" });
+    expect(signals[1]).toBeUndefined();
+  });
 });

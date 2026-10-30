@@ -15,7 +15,7 @@ const container = (status: number, body: string) => {
 };
 
 const PROBE = { bytes: 10, durationSeconds: 30, isMp4: true };
-const CLIP = { bytes: 5, frames: 60, fps: 2, durationSeconds: 30, width: 320, height: 568 };
+const CLIP = { bytes: 5, frames: 60, fps: 2, codec: "h264", durationSeconds: 30, width: 320, height: 568 };
 const REQUEST = { input: "https://r2.test/in", output: "https://r2.test/out", start: 0, end: 30, fps: 2, maxHeight: 720 };
 
 describe("containerMedia", () => {
@@ -70,5 +70,11 @@ describe("containerMedia", () => {
   it("throws on a 200 that does not have the promised shape", async () => {
     await expect(container(200, JSON.stringify({ bytes: "many" })).media.probe("https://r2.test/in")).rejects.toThrow();
     await expect(container(200, "not json").media.clip(REQUEST)).rejects.toThrow();
+  });
+
+  it.each(["hevc", "vp9", null])("throws on a clip the container made as %s, so no clip phones cannot play is saved", async (codec) => {
+    await expect(container(200, JSON.stringify({ ...CLIP, codec })).media.clip(REQUEST)).rejects.toThrow();
+    const noCodec = Object.fromEntries(Object.entries(CLIP).filter(([key]) => key !== "codec"));
+    await expect(container(200, JSON.stringify(noCodec)).media.clip(REQUEST)).rejects.toThrow();
   });
 });

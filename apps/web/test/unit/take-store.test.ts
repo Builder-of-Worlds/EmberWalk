@@ -64,6 +64,17 @@ describe("take store", () => {
     expect((await takes.saveUpload(take.id, null)).upload).toBeNull();
   });
 
+  it("drops only the named upload, keeping the walk, and leaves a newer upload as it is", async () => {
+    const takes = await openTakeStore(new IDBFactory());
+    const take = await takes.create("video/mp4", 1);
+    const newer = { walkId: "w", uploadId: "u-new", partBytes: 10, partCount: 2, parts: [{ partNumber: 1, etag: "e" }] };
+    await takes.saveUpload(take.id, newer);
+    expect((await takes.dropUpload(take.id, "u-old")).upload).toEqual(newer);
+    expect((await takes.dropUpload(take.id, "u-new")).upload).toEqual({ walkId: "w", uploadId: null, partBytes: 0, partCount: 0, parts: [] });
+    await takes.saveUpload(take.id, null);
+    expect((await takes.dropUpload(take.id, "u-new")).upload).toBeNull();
+  });
+
   it("keeps the tag a take sent and what became of it, across a new store on the same storage", async () => {
     const idb = new IDBFactory();
     const take = await (await openTakeStore(idb)).create("video/mp4", 1);

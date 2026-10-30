@@ -20,7 +20,7 @@ import {
   stepsForJob,
 } from "../src/agent.ts";
 import { DbRefused } from "../src/errors.ts";
-import { FINDING, FINDING_2, OTHER_WALK, resetDb, seedWalk, WALK } from "./fixtures.ts";
+import { FINDING, FINDING_2, OTHER_WALK, HOMEOWNER, resetDb, seedWalk, WALK } from "./fixtures.ts";
 
 const JOB = "ba0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 const JOB_2 = "ba0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
@@ -129,7 +129,7 @@ describe("drafts and the approval queue", () => {
   it("approves a draft and then marks it sent, setting both times", async () => {
     await withCrews();
     await saveDraft(env.DB, draft(1));
-    await approveMessage(env.DB, messageId(1), LATER);
+    await approveMessage(env.DB, messageId(1), LATER, HOMEOWNER);
     await markSent(env.DB, messageId(1), LATEST, "sent");
     expect(await getMessage(env.DB, messageId(1))).toMatchObject({ status: "sent", approvedAt: LATER, sentAt: LATEST });
   });
@@ -138,7 +138,7 @@ describe("drafts and the approval queue", () => {
     await createJob(env.DB, job());
     await saveJobCrews(env.DB, JOB, [crew(1, { email: null, phone: "+15305550101" })]);
     await saveDraft(env.DB, draft(1, { channel: "text", subject: null }));
-    await approveMessage(env.DB, messageId(1), LATER);
+    await approveMessage(env.DB, messageId(1), LATER, HOMEOWNER);
     await markSent(env.DB, messageId(1), LATEST, "sent_by_phone");
     expect(await getMessage(env.DB, messageId(1))).toMatchObject({ channel: "text", status: "sent_by_phone", sentAt: LATEST });
   });
@@ -171,8 +171,8 @@ describe("drafts and the approval queue", () => {
   it("refuses approving twice, editing after approval and a missing message", async () => {
     await withCrews();
     await saveDraft(env.DB, draft(1));
-    await approveMessage(env.DB, messageId(1), LATER);
-    await expect(approveMessage(env.DB, messageId(1), LATEST)).rejects.toThrow(DbRefused);
+    await approveMessage(env.DB, messageId(1), LATER, HOMEOWNER);
+    await expect(approveMessage(env.DB, messageId(1), LATEST, HOMEOWNER)).rejects.toThrow(DbRefused);
     await expect(editDraft(env.DB, messageId(1), { subject: "x", body: "changed" })).rejects.toThrow(DbRefused);
     await expect(markSent(env.DB, messageId(9), LATEST, "sent")).rejects.toThrow(DbRefused);
     expect(await getMessage(env.DB, messageId(1))).toMatchObject({ status: "approved", body: draft(1).body });
@@ -203,7 +203,7 @@ describe("the database refuses to bypass approval", () => {
   it("aborts raw SQL that edits the body, subject, channel or crew after approval", async () => {
     await withCrews();
     await saveDraft(env.DB, draft(1));
-    await approveMessage(env.DB, messageId(1), LATER);
+    await approveMessage(env.DB, messageId(1), LATER, HOMEOWNER);
     await expect(sql("UPDATE agent_messages SET body = 'changed' WHERE id = ?", messageId(1))).rejects.toThrow(/draft/);
     await expect(sql("UPDATE agent_messages SET subject = 'changed' WHERE id = ?", messageId(1))).rejects.toThrow(/draft/);
     await expect(sql("UPDATE agent_messages SET channel = 'text', subject = NULL WHERE id = ?", messageId(1))).rejects.toThrow(/draft/);
@@ -214,7 +214,7 @@ describe("the database refuses to bypass approval", () => {
   it("aborts raw SQL that approves a sent message again or turns it back into a draft", async () => {
     await withCrews();
     await saveDraft(env.DB, draft(1));
-    await approveMessage(env.DB, messageId(1), LATER);
+    await approveMessage(env.DB, messageId(1), LATER, HOMEOWNER);
     await markSent(env.DB, messageId(1), LATEST, "sent");
     await expect(sql("UPDATE agent_messages SET status = 'approved', sent_at = NULL WHERE id = ?", messageId(1))).rejects.toThrow(/draft/);
     await expect(sql("UPDATE agent_messages SET status = 'draft', approved_at = NULL, sent_at = NULL WHERE id = ?", messageId(1))).rejects.toThrow(/draft/);

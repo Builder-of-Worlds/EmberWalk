@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cloudflare/containers": "0.3.7",
     "@emberwalk/catalog": "0.0.0",
     "@emberwalk/db": "0.0.0",
     "@emberwalk/explain": "0.0.0",

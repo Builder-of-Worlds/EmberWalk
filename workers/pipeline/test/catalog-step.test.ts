@@ -1,6 +1,6 @@
-import { CATALOG, isPending, POINT_LOOKS, rowsForClip, samPhraseOf, walkCost } from "@emberwalk/catalog";
+import { CATALOG, type CatalogRow, POINT_LOOKS, rowsForClip, samPhraseOf, walkCost } from "@emberwalk/catalog";
 import type { SamFrame } from "@emberwalk/meta";
-import { LOOP_CONCEPTS } from "@emberwalk/shared";
+import { LOOP_CONCEPTS, OBJECT_CONCEPTS } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { storedConcept, tallyFrames, tallyNotChecked, tallyWalk } from "../src/catalog-step.ts";
@@ -20,7 +20,18 @@ const setup = async (options: { synthetic?: boolean; kind?: "loop" | "pan" } = {
   return { walkId, clip };
 };
 
-const pendingRows = CATALOG.filter(isPending);
+const pendingRow = (concept: string): CatalogRow => ({
+  concept,
+  phrases: [concept.replaceAll("_", " ")],
+  point: null,
+  why: "An object with no rule row yet.",
+  source: { estimated: true },
+  band: ["zone_0"],
+  pending: "shared",
+  proposedKey: `${concept.replaceAll("_", "-")}-zone-0`,
+});
+
+const objectRows = CATALOG.filter((row) => (OBJECT_CONCEPTS as readonly string[]).includes(row.concept));
 
 const BOX = { left: 0, top: 0, right: 10, bottom: 10, frameWidth: 100, frameHeight: 100 };
 const MASK = { encoding: "one_bit", height: 1, width: 1, payload: "" } as const;
@@ -35,11 +46,11 @@ const readDetections = async (walkId: string, clipId: string) =>
 beforeEach(resetAll);
 
 describe("tallying an answer for an object the rules engine cannot yet explain", () => {
-  const gas = pendingRows.find((r) => r.concept === "gas_can")!;
+  const gas = pendingRow("hay_bale");
 
   it("counts the frames it shows on and keeps the best score", () => {
     expect(tallyFrames(gas, "clip-1", [frame(1, 0.4), frame(2, 0.9, 0.6), frame(3)])).toEqual({
-      object: "gas_can",
+      object: "hay_bale",
       clipId: "clip-1",
       outcome: "found",
       framesFound: 2,
@@ -59,7 +70,7 @@ describe("tallying an answer for an object the rules engine cannot yet explain",
 
   it("says why an object was not checked", () => {
     expect(tallyNotChecked(gas, "clip-1", "SAM answered 500")).toEqual({
-      object: "gas_can",
+      object: "hay_bale",
       clipId: "clip-1",
       outcome: "not_checked",
       framesFound: 0,
@@ -71,11 +82,11 @@ describe("tallying an answer for an object the rules engine cannot yet explain",
   it("adds the clips of a walk together, object by object", () => {
     const a = tallyFrames(gas, "clip-1", [frame(1, 0.4)]);
     const b = tallyFrames(gas, "clip-2", [frame(1, 0.8), frame(2, 0.5)]);
-    const c = tallyNotChecked(pendingRows.find((r) => r.concept === "tarp")!, "clip-2", "SAM answered 500");
+    const c = tallyNotChecked(pendingRow("pallet_stack"), "clip-2", "SAM answered 500");
 
     expect(tallyWalk([a, b, c])).toEqual([
-      { object: "gas_can", outcome: "found", clipsFound: 2, framesFound: 3, bestScore: 0.8, reasons: [] },
-      { object: "tarp", outcome: "not_checked", clipsFound: 0, framesFound: 0, bestScore: null, reasons: ["SAM answered 500"] },
+      { object: "hay_bale", outcome: "found", clipsFound: 2, framesFound: 3, bestScore: 0.8, reasons: [] },
+      { object: "pallet_stack", outcome: "not_checked", clipsFound: 0, framesFound: 0, bestScore: null, reasons: ["SAM answered 500"] },
     ]);
   });
 
@@ -83,12 +94,14 @@ describe("tallying an answer for an object the rules engine cannot yet explain",
     const a = tallyFrames(gas, "clip-1", [frame(1, 0.4)]);
     const b = tallyNotChecked(gas, "clip-2", "SAM answered 500");
 
-    expect(tallyWalk([a, b])).toEqual([{ object: "gas_can", outcome: "found", clipsFound: 1, framesFound: 1, bestScore: 0.4, reasons: ["SAM answered 500"] }]);
+    expect(tallyWalk([a, b])).toEqual([{ object: "hay_bale", outcome: "found", clipsFound: 1, framesFound: 1, bestScore: 0.4, reasons: ["SAM answered 500"] }]);
   });
 
-  it("refuses to store a track for it", () => {
-    expect(() => storedConcept(gas)).toThrow(/gas_can/);
+  it("refuses to store a track for it, and stores one for each of the ten yard objects and the wood deck", () => {
+    expect(() => storedConcept(gas)).toThrow(/hay_bale/);
+    expect(() => storedConcept({ ...gas, concept: "gas_can" })).toThrow(/gas_can/);
     expect(storedConcept(CATALOG.find((r) => r.concept === "shed")!)).toBe("shed");
+    for (const row of [...objectRows, CATALOG.find((r) => r.concept === "wood_deck")!]) expect(storedConcept(row)).toBe(row.concept);
   });
 });
 
@@ -106,50 +119,43 @@ describe("segmentClip over the whole catalog", () => {
     expect(requestsTo("/responses")).toHaveLength(expected.length + 2 * POINT_LOOKS);
   });
 
-  it("asks the pan clip for the pending objects as well", async () => {
+  it("asks the pan clip for the ten yard objects as well", async () => {
     const { walkId, clip } = await setup({ kind: "pan" });
     stageCatalogYard(harness);
 
     await segmentClip(deps(), walkId, clip, "file-1");
 
-    for (const row of pendingRows) expect(harness.asked).toContain(samPhraseOf(row));
+    for (const row of objectRows) expect(harness.asked).toContain(samPhraseOf(row));
     expect(requestsTo("/responses")).toHaveLength(rowsForClip("pan").length - 1 + POINT_LOOKS);
   });
 
-  it("returns pending objects in the tally and stores tracks only for existing concepts", async () => {
+  it("stores a track for each of the ten yard objects the yard holds, a run for every concept, and tallies nothing", async () => {
     const { walkId, clip } = await setup();
     stageCatalogYard(harness);
 
     const result = await segmentClip(deps(), walkId, clip, "file-1");
 
-    expect(result).toMatchObject({ ok: true, value: { clipId: clip.id, found: 1, notChecked: 0 } });
-    const value = (result as { value: { pending: ReturnType<typeof tallyFrames>[] } }).value;
-    expect(value.pending.map((t) => t.object)).toEqual(pendingRows.map((r) => r.concept));
-    const byObject = Object.fromEntries(value.pending.map((t) => [t.object, t]));
-    expect(byObject["gas_can"]).toMatchObject({ outcome: "found", framesFound: 2, bestScore: 0.81, clipId: clip.id });
-    expect(byObject["lawn_mower"]).toMatchObject({ outcome: "found", framesFound: 3, bestScore: 0.91 });
-    expect(byObject["vehicle"]).toMatchObject({ outcome: "none", framesFound: 0, bestScore: null });
-
+    expect(result).toMatchObject({ ok: true, value: { clipId: clip.id, found: 5, notChecked: 0, pending: [] } });
     const stored = await readDetections(walkId, clip.id);
-    expect(stored.runs).toHaveLength(LOOP_CONCEPTS.length);
-    expect(stored.tracks.map((t) => t.concept)).toEqual(["wood_pile"]);
+    expect(stored.runs.map((r) => r.concept).sort()).toEqual([...LOOP_CONCEPTS].sort());
+    expect(stored.tracks.map((t) => t.concept).sort()).toEqual(["gas_can", "grill", "lawn_mower", "tarp", "wood_pile"]);
     const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM concept_runs").first<{ n: number }>();
     expect(rows?.n ?? 0).toBe(0);
   });
 
-  it("refuses a malformed answer for one object and still returns the others", async () => {
+  it("refuses a malformed answer for one object, marks it not checked, and still stores the others", async () => {
     const { walkId, clip } = await setup();
     stageCatalogYard(harness);
     harness.answers["gas can"] = [{ text: "<1f>this is not a SAM record" }];
 
     const result = await segmentClip(deps(), walkId, clip, "file-1");
 
-    const pending = (result as { value: { pending: ReturnType<typeof tallyFrames>[] } }).value.pending;
-    const byObject = Object.fromEntries(pending.map((t) => [t.object, t]));
-    expect(byObject["gas_can"]).toMatchObject({ outcome: "not_checked", framesFound: 0 });
-    expect(byObject["gas_can"]?.reason).toContain("SAM answer refused");
-    expect(byObject["lawn_mower"]).toMatchObject({ outcome: "found", framesFound: 3 });
-    expect(byObject["tarp"]).toMatchObject({ outcome: "found", framesFound: 2 });
+    expect(result).toMatchObject({ ok: true, value: { found: 4, notChecked: 1 } });
+    const stored = (await readDetections(walkId, clip.id)) as { runs: { concept: string; outcome: string; reason: string | null }[]; tracks: { concept: string }[] };
+    const gas = stored.runs.find((r) => r.concept === "gas_can");
+    expect(gas).toMatchObject({ outcome: "not_checked" });
+    expect(gas?.reason).toContain("SAM answer refused");
+    expect(stored.tracks.map((t) => t.concept).sort()).toEqual(["grill", "lawn_mower", "tarp", "wood_pile"]);
   });
 
   it("starts no call for a walk whose estimate passes the cap", async () => {

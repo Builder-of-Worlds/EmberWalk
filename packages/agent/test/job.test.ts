@@ -12,7 +12,7 @@ import { runWalk } from "../src/plan.ts";
 import { type Outbox, sendApproved, SendRefused } from "../src/send.ts";
 import { finalAnswer, toolAnswer } from "./shaped/answers.ts";
 import { followUpsDone, followUpTurn, followUpUse } from "./shaped/followups.ts";
-import { agentDeps, crew, NOW, resetDb, seedWalk, WALK, ZIP } from "./support.ts";
+import { agentDeps, crew, HOMEOWNER, NOW, resetDb, seedWalk, WALK, ZIP } from "./support.ts";
 
 const TEST_INBOX = "test-inbox@example.com";
 const TRADES = ["brush_clearing", "debris_hauling", "fencing"] as const;
@@ -95,7 +95,7 @@ it("runs a whole job on a synthetic house, every send going only to the test inb
   for (const job of jobs) {
     const m = await firstDraft(job.id);
     await expect(sendApproved(sendDeps, m.id)).rejects.toBeInstanceOf(SendRefused);
-    await approveMessage(env.DB, m.id, NOW.toISOString());
+    await approveMessage(env.DB, m.id, NOW.toISOString(), HOMEOWNER);
     await sendApproved(sendDeps, m.id);
     firstSent.push(m.id);
   }
@@ -103,7 +103,7 @@ it("runs a whole job on a synthetic house, every send going only to the test inb
   const followDeps = { ...walk.deps, now: () => LATER };
   for (const job of jobs) expect(await runFollowUps(followDeps, job.id)).toMatchObject({ ended: "finished", followUps: 1 });
   const reminder = await firstDraft(jobs[0]!.id);
-  await approveMessage(env.DB, reminder.id, LATER.toISOString());
+  await approveMessage(env.DB, reminder.id, LATER.toISOString(), HOMEOWNER);
   await sendApproved({ ...sendDeps, now: () => LATER }, reminder.id);
 
   await replaceFindings(env.DB, WALK, (await findingsForWalk(env.DB, WALK)).map((f) => ({ ...f, status: "done" as const })));

@@ -9,7 +9,9 @@ import { explainWalk } from "./explain-step.ts";
 import { type Outcome, pass } from "./outcome.ts";
 import { clipStart, prepareWalk } from "./prepare.ts";
 import { findPrivacy } from "./privacy.ts";
+import { type Previewed, previewWalk } from "./preview-step.ts";
 import { scoreWalk } from "./score.ts";
+import { type Checked, secondCheckWalk } from "./second-check-step.ts";
 import { dropUpload, segmentClip, uploadClip } from "./segment.ts";
 import { lookingSteps, STEP, WRITING_STEPS } from "./steps.ts";
 import { dropWalkVideo } from "./storage.ts";
@@ -18,6 +20,7 @@ import { transcribeWalk } from "./transcribe.ts";
 import { storeVoiceNotes } from "./voice-notes.ts";
 
 const RETRY = { retries: { limit: 3, delay: "10 seconds", backoff: "exponential" }, timeout: "15 minutes" } as const;
+const ONCE = { retries: { limit: 0, delay: "10 seconds", backoff: "exponential" }, timeout: "15 minutes" } as const;
 
 export type PipelineResult = { status: "done" } | { status: "failed"; failure: Failure } | { status: "skipped" };
 
@@ -133,6 +136,18 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
       await count(WRITING_STEPS, STEP.enterExplain);
       await step.do(STEP.explain, RETRY, () => explainWalk(deps, walkId));
       await count(WRITING_STEPS, STEP.explain);
+      const extras: [string, () => Promise<Checked | Previewed>][] = [
+        [STEP.secondCheck, () => secondCheckWalk(deps, walkId)],
+        [STEP.preview, () => previewWalk(deps, walkId)],
+      ];
+      for (const [name, extra] of extras) {
+        try {
+          await step.do(name, ONCE, extra);
+        } catch (error) {
+          console.warn(`walk ${walkId} goes on without ${name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        await count(WRITING_STEPS, name);
+      }
     }
     await step.do(STEP.complete, () => completeWalk(deps.db, walkId));
     return null;

@@ -24,15 +24,22 @@ FACING = {(0, 1): "north", (0, -1): "south", (1, 0): "east", (-1, 0): "west"}
 STANDOFF_IN = (120, 144)
 NONCOMBUSTIBLE = ("fiber cement lap", "stucco", "metal")
 STRUCTURE_SAFE = ("concrete", "asphalt", "gravel", "masonry", "metal")
+WOOD = "wood"
+WOOD_KINDS = ("deck", "porch")
+WOOD_TEXTURE = "polyhaven:weathered_planks"
+WOOD_DECK_CONCEPT = "wood deck"
+WOOD_DECK_RULE_ID = "ca-wood-deck-zone-0-cbc7a-z0"
 STEPPED = ("porch", "deck", "landing")
 STEPS_LEAD_TO = ("porch", "deck", "landing", "balcony")
 NO_STEPS_IN = 8
 BRANCH = "tree branch over roof"
+ROOF_MISSING = "house.roof is missing; the scene needs it to build"
 CANOPY_OFF_WALL_IN = 60
+CONIFER_RATIO = 1.9
 WALK_CLEAR_IN = 24
 WALK_STEP_IN = 6
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-RULES_JS = "import { RULES } from '@emberwalk/rules'; console.log(JSON.stringify(RULES.map((r) => [r.id, r.concept, r.zone, r.statute])));"
+RULES_JS = "import { RULES } from '@emberwalk/rules'; console.log(JSON.stringify(RULES.map((r) => [r.id, r.concept, r.zone, r.statute, r.when.within ?? null])));"
 
 SIDE_SCHEMA = {
     "type": "object",
@@ -98,7 +105,7 @@ def load_rules(root=REPO):
     if run.returncode != 0:
         raise HouseError("refused", "rules package not read: %s" % run.stderr.strip()[-300:])
     try:
-        rules = {i: {"concept": c, "zone": z, "statute": s} for i, c, z, s in json.loads(run.stdout)}
+        rules = {i: {"concept": c, "zone": z, "statute": s, "within": w} for i, c, z, s, w in json.loads(run.stdout)}
     except (ValueError, TypeError):
         raise HouseError("refused", "rules package printed something that is not its rule list")
     if not rules:
@@ -126,6 +133,7 @@ def validate(doc, catalog, rules):
     _items(doc, catalog, rules, eds)
     if kind == SPEC:
         _trees(doc, catalog, eds)
+    _wood_rules(doc, rules)
     _clean_sides(doc)
     if doc["state"] == "before":
         _demo_bar(doc)
@@ -257,6 +265,8 @@ def _footprint(doc):
         _lot_and_structures(doc, eds)
         if "roof" in doc["house"]:
             _roof(doc, eds)
+        else:
+            raise HouseError("refused", ROOF_MISSING)
     return eds
 
 
@@ -312,8 +322,8 @@ def _lot_and_structures(doc, eds):
             raise HouseError("refused", "%s: runs outside the lot" % where)
         if overlaps_house(rect, eds):
             raise HouseError("refused", "%s: runs into the house" % where)
-        if s["material"] not in STRUCTURE_SAFE:
-            raise HouseError("refused", "%s: %s burns; a structure that burns is a hazard, not decoration" % (where, s["material"]))
+        if s["material"] not in STRUCTURE_SAFE and not burns(s):
+            raise HouseError("refused", "%s: %s burns; only a wood deck or porch is taken, as a hazard" % (where, s["material"]))
     for i, s in enumerate(doc["structures"]):
         where = "structures[%d] %s" % (i, s["id"])
         near = [t["kind"] for t in doc["structures"] if t is not s and _abut(s, t)]
@@ -321,6 +331,59 @@ def _lot_and_structures(doc, eds):
             raise HouseError("refused", "%s: %d in up with no steps" % (where, s["height_in"]))
         if s["kind"] == "steps" and not set(near) & set(STEPS_LEAD_TO):
             raise HouseError("refused", "%s: the steps lead to no porch, deck, landing or balcony" % where)
+
+
+def burns(s):
+    return s["material"] == WOOD and s["kind"] in WOOD_KINDS
+
+
+def _rect_to_edge(rect, e):
+    corners = ((rect[0], rect[1]), (rect[0], rect[3]), (rect[2], rect[1]), (rect[2], rect[3]))
+    return min([_ring_dist(c, [e]) for c in corners] + [_rect_dist(p, rect) for p in (e["start"], e["end"])])
+
+
+def wood_structures(doc):
+    eds = edges(doc)
+    out = []
+    for s in doc.get("structures", []):
+        if burns(s):
+            rect = tuple(s["min_in"]) + tuple(s["max_in"])
+            near = min(eds, key=lambda e: _rect_to_edge(rect, e))
+            d = int(round(_rect_to_edge(rect, near)))
+            if d > placement.MAX_DISTANCE_IN:
+                raise HouseError("refused", "wood %s %s: %d in is past 100 feet" % (s["kind"], s["id"], d))
+            out.append({"id": s["id"], "kind": s["kind"], "material": WOOD, "side": near["side"], "distance_in": d, "band": placement.band(d)})
+    return out
+
+
+def _in_reach(rule, d):
+    return rule["zone"] == ZONE[placement.band(d)] and (rule.get("within") is None or d <= rule["within"] * 12)
+
+
+def wood_findings(doc, rules):
+    if "structure_hazards" in doc:
+        return doc["structure_hazards"]
+    rule = rules.get(WOOD_DECK_RULE_ID)
+    return [{"id": s["id"], "kind": s["kind"], "concept": WOOD_DECK_CONCEPT, "material": WOOD, "side": s["side"],
+             "distance_in": s["distance_in"], "band": s["band"], "rule_id": WOOD_DECK_RULE_ID}
+            for s in wood_structures(doc) if rule is None or _in_reach(rule, s["distance_in"])]
+
+
+def _wood_rules(doc, rules):
+    for f in wood_findings(doc, rules):
+        where = "wood %s %s" % (f["kind"], f["id"])
+        d = f["distance_in"]
+        if d > placement.MAX_DISTANCE_IN:
+            raise HouseError("refused", "%s: %d in is past 100 feet" % (where, d))
+        if f["band"] != placement.band(d):
+            raise HouseError("refused", "%s: band %s does not match %d in, which is band %s" % (where, f["band"], d, placement.band(d)))
+        rule = rules.get(f["rule_id"])
+        if rule is None:
+            raise HouseError("refused", "%s: rule_id %s is not in the rules package" % (where, f["rule_id"]))
+        if rule["concept"] != f["concept"].replace(" ", "_"):
+            raise HouseError("refused", "%s: rule_id %s is for %s, not %s" % (where, f["rule_id"], rule["concept"], f["concept"]))
+        if not _in_reach(rule, f["distance_in"]):
+            raise HouseError("refused", "%s: %d in is past the reach of rule_id %s" % (where, f["distance_in"], f["rule_id"]))
 
 
 def _abut(a, b):
@@ -398,6 +461,9 @@ def _items(doc, catalog, rules, eds):
             raise HouseError("refused", "%s: id used twice" % where)
         seen.add(f["id"])
         _placed(where, f, doc, catalog, eds)
+    for s in doc.get("structures", []) + doc.get("structure_hazards", []):
+        if s["id"] in seen:
+            raise HouseError("refused", "%s: id used by a hazard too" % s["id"])
 
 
 def _clean_sides(doc):
@@ -477,6 +543,10 @@ def _trees(doc, catalog, eds):
                 raise HouseError("refused", "%s: branch %s does not reach its canopy" % (where, b))
 
 
+def tree_form(tree):
+    return "conifer" if tree["height_in"] >= CONIFER_RATIO * tree["canopy_in"] else "oak"
+
+
 def _demo_bar(doc):
     bands = [h["band"] for h in doc["hazards"]]
     if bands.count("0_5") < 2:
@@ -485,7 +555,7 @@ def _demo_bar(doc):
         raise HouseError("refused", "no hazard in 30_100")
 
 
-def truth_from_spec(spec):
+def truth_from_spec(spec, rules):
     hazards = []
     for h in spec["hazards"]:
         w, depth, height = h["size_in"]
@@ -505,7 +575,7 @@ def truth_from_spec(spec):
             "asset": h["asset"],
             "box_in": {"min": [x, y, z], "max": [x + w, y + depth, z + height]},
         })
-    return {
+    out = {
         "schema": TRUTH,
         "synthetic": True,
         "label": spec["label"],
@@ -517,6 +587,10 @@ def truth_from_spec(spec):
         "sides": copy.deepcopy(spec["sides"]),
         "hazards": hazards,
     }
+    wood = wood_findings(spec, rules)
+    if wood:
+        out["structure_hazards"] = wood
+    return out
 
 
 def _scan_entry(entry, fields):
@@ -592,14 +666,18 @@ def after_spec(before, changes, catalog, rules):
     return validate(after, catalog, rules)
 
 
-def summary(doc):
+def summary(doc, rules):
     hazards = doc["hazards"]
     bands = {b: sum(1 for h in hazards if h["band"] == b) for b in ZONE}
     labels = {k: sum(1 for h in hazards if h["label"] == k) for k in ("required_now", "recommended")}
     clean = [name for name, side in doc["sides"].items() if side["clean"]]
-    return "HOUSE OK %s %s %s: %d hazards (0_5 %d, 5_30 %d, 30_100 %d), required_now %d, recommended %d, clean side %s" % (
+    line = "HOUSE OK %s %s %s: %d hazards (0_5 %d, 5_30 %d, 30_100 %d), required_now %d, recommended %d, clean side %s" % (
         doc.get("id") or doc["scene"], "spec" if doc["schema"] == SPEC else "truth", doc["state"], len(hazards),
         bands["0_5"], bands["5_30"], bands["30_100"], labels["required_now"], labels["recommended"], ", ".join(clean) or "none")
+    wood = wood_findings(doc, rules)
+    if wood:
+        line += ", wood structures %d (%s)" % (len(wood), ", ".join("%s %s" % (f["kind"], f["id"]) for f in wood))
+    return line
 
 
 def after_summary(before, after):
@@ -685,7 +763,7 @@ def _run_in(b, others, end):
 def roof_prisms(doc):
     roof = doc["house"].get("roof")
     if roof is None:
-        raise HouseError("refused", "house.roof is missing; the scene needs it to build")
+        raise HouseError("refused", ROOF_MISSING)
     eave = roof["eave_in"]
     wall = max(s["height_in"] for s in doc["sides"].values())
     out = []
@@ -736,4 +814,6 @@ def used_assets(doc, catalog):
         ids.append(item["asset"])
         if "material" in catalog[item["asset"]]:
             ids.append(catalog[item["asset"]]["material"])
+    if any(burns(s) for s in doc["structures"]):
+        ids.append(WOOD_TEXTURE)
     return [{"id": i, "kind": catalog[i]["kind"], "license": catalog[i]["license"], "source": catalog[i].get("source")} for i in dict.fromkeys(ids)]

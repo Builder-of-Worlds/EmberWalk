@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { SAMPLES } from "../../src/samples.ts";
 
 const SENTENCE_FEET = /(\d+)(?: to (\d+))?[ -](?:feet|foot)\b|(\d+) inch(?:es)?\b/g;
-const CITED_FEET = /(\d+)(?:[ -](?:feet|foot)\b| ft\.)|(\d+) in\.|(\d+) inch(?:es)?\b/g;
+const CITED_FEET = /(\d+)(?: to (\d+))?(?:[ -](?:feet|foot)\b| ft\.)|(\d+) in\.|(\d+) inch(?:es)?\b/g;
 const ZONE = /\bZone (\d)\b/g;
 const CCR_ZONE: Record<string, number> = { a: 1, b: 2 };
 
@@ -18,7 +18,9 @@ const sentenceFeet = (sentence: string): string[] =>
   [...sentence.matchAll(SENTENCE_FEET)].flatMap((m) => (m[3] !== undefined ? [`${m[3]} in`] : [m[1], m[2]].filter((n) => n !== undefined).map((n) => `${n} ft`)));
 
 const citedFeet = (row: Pick<RuleRow, "citation" | "requirement">): Set<string> => {
-  const said = [...row.requirement.matchAll(CITED_FEET)].map((m) => (m[1] !== undefined ? `${m[1]} ft` : `${m[2] ?? m[3]} in`));
+  const said = [...row.requirement.matchAll(CITED_FEET)].flatMap((m) =>
+    m[1] !== undefined ? [m[1], m[2]].filter((n) => n !== undefined).map((n) => `${n} ft`) : [`${m[3] ?? m[4]} in`],
+  );
   const zones = [...`${row.citation} ${row.requirement}`.matchAll(ZONE)].map((m) => Number(m[1]));
   const ccr = /^14 CCR 1299\.03\(([a-z])\)/.exec(row.citation)?.[1];
   if (ccr !== undefined && CCR_ZONE[ccr] !== undefined) zones.push(CCR_ZONE[ccr]);
@@ -36,6 +38,12 @@ describe("the fix sentence library", () => {
     expect([...citedFeet({ citation: "14 CCR 1299.03(b)(2)(B)", requirement: "a maximum height of four inches (4 in.)." })].sort()).toEqual(["100 ft", "30 ft", "4 in"]);
     expect([...citedFeet({ citation: "CAL FIRE Zone 1 guidance", requirement: "maintain a 10-foot gap from others" })].sort()).toEqual(["10 ft", "30 ft", "5 ft"]);
     expect([...citedFeet({ citation: "PRC 4291(a)(4)", requirement: "Maintain the roof free of leaves." })]).toEqual([]);
+  });
+
+  it("reads both ends of a cited range, and still finds a distance outside it uncited", () => {
+    const cited = citedFeet({ citation: "U.S. Fire Administration wildfire and outdoor guidance", requirement: "Keep fire pits, wood piles and propane tanks 10 to 30 feet from your home." });
+    expect([...cited].sort()).toEqual(["10 ft", "30 ft"]);
+    expect(sentenceFeet("Keep propane bottles 40 feet from the home.").filter((feet) => !cited.has(feet))).toEqual(["40 ft"]);
   });
 
   it("gives every sentence a distance its own citation sets", () => {

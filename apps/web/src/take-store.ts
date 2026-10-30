@@ -1,4 +1,4 @@
-import type { CompletedPart, Device, MotionSample, Side, WalkPart } from "@emberwalk/shared";
+import type { CompletedPart, Corner, Device, LightReading, MotionSample, Side, WalkPart } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
 import type { Jurisdiction } from "./location.ts";
 
@@ -18,14 +18,16 @@ export type OneTagSent = { id: string; sent: boolean; refusal: Failure | null };
 
 export type Pause = { atMs: number; forMs: number };
 
-export type Pan = { side: Side; startMs: number; endMs: number | null };
+export type Pan = { side: Side; corner?: Corner | null; startMs: number; endMs: number | null };
 
 export type WalkMarks = {
   soundOffAtMs: number | null;
   pauses: Pause[];
   propertyLines: number[];
   motion: MotionSample[];
+  light?: LightReading[];
   pans?: Pan[];
+  nextTaps?: number[];
 };
 
 export const NO_MARKS: WalkMarks = { soundOffAtMs: null, pauses: [], propertyLines: [], motion: [], pans: [] };
@@ -61,6 +63,8 @@ export type TakeStore = {
   get(id: string): Promise<Take>;
   blob(id: string): Promise<Blob>;
   saveUpload(id: string, upload: UploadState | null): Promise<Take>;
+  addPart(id: string, uploadId: string, part: CompletedPart): Promise<Take>;
+  dropUpload(id: string, uploadId: string): Promise<Take>;
   saveTags(id: string, tags: TagsSent): Promise<Take>;
   setJurisdiction(id: string, jurisdiction: Jurisdiction): Promise<Take>;
   remove(id: string): Promise<void>;
@@ -166,6 +170,19 @@ export const openTakeStore = async (idb: IDBFactory, name = "emberwalk"): Promis
       );
     },
     saveUpload: (id, upload) => update(id, (take) => ({ ...take, upload })),
+    addPart: (id, uploadId, part) =>
+      update(id, (take) => {
+        const upload = take.upload;
+        if (upload === null || upload.uploadId !== uploadId) return take;
+        const parts = [...upload.parts.filter((p) => p.partNumber !== part.partNumber), part].sort((a, b) => a.partNumber - b.partNumber);
+        return { ...take, upload: { ...upload, parts } };
+      }),
+    dropUpload: (id, uploadId) =>
+      update(id, (take) => {
+        const upload = take.upload;
+        if (upload === null || upload.uploadId !== uploadId) return take;
+        return { ...take, upload: { walkId: upload.walkId, uploadId: null, partBytes: 0, partCount: 0, parts: [] } };
+      }),
     saveTags: (id, tags) => update(id, (take) => ({ ...take, tags })),
     setJurisdiction: (id, jurisdiction) => update(id, (take) => ({ ...take, jurisdiction })),
     async remove(id) {

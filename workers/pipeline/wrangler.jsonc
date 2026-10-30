@@ -3,22 +3,37 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-15",
   "account_id": "755646338ba02dbe2d3409c5a557fa15",
+  "workers_dev": false,
+  "preview_urls": false,
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "emberwalk-media" }],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "emberwalk-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "2a57e3df-79dd-4886-adfb-ef2967b95bf6",
       "migrations_dir": "../../migrations"
     }
   ],
   "workflows": [{ "name": "walk-pipeline", "binding": "PIPELINE", "class_name": "WalkPipeline" }],
+  "containers": [
+    {
+      "class_name": "MediaContainer",
+      "image": "../../containers/media/Dockerfile",
+      "image_build_context": "../../containers/media",
+      // "instance_type" is not chosen yet: add it here; scripts/deploy.sh refuses to deploy until it is set.
+      "max_instances": 3
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "MEDIA_CONTAINER", "class_name": "MediaContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaContainer"] }],
   "triggers": { "crons": ["17 * * * *"] },
   "vars": {
     "R2_HOST": "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com",
     "R2_BUCKET_NAME": "emberwalk-media",
     "META_BASE_URL": "https://api.meta.ai/v1",
     "META_BILLING": "free_credits",
-    "VOICE_NOTES": "off"
+    "VOICE_NOTES": "on",
+    "SECOND_CHECK_REAL_WALKS": "off",
+    "SYNTHETIC_RENDERS": "abe7d134979368919853a540178d4c47995b2f013fa19172f06ebb70c3534419:22576900,0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0:25809527,b1b45c253af2648bc597b82b5767c6996fc2945495f0b8c448113a3e008225b8:2434671"
   }
 }
