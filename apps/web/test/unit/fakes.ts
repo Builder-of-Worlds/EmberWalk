@@ -3,8 +3,13 @@ import { IDBFactory } from "fake-indexeddb";
 import { vi } from "vitest";
 import { once } from "../../src/deps.ts";
 import { storageFindingMarks } from "../../src/finding-marks.ts";
+import { storageMarkSync } from "../../src/mark-sync.ts";
 import { storagePrefs } from "../../src/prefs.ts";
+import { storageSentWalks } from "../../src/sent-walks.ts";
 import type { Deps } from "../../src/deps.ts";
+import type { FixedApi } from "../../src/fixed-api.ts";
+import type { PhoneEnv } from "../../src/phone.ts";
+import type { PortfolioApi } from "../../src/portfolio-api.ts";
 import type { Locate } from "../../src/location.ts";
 import type { Bearing, MotionEnv } from "../../src/motion.ts";
 import type { Clock, MediaEnv } from "../../src/recorder.ts";
@@ -136,7 +141,14 @@ export const refusingStorage = (): Storage => {
   throw Object.assign(new Error("The operation is insecure."), { name: "SecurityError" });
 };
 
+export const offlineFixed = (): FixedApi => {
+  const offline = async () => ({ code: "offline" as const, message: "" });
+  return { plan: offline, jobs: offline, draft: offline, addEmail: offline, approve: offline, sentByPhone: offline, logReply: offline, followUps: offline, inspection: offline, history: offline, mark: offline };
+};
+
 export const memoryMarks = (storage = memoryStorage()) => storageFindingMarks(() => storage);
+
+export const memorySentWalks = (storage = memoryStorage()) => storageSentWalks(() => storage);
 
 type Located = Awaited<ReturnType<Locate>>;
 
@@ -146,14 +158,65 @@ export const heldLocate = () => {
   return { locate, asked: () => waiting.length, answer: (answer: Located) => waiting.forEach((resolve) => resolve(answer)) };
 };
 
+let fresh = false;
+let listening = false;
+
+const tapped = (): (() => boolean) => {
+  if (!listening) {
+    listening = true;
+    document.addEventListener(
+      "click",
+      () => {
+        fresh = true;
+        queueMicrotask(() => {
+          fresh = false;
+        });
+      },
+      true,
+    );
+  }
+  return () => fresh;
+};
+
+export const fakePhone = (over: Partial<PhoneEnv> = {}) => {
+  const opened: string[] = [];
+  const shared: { files: File[]; text: string }[] = [];
+  const copied: string[] = [];
+  const justTapped = tapped();
+  const share = over.share ?? (async (data: { files: File[]; text: string }) => void shared.push(data));
+  const phone: PhoneEnv = {
+    canShareFiles: () => false,
+    openText: (url) => void opened.push(url),
+    copy: async (text) => {
+      copied.push(text);
+      return true;
+    },
+    ...over,
+    share: (data) =>
+      justTapped() ? share(data) : Promise.reject(Object.assign(new Error("Share needs a tap that has just happened."), { name: "NotAllowedError" })),
+  };
+  return { phone, opened, shared, copied };
+};
+
+export const UNASKED_PORTFOLIO = "the portfolio was asked for homes, and no test gave it an answer";
+
+const unaskedPortfolio: PortfolioApi = {
+  homes: () => {
+    throw new Error(UNASKED_PORTFOLIO);
+  },
+};
+
 export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
   const idb = new IDBFactory();
+  const fixed = overrides.fixed ?? offlineFixed();
   return {
     media: grantedMedia(),
     takes: once(() => openTakeStore(idb)),
     clock: fakeClock().clock,
     maxWalkMs: 360_000,
     send: async () => ({ code: "offline" }),
+    live: () => ({ chunk: () => undefined, stop: async () => undefined }),
+    abortUpload: async () => ({ code: "offline" }),
     prefs: memoryPrefs(),
     motion: null,
     light: () => null,
@@ -164,6 +227,12 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
     build: "dev",
     stills: async () => null,
     marks: memoryMarks(),
+    sentWalks: memorySentWalks(),
+    fixed,
+    sync: storageMarkSync(() => memoryStorage(), fixed.mark),
+    phone: fakePhone().phone,
+    portfolio: unaskedPortfolio,
+    awake: { hold: () => () => undefined },
     ...overrides,
   };
 };

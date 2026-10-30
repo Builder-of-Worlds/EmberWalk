@@ -3,7 +3,7 @@ import { type Outcome, pass, refuse } from "./outcome.ts";
 import type { Region } from "./privacy.ts";
 
 export type MediaProbe = { bytes: number; durationSeconds: number; isMp4: boolean };
-export type MediaClip = { bytes: number; frames: number; fps: number; durationSeconds: number; width: number; height: number };
+export type MediaClip = { bytes: number; frames: number; fps: number; codec: "h264"; durationSeconds: number; width: number; height: number };
 export type ClipRequest = { input: string; output: string; start: number; end: number; fps: number; maxHeight: number };
 export type StillsRequest = { input: string; stills: { time: number; output: string; regions: Region[] }[] };
 export type MediaStills = { stills: { time: number; bytes: number; width: number; height: number }[] };
@@ -22,6 +22,7 @@ const ClipAnswer = z.object({
   bytes: z.number(),
   frames: z.number(),
   fps: z.number(),
+  codec: z.literal("h264"),
   durationSeconds: z.number(),
   width: z.number(),
   height: z.number(),
@@ -34,7 +35,7 @@ const ErrorAnswer =z.object({ error: z.object({ code: z.string(), message: z.str
 
 const REFUSED_STATUSES = new Set([400, 404, 405, 413, 422]);
 
-export const containerMedia = (container: Fetcher): Media => {
+export const containerMedia = (container: Pick<Fetcher, "fetch">): Media => {
   const post = async <T>(path: string, body: unknown, shape: z.ZodType<T>): Promise<Outcome<T>> => {
     const response = await container.fetch(`http://media${path}`, {
       method: "POST",

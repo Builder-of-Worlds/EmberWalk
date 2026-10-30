@@ -2,7 +2,7 @@ import type { Tag } from "@emberwalk/shared";
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 import { copy } from "../../src/copy.ts";
-import { ROUTES } from "../../src/router.ts";
+import { recordPartFor, ROUTES } from "../../src/router.ts";
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
 
@@ -51,7 +51,7 @@ test.beforeEach(async ({ context }) => {
   await context.grantPermissions(["camera", "microphone", "accelerometer", "gyroscope", "magnetometer"]);
 });
 
-test("a walk around the house then a pan of each side sends one tag per side in walk order, each with the camera's light, at 390 px", async ({ page }) => {
+test('"two part walk (inner loop, then corner pans)": a walk around the house sends one loop tag per side, then one pan tag per corner, in walk order, each with the camera\'s light, at 390 px', async ({ page }) => {
   const sent: { tags: Tag[] | null } = { tags: null };
   await standInApi(page, sent);
   await page.goto(`/${ROUTES.record}`);
@@ -65,7 +65,7 @@ test("a walk around the house then a pan of each side sends one tag per side in 
   await turn(page, [0, 10, 20, 50, 95, 100, 110, 140, 185, 190, 200, 230, 275, 280, 290, 320, 0, 5, 10]);
   await expect(page.locator("svg.outline")).toHaveAttribute("data-corners", "4");
 
-  for (const [i, heading] of [0, 90, 180, 270].entries()) {
+  for (const [i, heading] of [45, 135, 225, 315].entries()) {
     await pan.click();
     await expect(pan).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("svg.outline line.panning")).toHaveCount(1);
@@ -88,11 +88,15 @@ test("a walk around the house then a pan of each side sends one tag per side in 
     "loop left",
     "loop back",
     "loop right",
-    "pan front",
-    "pan left",
-    "pan back",
-    "pan right",
+    "pan front left corner",
+    "pan back left corner",
+    "pan back right corner",
+    "pan front right corner",
   ]);
+  const loopEnd = Math.max(...tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+  const starts = tags.map((t) => t.startSeconds);
+  expect(starts).toEqual([...starts].sort((a, b) => a - b));
+  expect(tags.filter((t) => t.kind === "pan").every((t) => t.startSeconds >= loopEnd)).toBe(true);
   for (const tag of tags) {
     expect(tag.walkId).toBe(WALK);
     expect(tag.samples.length).toBeGreaterThan(0);
@@ -101,4 +105,21 @@ test("a walk around the house then a pan of each side sends one tag per side in 
       expect(sample.light! >= 0 && sample.light! <= 255).toBe(true);
     }
   }
+});
+
+test("the Record screen has no sideways scroll before Start, for one side only, and paused, at 390 px", async ({ page }) => {
+  await page.goto(`/${ROUTES.record}`);
+  await expect(page.getByRole("button", { name: copy.record.start })).toBeVisible();
+  expect(await page.evaluate(sideways)).toBe(0);
+
+  await page.goto(`/${recordPartFor(WALK, "back")}`);
+  await expect(page.getByText(copy.record.oneSide("back"))).toBeVisible();
+  expect(await page.evaluate(sideways)).toBe(0);
+
+  await page.getByRole("button", { name: copy.record.start }).click();
+  await expect(page.locator("video.preview")).toBeVisible();
+  await page.getByRole("button", { name: copy.record.pause }).click();
+  await expect(page.getByRole("button", { name: copy.record.pause })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: copy.record.panYard })).toBeDisabled();
+  expect(await page.evaluate(sideways)).toBe(0);
 });

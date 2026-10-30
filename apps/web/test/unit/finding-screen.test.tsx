@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
 import { copy, longDate } from "../../src/copy.ts";
+import { feetSaid } from "../../src/distance.ts";
 import { marksKey } from "../../src/finding-marks.ts";
 import { removedByYou } from "../../src/results.ts";
 import type { WalkResults } from "../../src/results.ts";
@@ -69,6 +70,17 @@ describe("Finding, step 10", () => {
     for (const line of shownLines(view.host)) expect(allowed, line).toContain(line);
     expect(view.text()).not.toMatch(NEVER_LABELLED);
     for (const word of NEVER_SAID) expect(view.text().toLowerCase()).not.toContain(word);
+    await view.unmount();
+  });
+
+  it("shows only settled lines and the finding's own words on a walked house too, in both views", async () => {
+    const results = walk([RECOMMENDED, REQUIRED], [], { synthetic: false });
+    const view = await open(results, RECOMMENDED.id);
+    for (const chosen of [copy.results.detailed, copy.results.simple]) {
+      await pick(view.host, chosen);
+      const allowed = new Set([...SETTLED_RESULTS, ...SETTLED_FINDING, ...SETTLED_STATUS, copy.results.distance(feetSaid(RECOMMENDED.distanceFeet)), RECOMMENDED.instruction, ...RECOMMENDED.sources.flatMap((s) => [s.citation, s.words])]);
+      for (const line of shownLines(view.host)) expect(allowed, line).toContain(line);
+    }
     await view.unmount();
   });
 
@@ -234,6 +246,7 @@ describe("Finding status", () => {
     const results = walk([REQUIRED]);
     const view = await open(results, REQUIRED.id);
     await pick(view.host, copy.status.kind.done);
+    await pick(view.host, copy.status.save);
     expect(pressed(view.host)).toEqual([copy.status.kind.done]);
     expect(status(view.host)).toBe("done");
     expect(view.text()).toContain(copy.status.notRechecked);
@@ -256,9 +269,11 @@ describe("Finding status", () => {
     expect(view.host.querySelector(".status-picker time")?.textContent).toBe(longDate(new Date(atMs)));
     expect(pressed(view.host)).toEqual([copy.status.kind.done]);
     await pick(view.host, copy.status.kind.done);
+    await pick(view.host, copy.status.save);
     expect(status(view.host)).toBe("rechecked");
     await pick(view.host, copy.status.kind.needs_fixing);
     await pick(view.host, copy.status.kind.done);
+    await pick(view.host, copy.status.save);
     expect(status(view.host)).toBe("done");
     expect(view.text()).not.toContain(copy.status.rechecked);
     await view.unmount();

@@ -10,13 +10,14 @@ export const CLIP = "8a0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b01";
 export const TRACK = "9a0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b01";
 export const JOB = "ba0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b01";
 export const ZIP = "95370";
+export const HOMEOWNER = { visitorId: "a".repeat(64), photoKeys: ["stills/proof.jpg"] };
 
 export const uuid = (prefix: string, n: number): string => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const findingId = (n: number): string => uuid("aa000000", n);
 export const crewId = (n: number): string => uuid("cc000000", n);
 
 export const resetDb = async (): Promise<void> => {
-  const tables = ["follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walks"];
+  const tables = ["get_it_fixed_uses", "follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walks"];
   await env.DB.batch(tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 };
 
@@ -117,6 +118,7 @@ export const agentDeps = (o: { answers: unknown[]; crews: Crew[]; billing?: Bill
       requests.push(req.json as unknown as SentJson);
       const next = queue.shift();
       if (next === undefined) throw new Error("no shaped answer left");
+      if (next instanceof Error) throw next;
       return { status: 200, retryAfter: null, text: JSON.stringify(next) };
     },
     cache: new MemoryCache(),

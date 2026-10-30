@@ -6,7 +6,7 @@ import { startFixtureServer } from "./fixture-server.ts";
 import { waitForIdle } from "./server-process.ts";
 import { timeLimits } from "./time-limits.ts";
 import type { FixtureServer } from "./fixture-server.ts";
-import { clipWithoutPicture, clipWithSound, clipWithoutSound, grayPixels, jpegSize, readWav } from "./fixtures.ts";
+import { clipWithoutPicture, clipWithSound, clipWithoutSound, grayPixels, jpegSize, phoneClip, readWav, videoStream } from "./fixtures.ts";
 
 export type Target = {
   baseUrl: string;
@@ -148,6 +148,19 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
         expect(check.json.video.codec).toBe("h264");
         expect(check.json.video.fps).toBeCloseTo(2, 1);
         expect(check.json.audio).toBeNull();
+      });
+
+      it.each(["hevc10", "vp9"] as const)("turns a %s phone recording into an H.264 High profile 8 bit mp4 any phone can play", async (codec) => {
+        const input = serve(`/phone-${codec}`, phoneClip(codec));
+        expect(videoStream(fixtures.files.get(`/phone-${codec}`) as Buffer).codec_name).not.toBe("h264");
+        const reply = await call("/clip", { input, output: url(`/out/phone-${codec}.mp4`), fps: 2, maxHeight: 720 });
+        expect(reply.status).toBe(200);
+        expect(reply.json).toMatchObject({ codec: "h264", frames: 6, height: 720 });
+        const stored = fixtures.puts.get(`/out/phone-${codec}.mp4`) as Buffer;
+        const stream = videoStream(stored);
+        expect([stream.codec_name, stream.profile, stream.pix_fmt]).toEqual(["h264", "High", "yuv420p"]);
+        expect(stream.level).toBeLessThanOrEqual(41);
+        expect(stored.indexOf("moov")).toBeLessThan(stored.indexOf("mdat"));
       });
 
       it("defaults to 2 frames per second", async () => {

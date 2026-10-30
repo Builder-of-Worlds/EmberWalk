@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Concept, Finding, LOOP_CONCEPTS, SPACED_CONCEPTS } from "../src/index.ts";
+import { Concept, Finding, SPACED_CONCEPTS } from "../src/index.ts";
 import { TAPPED_FINDING, refuses, roundTrips } from "./check.ts";
 
 describe("SPACED_CONCEPTS", () => {
@@ -12,8 +12,8 @@ describe("SPACED_CONCEPTS", () => {
   });
 
   it("refuses a spacing on every concept that is not a shrub or a tree", () => {
-    const others = LOOP_CONCEPTS.filter((c) => !(SPACED_CONCEPTS as readonly string[]).includes(c));
-    expect(others.length).toBe(LOOP_CONCEPTS.length - SPACED_CONCEPTS.length);
+    const others = Concept.options.filter((c) => !(SPACED_CONCEPTS as readonly string[]).includes(c));
+    expect(others.length).toBe(Concept.options.length - SPACED_CONCEPTS.length);
     for (const concept of others) refuses(Finding, { ...TAPPED_FINDING, concept, spacing: "ok" });
   });
 });

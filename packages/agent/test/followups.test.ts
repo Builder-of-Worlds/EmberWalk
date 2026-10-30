@@ -1,14 +1,14 @@
 import { env } from "cloudflare:workers";
-import { approveMessage, followUpsForJob, markSent, messagesForJob, saveDraft, saveJobCrews } from "@emberwalk/db";
-import type { MetaRefused } from "@emberwalk/meta";
+import { approveMessage, followUpsForJob, markSent, messagesForJob, saveDraft, saveJobCrews, stepsForJob, takeUse } from "@emberwalk/db";
+import { MetaHttpError, MetaNetworkError, type MetaRefused } from "@emberwalk/meta";
 import type { OutgoingMessage } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WORK_HEADING } from "../src/drafts.ts";
 import { FOLLOW_UP_AFTER_DAYS, runFollowUps, waitingMessages } from "../src/followups.ts";
-import { AGENT_ENABLED_DEFAULT, AgentOff } from "../src/loop.ts";
+import { AGENT_ENABLED_DEFAULT, AgentOff, MAX_DRAFT_RUNS_PER_JOB, RateLimited } from "../src/loop.ts";
 import { AGENT_TOOLS, FOLLOW_UP_TOOLS } from "../src/tools.ts";
 import { followUpsDone, followUpTurn, followUpUse } from "./shaped/followups.ts";
-import { agentDeps, crew, crewId, findingId, JOB, lastUserText, NOW, resetDb, seedJob, seedWalk, toolOutputs, uuid } from "./support.ts";
+import { agentDeps, crew, HOMEOWNER, crewId, findingId, JOB, lastUserText, NOW, resetDb, seedJob, seedWalk, toolOutputs, uuid } from "./support.ts";
 
 const OTHER_JOB = uuid("ba000000", 2);
 const messageId = (n: number) => uuid("da000000", n);
@@ -33,11 +33,13 @@ const sent = async (n: number, crewN: number, sentAt: string, o: { jobId?: strin
     body: "Hello, could you quote clearing dry brush near a synthetic sample house?",
     createdAt: sentAt,
   });
-  await approveMessage(env.DB, messageId(n), sentAt);
+  await approveMessage(env.DB, messageId(n), sentAt, HOMEOWNER);
   await markSent(env.DB, messageId(n), sentAt, channel === "email" ? "sent" : "sent_by_phone");
 };
 
 const drafts = async (jobId = JOB) => (await messagesForJob(env.DB, jobId)).filter((m) => m.status === "draft");
+
+const usesOf = async () => (await env.DB.prepare("SELECT count FROM get_it_fixed_uses WHERE kind = 'followup_run' AND subject_id = ?").bind(JOB).first<{ count: number }>())?.count ?? 0;
 
 beforeEach(resetDb);
 
@@ -122,6 +124,41 @@ describe("runFollowUps", () => {
     expect(toolOutputs(requests[1]!)).toEqual([{ error: expect.stringContaining(`no blurred photo of finding ${findingId(1)}`) }]);
     expect(await drafts()).toEqual([]);
     expect(await followUpsForJob(env.DB, JOB)).toEqual([]);
+  });
+
+  it("refuses a follow up run past 3 on one job, asking Muse Spark nothing, while another job still runs", async () => {
+    await setup();
+    await sent(1, 1, daysAgo(4));
+    await seedJob("fencing", [findingId(1)], OTHER_JOB);
+    await saveJobCrews(env.DB, OTHER_JOB, [CREWS[3]!]);
+    await sent(9, 4, daysAgo(4), { jobId: OTHER_JOB });
+    const { deps } = agentDeps({ answers: [followUpsDone, followUpsDone], crews: CREWS });
+    for (let i = 0; i < MAX_DRAFT_RUNS_PER_JOB; i++) await takeUse(env.DB, "draft_run", JOB, MAX_DRAFT_RUNS_PER_JOB);
+    const finishes = async (jobId: string) => (await stepsForJob(env.DB, jobId)).filter((s) => s.tool === "finish").length;
+    for (let i = 0; i < 3; i++) expect(await runFollowUps(deps, JOB)).toMatchObject({ ended: "finished", followUps: 0 });
+    expect(await finishes(JOB)).toBe(3);
+    await expect(runFollowUps(deps, JOB)).rejects.toBeInstanceOf(RateLimited);
+    expect(await finishes(JOB)).toBe(3);
+    expect(await runFollowUps(deps, OTHER_JOB)).toMatchObject({ ended: "finished" });
+    expect(await finishes(OTHER_JOB)).toBe(1);
+  });
+
+  it("does not use up a follow up run when Muse Spark is down: three outages, then a working run still drafts", async () => {
+    await setup();
+    await sent(1, 1, daysAgo(4));
+    const outages = [new MetaHttpError(503, "busy", null), new MetaNetworkError("no route"), new MetaHttpError(529, "overloaded", null)];
+    const { deps } = agentDeps({ answers: [...outages, followUpTurn(followUpUse(messageId(1))), followUpsDone], crews: CREWS });
+    for (const outage of outages) await expect(runFollowUps(deps, JOB)).rejects.toBe(outage);
+    expect(await usesOf()).toBe(0);
+    expect(await runFollowUps(deps, JOB)).toMatchObject({ ended: "finished", followUps: 1 });
+    expect(await usesOf()).toBe(1);
+  });
+
+  it("does not use up a follow up run when nothing is waiting", async () => {
+    await setup();
+    await sent(1, 1, daysAgo(1));
+    const { deps } = agentDeps({ answers: [followUpsDone], crews: CREWS });
+    for (let i = 0; i <= 3; i++) expect(await runFollowUps(deps, JOB)).toMatchObject({ ended: "nothing_waiting" });
   });
 });
 

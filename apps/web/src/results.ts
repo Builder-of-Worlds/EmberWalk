@@ -1,5 +1,5 @@
-import type { Band, Concept, Gap } from "@emberwalk/shared";
-import { SIDES } from "@emberwalk/shared";
+import type { Band, Concept, Corner, Gap, Part } from "@emberwalk/shared";
+import { isCorner, PARTS, SIDES } from "@emberwalk/shared";
 import type { Side } from "@emberwalk/shared";
 import type { Removal } from "./finding-marks.ts";
 
@@ -25,9 +25,15 @@ export type ResultFinding = {
   confidence: number;
   proof: Proof;
   voiceNote?: string | null;
+  preview?: string | null;
+  secondCheck?: SecondCheck | null;
 };
 
+export type SecondCheck = { verdict: "agrees" | "flags"; reason: string };
+
 export type Coverage = "checked" | "not_checked";
+
+export type Pin = { findingId: string; side: Side; band: Band; position: number; feet: number };
 
 export type WalkResults = {
   id: string;
@@ -37,6 +43,7 @@ export type WalkResults = {
   gaps: Gap[];
   findings: ResultFinding[];
   notChecked: Concept[];
+  pins?: Pin[];
 };
 
 export const BANDS: Band[] = ["zone_0", "zone_1", "zone_2"];
@@ -58,23 +65,34 @@ const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, 
 export const fixFirstOf = (findings: ResultFinding[], cleared: (f: ResultFinding) => boolean): ResultFinding[] =>
   findings.filter((f) => !cleared(f) && f.distanceFeet.low < FIX_FIRST_FEET).sort(nearOrder);
 
+export type SideGap = Gap & { side: Side; hint: Exclude<Gap["hint"], "pan_corner"> };
+
+export const sideGapsOf = (gaps: readonly Gap[]): SideGap[] => gaps.filter((gap): gap is SideGap => !isCorner(gap.side));
+
+export type CornerGap = Gap & { side: Corner };
+
+const cornerGapsOf = (gaps: readonly Gap[]): CornerGap[] => gaps.filter((gap): gap is CornerGap => isCorner(gap.side));
+
+export type ShownGap = SideGap | CornerGap;
+
 export type Verdict =
-  | { kind: "incomplete"; gaps: Gap[] }
+  | { kind: "incomplete"; gaps: ShownGap[] }
   | { kind: "fix"; first: ResultFinding[] }
   | { kind: "so_far" }
   | { kind: "ready" };
 
-export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => boolean = () => false): Verdict => {
-  if (results.gaps.length > 0) return { kind: "incomplete", gaps: results.gaps };
+export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => boolean = () => false, corners = false): Verdict => {
+  const gaps: ShownGap[] = [...sideGapsOf(results.gaps), ...(corners ? cornerGapsOf(results.gaps) : [])];
+  if (gaps.length > 0) return { kind: "incomplete", gaps };
   const blocking = results.findings.filter((f) => blocksGreen(f) && !cleared(f));
   if (blocking.length > 0) {
     const near = fixFirstOf(results.findings, cleared);
     return { kind: "fix", first: near.length > 0 ? near : blocking.sort(nearOrder) };
   }
-  return results.coverage === "checked" ? { kind: "ready" } : { kind: "so_far" };
+  return results.coverage === "checked" && results.gaps.length === 0 ? { kind: "ready" } : { kind: "so_far" };
 };
 
-export const sidesToWalk = (gaps: readonly Gap[]): Side[] => SIDES.filter((side) => gaps.some((gap) => gap.side === side));
+export const partsToWalk = (gaps: readonly Gap[]): Part[] => PARTS.filter((part) => gaps.some((gap) => gap.side === part));
 
 export const withoutRemoved =(results: WalkResults, removed: Removal[]): WalkResults => {
   const gone = new Set(removed.map((r) => r.findingId));

@@ -11,6 +11,7 @@ import { costRows, resetAll, spentNano } from "../../../../workers/pipeline/test
 import { FRAME_HEIGHT, FRAME_WIDTH, type Sighting, harness } from "../../../../workers/pipeline/test/harness.ts";
 import { importWalk, type Fetch } from "../../src/index.ts";
 import { hostRender } from "./files.ts";
+import { getFixedStandIn } from "./get-fixed-stand-in.ts";
 
 const ORIGIN = "https://api.test";
 const SAM_CLIP_FPS = 2;
@@ -33,6 +34,7 @@ const apiEnv = () => ({
   ...(env.R2_ACCESS_KEY_ID === undefined ? {} : { R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID }),
   ...(env.R2_SECRET_ACCESS_KEY === undefined ? {} : { R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY }),
   PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }) },
+  GET_FIXED: getFixedStandIn,
 });
 
 const apiFetch: Fetch = async (request) => {
@@ -152,14 +154,15 @@ describe("steps 1 to 3 on an imported synthetic render", () => {
     expect(harness.clipped.map((c) => [c.start, c.end])).toEqual([[0, measured.duration_s]]);
   });
 
-  it("refuses a walk that is not synthetic at step 2 and sends nothing to Meta", async () => {
+  it("refuses a walk that is not synthetic at step 1 on free credits, before any video work, and sends nothing to Meta", async () => {
     const walkId = await imported();
     await env.DB.prepare("UPDATE walks SET synthetic = 0 WHERE id = ?").bind(walkId).run();
 
     await using instance = await runWorkflow(walkId);
 
     expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "real_footage_not_allowed" } });
-    expect(await getWalk(env.DB, walkId)).toMatchObject({ synthetic: false, state: { name: "failed", step: "segment" } });
+    expect(await getWalk(env.DB, walkId)).toMatchObject({ synthetic: false, state: { name: "failed", step: "prepare" } });
+    expect(harness.clipped).toEqual([]);
     expect(harness.requests).toEqual([]);
     expect(await spentNano()).toBe(0);
   });

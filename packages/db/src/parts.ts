@@ -1,9 +1,9 @@
-import { Gap, GAP_KINDS, Id, SIDES, WalkPart } from "@emberwalk/shared";
+import { Gap, GAP_KINDS, Id, PARTS, WalkPart } from "@emberwalk/shared";
 
 type GapRow = { side: string; kind: string; hint: string };
-type PartRow = { id: string; part_side: string };
+type PartRow = { id: string; part: string };
 
-const order = (gap: Gap): number => SIDES.indexOf(gap.side) * GAP_KINDS.length + GAP_KINDS.indexOf(gap.kind);
+const order = (gap: Gap): number => PARTS.indexOf(gap.side) * GAP_KINDS.length + GAP_KINDS.indexOf(gap.kind);
 
 export const byWalkingOrder = (a: Gap, b: Gap): number => order(a) - order(b);
 
@@ -30,18 +30,18 @@ export const gapsForWalk =async (db: D1Database, walkId: string): Promise<Gap[]>
 };
 
 export const partOfWalk = async (db: D1Database, walkId: string): Promise<WalkPart | null> => {
-  const row = await db.prepare("SELECT part_of, part_side FROM walks WHERE id = ? AND part_of IS NOT NULL").bind(Id.parse(walkId)).first<{ part_of: string; part_side: string }>();
-  return row === null ? null : WalkPart.parse({ walkId: row.part_of, side: row.part_side });
+  const row = await db.prepare("SELECT part_of, part FROM walk_parts WHERE walk_id = ?").bind(Id.parse(walkId)).first<{ part_of: string; part: string }>();
+  return row === null ? null : WalkPart.parse({ walkId: row.part_of, side: row.part });
 };
 
 export const partsOf = async (db: D1Database, walkId: string): Promise<WalkPart[]> => {
   const { results } = await db
     .prepare(
-      "SELECT w.id, w.part_side FROM walks w JOIN walks p ON p.id = w.part_of WHERE w.part_of = ? AND w.state = 'done' AND w.visitor_id = p.visitor_id ORDER BY w.created_at DESC, w.id DESC",
+      "SELECT w.id, wp.part FROM walk_parts wp JOIN walks w ON w.id = wp.walk_id JOIN walks p ON p.id = wp.part_of WHERE wp.part_of = ? AND w.state = 'done' AND w.visitor_id = p.visitor_id ORDER BY w.created_at DESC, w.id DESC",
     )
     .bind(Id.parse(walkId))
     .all<PartRow>();
   const newest = new Map<string, WalkPart>();
-  for (const row of results) if (!newest.has(row.part_side)) newest.set(row.part_side, WalkPart.parse({ walkId: row.id, side: row.part_side }));
-  return SIDES.flatMap((side) => newest.get(side) ?? []);
+  for (const row of results) if (!newest.has(row.part)) newest.set(row.part, WalkPart.parse({ walkId: row.id, side: row.part }));
+  return PARTS.flatMap((part) => newest.get(part) ?? []);
 };

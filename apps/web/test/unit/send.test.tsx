@@ -130,6 +130,29 @@ describe("Send Your Walk", () => {
     expect(button(view.host)).toBeUndefined();
   });
 
+  it("remembers that this phone agreed to send a walk only once Send My Walk is tapped", async () => {
+    const deps = await withTake(testDeps({ send: controlled().send }));
+    const view = await show(deps);
+    expect(deps.prefs.agreedToSend()).toBe(false);
+    await settle(() => button(view.host)?.click());
+    expect(deps.prefs.agreedToSend()).toBe(true);
+  });
+
+  it("records a walk as sent and being checked only when the send went through", async () => {
+    const sender = controlled();
+    const base = testDeps();
+    const add = vi.fn(base.sentWalks.add);
+    const deps = await withTake(testDeps({ send: sender.send, sentWalks: { ...base.sentWalks, add } }));
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ code: "offline" }));
+    expect(add).not.toHaveBeenCalled();
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: "w" }));
+    const [take] = await (await deps.takes()).all();
+    expect(add.mock.calls).toEqual([[{ walkId: "w", opens: "w", takeId: take!.id, createdAt: take!.createdAt }]]);
+  });
+
   it("explains a refusal in plain words and lets the walk be sent again, or later", async () => {
     const sender = controlled();
     const view = await show(await withTake(testDeps({ send: sender.send })));
@@ -310,7 +333,7 @@ describe("after the walk is sent", () => {
     const tick = () => settle(() => time.advance(POLL_MS));
     const opened = () => settle(() => time.advance(OPENS_IN_MS));
     const kept = async () => (await (await deps.takes()).all()).length;
-    return { view, asked, time, tick, opened, kept };
+    return { view, asked, time, tick, opened, kept, deps };
   };
 
   const state = (s: WalkState, message: string | null = null): Answer<WalkStatusResponse> => ({
@@ -455,18 +478,81 @@ describe("after the walk is sent", () => {
     await view.unmount();
   });
 
-  it("shows a failed walk's own message with Record a Walk, and opens no results", async () => {
-    const { view } = await sentWith([state({ name: "failed", step: "score" }, "Something went wrong while checking this walk.")]);
+  const offersTheSameWalk = async (view: Awaited<ReturnType<typeof sentWith>>["view"], kept: () => Promise<number>) => {
+    await until(() => button(view.host) !== undefined);
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+    expect(view.text()).not.toContain(copy.send.recordWalk);
+    expect(view.text()).not.toContain(SEND_AFTER.lost);
+    expect(view.text()).toContain(copy.send.saved);
+    expect(await kept()).toBe(1);
+  };
+
+  it('"A full re-walk is a product failure": a failed walk shows its own message, keeps the video and offers to send it again, never Record a Walk', async () => {
+    const { view, kept, deps } = await sentWith([state({ name: "failed", step: "score" }, "Something went wrong while checking this walk.")]);
     expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Something went wrong while checking this walk.");
-    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+    await offersTheSameWalk(view, kept);
     expect(view.text()).not.toContain(copy.send.refused.walk_not_done);
     expect(window.location.hash).not.toBe(resultsFor(WALK));
+    const [take] = await (await deps.takes()).all();
+    expect(take?.upload).toBeNull();
+    expect(take?.tags).toEqual({ ids: [], sent: false, refusal: null });
   });
 
-  it("says a walk the API no longer finds in the agreed words, with Record a Walk", async () => {
-    const { view } = await sentWith([{ code: "unknown_walk" }]);
+  it("sends the same video again as a new walk when Send My Walk is tapped after a failed check", async () => {
+    const time = fakeClock();
+    const answers = [state({ name: "failed", step: "score" }, "Failed."), state({ name: "processing", step: "segment" })];
+    const sender = controlled();
+    const deps = await withTake(testDeps({ send: sender.send, clock: time.clock, walkStatus: async () => answers.shift() ?? { code: "server_error" } }));
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: WALK }));
+    await until(() => button(view.host) !== undefined);
+    await settle(() => button(view.host)?.click());
+    expect(sender.calls).toHaveLength(2);
+    expect(sender.calls[1]).toBe(sender.calls[0]);
+    await settle(() => sender.finish({ walkId: "walk-again" }));
+    expect(view.host.querySelector("[role=status]")?.textContent).toBe(copy.send.sent);
+    await view.unmount();
+  });
+
+  it("keeps a walk the API no longer finds and offers to send it again, never Record a Walk", async () => {
+    const { view, kept } = await sentWith([{ code: "unknown_walk" }]);
+    await offersTheSameWalk(view, kept);
+    expect(view.host.querySelector("[role=alert]")).toBeNull();
+  });
+
+  it("says a walk the API no longer finds in the agreed words, with Back and never Record a Walk, once the video is gone from the phone", async () => {
+    const { view, deps, tick } = await sentWith([state({ name: "queued" }), { code: "unknown_walk" }]);
+    const store = await deps.takes();
+    for (const take of await store.all()) await store.remove(take.id);
+    await tick();
+    await until(() => view.host.querySelector("[role=alert]") !== null);
     expect(view.host.querySelector("[role=alert]")?.textContent).toBe(SEND_AFTER.lost);
-    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+    expect(view.host.querySelector(`a[href="${ROUTES.home}"]`)?.textContent).toBe(copy.send.back);
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+    expect(button(view.host)).toBeUndefined();
+  });
+
+  it("opens the whole walk's results when a walk of one side fails, where that side alone is asked for again", async () => {
+    const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
+    const time = fakeClock();
+    const answers = [state({ name: "failed", step: "score" }, "Failed.")];
+    const sender = controlled();
+    const deps = testDeps({ send: sender.send, clock: time.clock, walkStatus: async () => answers.shift() ?? { code: "server_error" } });
+    const takes = await deps.takes();
+    const take = await takes.create("video/mp4", 1, { jurisdiction: "ca", sound: true, partOf: { walkId: PARENT, side: "back" } });
+    await takes.append(take.id, new Blob(["0123456789"]));
+    await takes.finish(take.id, 1000, "stopped");
+    const view = await show(deps);
+    await settle(() => button(view.host)?.click());
+    await settle(() => sender.finish({ walkId: WALK }));
+    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+    expect(button(view.host)).toBeUndefined();
+    await settle(() => time.advance(OPENS_IN_MS));
+    expect(window.location.hash).toBe(resultsFor(PARENT));
+    for (let i = 0; i < 50 && (await takes.all()).length > 0; i++) await settle(() => new Promise((r) => setTimeout(r, 5)));
+    expect(await takes.all()).toHaveLength(0);
+    await view.unmount();
   });
 
   it.each(["invalid_request", "not_found", "method_not_allowed", "body_too_large"] as const)(
@@ -585,10 +671,39 @@ describe("after the walk is sent", () => {
     });
   });
 
-  it("shows Record a Walk and no empty alert for a failed walk that carries no message", async () => {
-    const { view } = await sentWith([state({ name: "failed", step: "score" })]);
+  it.each(["not_mp4", "too_long", "no_frames", "real_footage_not_allowed", "media_invalid_media", "media_no_video", "media_media_too_long", "media_input_too_large"])(
+    "never offers Send My Walk after a %s failure, which the same video would meet again: its message and Back, and the video let go",
+    async (code) => {
+      const message = "The video could not be read.";
+      const { view, kept } = await sentWith([{ value: { walkId: WALK, state: { name: "failed", step: "prepare" }, failure: { code, message } } }]);
+      await until(() => view.host.querySelector(`a[href="${ROUTES.home}"]`) !== null);
+      expect(view.host.querySelector("[role=alert]")?.textContent).toBe(message);
+      expect(view.host.querySelector(`a[href="${ROUTES.home}"]`)?.textContent).toBe(copy.send.back);
+      expect(button(view.host)).toBeUndefined();
+      expect(view.text()).not.toContain(copy.send.saved);
+      expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)).toBeNull();
+      for (let i = 0; i < 50 && (await kept()) > 0; i++) await settle(() => new Promise((r) => setTimeout(r, 5)));
+      expect(await kept()).toBe(0);
+      await view.unmount();
+    },
+  );
+
+  it("still offers Send My Walk after a failure the same video can get past", async () => {
+    const { view, kept } = await sentWith([{ value: { walkId: WALK, state: { name: "failed", step: "segment" }, failure: { code: "spend_limit", message: "Try again tomorrow." } } }]);
+    await offersTheSameWalk(view, kept);
+    await view.unmount();
+  });
+
+  it("still offers Send My Walk after a media refusal of the pipeline's own request, which a fix can get past", async () => {
+    const { view, kept } = await sentWith([{ value: { walkId: WALK, state: { name: "failed", step: "prepare" }, failure: { code: "media_invalid_fps", message: "The fps is wrong." } } }]);
+    await offersTheSameWalk(view, kept);
+    await view.unmount();
+  });
+
+  it("shows no empty alert and never Record a Walk for a failed walk that carries no message", async () => {
+    const { view, kept } = await sentWith([state({ name: "failed", step: "score" })]);
+    await offersTheSameWalk(view, kept);
     expect(view.host.querySelector("[role=alert]")).toBeNull();
-    expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
     expect(window.location.hash).not.toBe(resultsFor(WALK));
   });
 
@@ -603,18 +718,26 @@ describe("after the walk is sent", () => {
     expect(view.host.querySelector("[role=alert]")).toBeNull();
   });
 
-  it("keeps the walk on the phone until the server answers for it, then lets it go", async () => {
-    for (const answer of [state({ name: "queued" }), state({ name: "done" }), state({ name: "failed", step: "score" }), { code: "unknown_walk" as const }]) {
+  it("keeps the walk on the phone until its check is done, then lets it go", async () => {
+    const answers: [Answer<WalkStatusResponse>, number][] = [
+      [state({ name: "queued" }), 1],
+      [state({ name: "processing", step: "segment" }), 1],
+      [state({ name: "done" }), 0],
+      [state({ name: "failed", step: "score" }), 1],
+      [{ code: "unknown_walk" as const }, 1],
+    ];
+    for (const [answer, left] of answers) {
       const { view, kept } = await sentWith([answer]);
       await until(() => view.host.querySelector("h1") !== null);
-      expect(await kept()).toBe(0);
+      for (let i = 0; i < 50 && (await kept()) !== left; i++) await settle(() => new Promise((r) => setTimeout(r, 5)));
+      expect(await kept()).toBe(left);
       await view.unmount();
     }
   });
 
   it("lets the walk go once, not again at every answer after", async () => {
     const time = fakeClock();
-    const answers = [state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "processing", step: "explain" })];
+    const answers = [state({ name: "queued" }), state({ name: "processing", step: "segment" }), state({ name: "done" })];
     const sender = controlled();
     const deps = await withTake(testDeps({ send: sender.send, clock: time.clock, walkStatus: async () => answers.shift() ?? state({ name: "queued" }) }));
     const remove = vi.spyOn(await deps.takes(), "remove");
@@ -642,6 +765,73 @@ describe("after the walk is sent", () => {
 });
 
 describe("Not Now", () => {
+  const notNowWith = async (upload: { uploadId: string | null } | null, sending: "ready" | "refused" = "ready") => {
+    const aborted: string[] = [];
+    const sender = controlled();
+    const deps = await withTake(testDeps({ send: sender.send, abortUpload: async (uploadId) => aborted.push(uploadId) }));
+    const store = await deps.takes();
+    const take = await store.latest();
+    if (upload !== null)
+      await store.saveUpload(take?.id ?? "", {
+        walkId: "w",
+        uploadId: upload.uploadId,
+        partBytes: 10,
+        partCount: 1,
+        parts: upload.uploadId === null ? [] : [{ partNumber: 1, etag: "e" }],
+      });
+    const view = await show(deps);
+    if (sending === "refused") {
+      await settle(() => button(view.host)?.click());
+      await settle(() => sender.finish({ code: "offline" }));
+    }
+    const notNow = view.host.querySelector<HTMLAnchorElement>(`a[href="${ROUTES.home}"]`);
+    expect(notNow?.textContent).toBe(copy.leaves.notNow);
+    expect(view.text()).toContain(copy.leaves.later);
+    await settle(() => notNow?.click());
+    await new Promise((r) => setTimeout(r, 20));
+    const kept = await store.get(take?.id ?? "");
+    await view.unmount();
+    return { aborted, kept, sender };
+  };
+
+  it.each(["ready", "refused"] as const)(
+    "stops the walk's open upload so its parts leave storage, and keeps the walk on the phone under the same walk, from the %s screen",
+    async (sending) => {
+      const { aborted, kept } = await notNowWith({ uploadId: "u-open" }, sending);
+      expect(aborted).toEqual(["u-open"]);
+      expect(kept.upload).toEqual({ walkId: "w", uploadId: null, partBytes: 0, partCount: 0, parts: [] });
+      expect(kept.bytes).toBe(10);
+    },
+  );
+
+  it("never overwrites a fresh upload a Send started while Not Now's stop was still on its way", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    const held = new Promise((resolve) => (release = resolve));
+    const deps = await withTake(testDeps({ send: controlled().send, abortUpload: () => held }));
+    const store = await deps.takes();
+    const id = (await store.latest())?.id ?? "";
+    await store.saveUpload(id, { walkId: "w", uploadId: "u-old", partBytes: 10, partCount: 1, parts: [] });
+    const view = await show(deps);
+    await settle(() => view.host.querySelector<HTMLAnchorElement>(`a[href="${ROUTES.home}"]`)?.click());
+    await new Promise((r) => setTimeout(r, 20));
+    const fresh = { walkId: "w", uploadId: "u-new", partBytes: 10, partCount: 1, parts: [{ partNumber: 1, etag: "e" }] };
+    await store.saveUpload(id, fresh);
+    release(undefined);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await store.get(id)).upload).toEqual(fresh);
+    await view.unmount();
+  });
+
+  it.each([
+    ["no upload", null],
+    ["a walk but no upload open", { uploadId: null }],
+  ] as const)("stops nothing for a walk with %s, and keeps it as it was", async (_name, upload) => {
+    const { aborted, kept, sender } = await notNowWith(upload);
+    expect(aborted).toEqual([]);
+    expect(kept.upload).toEqual(upload === null ? null : { walkId: "w", uploadId: null, partBytes: 10, partCount: 1, parts: [] });
+    expect(sender.calls).toEqual([]);
+  });
+
   it("keeps the walk on the phone, and Your Walks sends it later", async () => {
     const sender = controlled();
     const deps = await withTake(testDeps({ send: sender.send }));

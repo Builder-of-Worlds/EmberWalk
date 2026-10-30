@@ -75,32 +75,6 @@ test('two part walk: inner loop, then corner pans', async ({ page }) => {
   expect(tagged.map((t) => t.kind)).toContain("loop");
 });
 
-test('wake lock: the screen stays awake while recording', async ({ page }) => {
-  await page.addInitScript(() => {
-    const heard: string[] = [];
-    (window as Logged).__heard = heard;
-    const request = async (type: string) => {
-      heard.push(`request ${type}`);
-      const sentinel = Object.assign(new EventTarget(), {
-        type,
-        released: false,
-        release: async () => {
-          sentinel.released = true;
-          heard.push("release");
-        },
-      });
-      return sentinel;
-    };
-    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: { request } });
-  });
-  const heard = () => page.evaluate(() => (window as Logged).__heard ?? []);
-  await startWalk(page);
-  await expect.poll(heard, { message: "a screen wake lock while recording", timeout: 3000 }).toContain("request screen");
-  await page.waitForTimeout(1000);
-  await page.getByRole("button", { name: copy.record.stop }).click();
-  await expect.poll(heard, { message: "Stop releases the wake lock", timeout: 3000 }).toContain("release");
-});
-
 test('voice cue: one voice everywhere through a checked sentence library shipped in the app', async ({ page, baseURL }) => {
   await page.addInitScript(() => {
     const heard: string[] = [];

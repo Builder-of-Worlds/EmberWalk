@@ -1,0 +1,26 @@
+{
+  "name": "emberwalk-getfixed",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "account_id": "755646338ba02dbe2d3409c5a557fa15",
+  "workers_dev": false,
+  "preview_urls": false,
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "emberwalk-media" }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "emberwalk-db",
+      "database_id": "2a57e3df-79dd-4886-adfb-ef2967b95bf6",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "workflows": [{ "name": "follow-up-timer", "binding": "FOLLOW_UP_TIMER", "class_name": "FollowUpTimer" }],
+  "vars": {
+    "GET_IT_FIXED": "on",
+    "META_BASE_URL": "https://api.meta.ai/v1",
+    "META_BILLING": "free_credits",
+    "JOB_MAIL_DOMAIN": "emberwalk.app",
+    "APP_ORIGIN": "https://go.emberwalk.app",
+    "FOLLOW_UP_AFTER": "3 days"
+  }
+}

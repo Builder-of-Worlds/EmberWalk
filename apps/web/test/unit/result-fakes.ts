@@ -1,6 +1,6 @@
 import { stillPath } from "@emberwalk/shared";
 import type { WalkResultsResponse } from "@emberwalk/shared";
-import type { Gap, ResultFinding, WalkResults } from "../../src/results.ts";
+import type { Gap, Pin, ResultFinding, WalkResults } from "../../src/results.ts";
 
 export const finding = (id: string, over: Partial<ResultFinding> = {}): ResultFinding => ({
   id,
@@ -28,6 +28,8 @@ export const walk = (findings: ResultFinding[], gaps: Gap[] = [], over: Partial<
 
 export const feet = (low: number, high = low) => ({ distanceFeet: { low, high } });
 
+export const pin = (findingId: string, over: Partial<Pin> = {}): Pin => ({ findingId, side: "back", band: "zone_1", position: 0.5, feet: 10, ...over });
+
 export const LIVE_WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 
 export const liveFindingId = (n: number) => `7a0d3f1e-5a64-4c0e-9d57-${String(n).padStart(12, "0")}`;
@@ -48,10 +50,11 @@ export const liveBody = (walkId = LIVE_WALK, count = 2, over: Partial<WalkResult
   ...over,
 });
 
-export const liveBodyAt = (ranges: [low: number, high: number][], walkId = LIVE_WALK): WalkResultsResponse =>
+export const liveBodyAt = (ranges: [low: number, high: number][], walkId = LIVE_WALK, pins?: Pin[]): WalkResultsResponse =>
   liveBody(walkId, 0, {
     coverage: "checked",
     notChecked: [],
+    ...(pins === undefined ? {} : { pins }),
     findings: ranges.map(([low, high], i) => {
       const id = liveFindingId(i + 1);
       const { proof, ...rest } = finding(id, { band: low <= 5 ? "zone_0" : low <= 30 ? "zone_1" : "zone_2", ...feet(low, high) });

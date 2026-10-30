@@ -3,6 +3,7 @@ import type { Gap, Tag, WalkState } from "@emberwalk/shared";
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 import { copy } from "../../src/copy.ts";
+import type { SideGap } from "../../src/results.ts";
 import { recordPartFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBody } from "../unit/result-fakes.ts";
 
@@ -112,7 +113,7 @@ test("a side the walk could not check is walked on its own, sent as a part, and 
 });
 
 test("a walk with one side too dark asks for that side alone with its suggestion, and the reshoot sends that side's loop and pan only, at 390 px", async ({ page }) => {
-  const dark: Gap = { side: "left", kind: "dark", hint: "more_light" };
+  const dark: SideGap = { side: "left", kind: "dark", hint: "more_light" };
   const part: Part = { state: { name: "processing", step: "segment" }, started: [], gap: dark };
   await standInApi(page, part);
 

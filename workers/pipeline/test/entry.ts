@@ -5,6 +5,7 @@ import { type PipelineResult, WalkPipeline as RealPipeline } from "../src/workfl
 import { harness, testDeps } from "./harness.ts";
 
 export { PipelineEntry } from "../src/index.ts";
+export { MediaStandIn } from "./media-stand-in.ts";
 
 type Doer = { do: (name: string, ...rest: unknown[]) => Promise<unknown> };
 

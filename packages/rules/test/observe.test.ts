@@ -71,6 +71,11 @@ const walls = (frames: number[]) => new Map(frames.map((f) => [f, W]));
 const at = (frames: number[], box: [number, number, number, number]) => frames.map((frame) => ({ frame, box, confidence: 0.9 }));
 
 describe("contactOf", () => {
+  it("is yes for a box on the right half of the wall, as for one on the left half", () => {
+    expect(contactOf("wood_pile", at([1, 2], [0.7, 0.2, 0.9, 0.5]), walls([1, 2]))).toBe("yes");
+    expect(contactOf("wood_pile", at([1, 2], [0.1, 0.2, 0.3, 0.5]), walls([1, 2]))).toBe("yes");
+  });
+
   it("is yes when the bottom sits on the wall's base on two frames", () => {
     expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.49 + CONTACT_MARGIN]), walls([1, 2]))).toBe("yes");
     expect(contactOf("wood_pile", at([1, 2], [0.2, 0.2, 0.4, 0.51 - CONTACT_MARGIN]), walls([1, 2]))).toBe("yes");
@@ -136,14 +141,41 @@ describe("observe drops what it cannot use", () => {
     expect(yard([hazardTrack(pile, 1, MIN_CONFIDENCE), wallTrack(99)]).kept).toHaveLength(1);
   });
 
-  it("drops a wall or a chimney alone, and an object with no wall to measure from", () => {
-    const chimney: Track = { ...wallTrack(3), concept: "chimney" };
-    const { kept, dropped } = yard([chimney, hazardTrack(pile, 1)]);
+  it("drops a wall alone, and an object with no wall to measure from", () => {
+    expect(yard([wallTrack(3)])).toEqual({ kept: [], dropped: [{ trackIds: [trackId(3)], reason: "a house_wall places other objects and is never a finding" }] });
+    const { kept, dropped } = yard([hazardTrack(pile, 1)]);
     expect(kept).toEqual([]);
-    expect(dropped).toEqual([
-      { trackIds: [trackId(3)], reason: "a chimney places other objects and is never a finding" },
-      { trackIds: [trackId(1)], reason: UNMEASURED },
-    ]);
+    expect(dropped).toEqual([{ trackIds: [trackId(1)], reason: UNMEASURED }]);
+  });
+
+  it("keeps a chimney seen on two frames as a Zone 0 observation with no branch flag, with or without a wall", () => {
+    const chimney: Track = { ...wallTrack(3), concept: "chimney" };
+    for (const tracks of [[chimney], [chimney, wallTrack(99)]]) {
+      const { kept, dropped } = yard(tracks);
+      expect(dropped.every((d) => d.trackIds[0] === trackId(99))).toBe(true);
+      expect(kept.map((k) => [k.trackIds, k.observation.concept, k.observation.distanceFeet, k.observation.contact, k.observation.flags])).toEqual([
+        [[trackId(3)], "chimney", { low: 0, high: 0 }, "not_checked", []],
+      ]);
+    }
+  });
+
+  it("keeps a wood deck seen on two frames at the house, since a deck is built onto it, with or without a wall", () => {
+    const deck: Track = { ...wallTrack(3), concept: "wood_deck" };
+    for (const tracks of [[deck], [deck, wallTrack(99)]]) {
+      const { kept } = yard(tracks);
+      expect(kept.map((k) => [k.trackIds, k.observation.concept, k.observation.distanceFeet, k.observation.contact])).toEqual([
+        [[trackId(3)], "wood_deck", { low: 0, high: 0 }, "not_checked"],
+      ]);
+    }
+  });
+
+  it("drops a chimney seen on one frame or below the confidence floor, like any other object", () => {
+    const one: Track = { ...wallTrack(3), concept: "chimney" };
+    one.frames = one.frames.slice(100, 101);
+    const faint: Track = { ...wallTrack(4), concept: "chimney", frames: wallTrack(4).frames.map((f) => ({ ...f, confidence: MIN_CONFIDENCE - 0.01 })) };
+    const { kept, dropped } = yard([one, faint]);
+    expect(kept).toEqual([]);
+    expect(dropped.map((d) => d.trackIds)).toEqual([[trackId(3)], [trackId(4)]]);
   });
 
   it("drops an object with no motion sample near its frames, never guessing a tilt", () => {
@@ -342,6 +374,21 @@ describe("observe flags and proof frames", () => {
     expect(beside(0.8161503025716127)).toEqual([]);
   });
 
+  it("measures the gap to a chimney on the branch's left, and counts one overlapping it as touching", () => {
+    const flagsWith = (left: number, right: number) =>
+      flat({ tracks: [wall(WALL), branch([0.6, 0.45, 0.8, 0.55]), chimney([left, 0.1, right, 0.3])] }).kept[0]!.observation.flags;
+    expect(flagsWith(0.02, 0.1)).toEqual(["near_chimney"]);
+    expect(flagsWith(0.02, 0.07)).toEqual([]);
+    expect(flagsWith(0.7, 0.9)).toEqual(["near_chimney"]);
+  });
+
+  it("keeps the one inside frame as the proof when a more confident frame touches the edge", () => {
+    const touching: Box = [0.3, 0.4, 0.5, 0.99];
+    const { kept } = flat({ tracks: [wall(), framed(1, "shed", [[0, OUT, 0.6], [1, touching, 0.9]])] });
+    expect(kept[0]!.proof).toMatchObject({ frame: 0, inside: true, confidence: 0.6 });
+    expect(kept[0]!.notes).toEqual([]);
+  });
+
   it("does not count a chimney beside the branch on frames where no wall gives the scale", () => {
     const wallTwice = flatTrack(99, "loop", "house_wall", WALL, [0, 1]);
     const late = flatTrack(5, "loop", "chimney", [0.5, 0.1, 0.6, 0.3], [1, 2, 3]);
@@ -383,6 +430,12 @@ describe("observe measures each object by the median of its frames", () => {
     expect(run([late, early])).toEqual(run([early, late]));
   });
 
+  it("drops an object whose tilt reads just past straight down", () => {
+    const past = flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT)], loopTilt: 90.5 });
+    expect(past.kept).toEqual([]);
+    expect(past.dropped).toContainEqual({ trackIds: [trackId(1)], reason: UNMEASURED });
+  });
+
   it("places an object filmed straight down, and drops one whose tilt reads past straight down", () => {
     expect(flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT)], loopTilt: 90 }).kept).toHaveLength(1);
     const past = flat({ tracks: [wall(), flatTrack(1, "loop", "shed", OUT)], loopTilt: 120 });
@@ -409,6 +462,23 @@ describe("observe joins at the edges of its rules", () => {
     const { kept } = flat({ tracks, loopTilt: 90, panTilt: 90 });
     expect(kept).toHaveLength(1);
     expect(kept[0]!.observation.distanceFeet).toEqual({ low: 0, high: 0 });
+  });
+
+  it("joins or keeps apart by the turn from facing each other, across the wrap at north and the south", () => {
+    const tracks = [flatTrack(1, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)];
+    const around = (degrees: number) => ((degrees % 360) + 360) % 360;
+    for (const loopHeading of [0, 100, 180, 350]) {
+      for (const off of [-31, -30, 0, 30, 31, 90, 180]) {
+        const kept = flat({ tracks, panTilt: 60, loopHeading, panHeading: around(loopHeading + 180 + off) }).kept;
+        expect(kept, `${loopHeading} ${off}`).toHaveLength(Math.abs(off) <= 30 ? 1 : 2);
+      }
+    }
+  });
+
+  it("joins a loop sighting seen inside the picture on one frame only, the other frame cut off by the edge", () => {
+    const touching: Box = [0.3, 0.4, 0.5, 0.99];
+    const tracks = [framed(1, "shed", [[0, OUT], [1, touching]]), wall(), flatTrack(2, "pan", "shed", OUT)];
+    expect(flat({ tracks, panTilt: 60 }).kept).toHaveLength(1);
   });
 
   it("keeps a pan object exactly at the property line's distance", () => {

@@ -1,10 +1,12 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
-import type { Concept, WalkState } from "@emberwalk/shared";
+import type { Concept, Corner, FixedRouteCode, WalkState } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
 import type { FeetSaid } from "./distance.ts";
 import type { StatusKind } from "./finding-marks.ts";
+import { localDay } from "./mark-sync.ts";
+import type { FixedFailure, JobStatus, Message, Trade } from "./fixed-api.ts";
 import type { Stage } from "./progress.ts";
-import type { Gap, Label, Side } from "./results.ts";
+import type { Gap, Label, Side, SideGap } from "./results.ts";
 
 const LIMIT_MINUTES = Math.floor(DEFAULT_LIMITS.maxWalkSeconds / 60);
 const SEND = "Send My Walk";
@@ -40,6 +42,13 @@ export const longDate = (day: Date): string => {
   return `${parts.weekday}, ${parts.month} ${ordinal(day.getUTCDate())}, ${parts.year}`;
 };
 
+const MONTHS = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
+
+export const shortDay = (iso: string): string => {
+  const [year, month, day] = iso.split("-").map(Number);
+  return `${MONTHS[(month ?? 1) - 1] ?? ""} ${ordinal(day ?? 1)}, ${year}`;
+};
+
 const GAP_LINES: Record<Gap["kind"], (side: Side) => string> = {
   missing: (side) => `The ${side} side isn't in your video yet.`,
   dark: (side) => `The ${side} side is too dark to check.`,
@@ -49,21 +58,211 @@ const GAP_LINES: Record<Gap["kind"], (side: Side) => string> = {
 
 const titled = (side: Side): string => `${side[0]!.toUpperCase()}${side.slice(1)}`;
 
+const cornerWords = (corner: Corner): string => corner.replace("_", " ");
+
+const titledCorner = (corner: Corner): string => corner.split("_").map((word) => titled(word as Side)).join(" ");
+
 const stepLine = (state: WalkState): string => {
   if (state.name !== "processing" || state.step === "prepare") return "Getting your walk ready to check.";
   if (state.step === "explain") return "Writing down what to do about each thing found.";
   return "Looking for what needs clearing.";
 };
 
+const MILES = (miles: number): string => {
+  const said = Number(miles.toFixed(1));
+  return `${said} ${said === 1 ? "mile" : "miles"} away`;
+};
+
+const itemsOnList = (count: number): string => `For ${count} ${count === 1 ? "item" : "items"} on your list.`;
+
+const TRADE_NAMES: Record<Trade, string> = {
+  tree_service: "Tree Service",
+  brush_clearing: "Brush Clearing",
+  debris_hauling: "Debris Hauling",
+  roofing_gutters: "Roofing and Gutters",
+  fencing: "Fencing",
+  handyman: "Handyman",
+};
+
+const JOB_LINES: Record<JobStatus, string> = {
+  planning: "Crews are being picked for this work.",
+  waiting_on_homeowner: "Waiting for your okay.",
+  waiting_on_crew: "Waiting to hear back from the crews.",
+  scheduled: "A crew has a time lined up with you.",
+  done: "This work is done.",
+  closed: "This work is closed.",
+};
+
+const SOMETHING_WRONG = "Something went wrong on EmberWalk's side. Try again in a minute.";
+
+const PROBLEMS: Record<FixedRouteCode | "offline", string> = {
+  offline: "No signal. Try again when you have signal.",
+  rate_limited: "EmberWalk has done that as many times as it allows for now.",
+  invalid_request: "EmberWalk could not read that. Check it and try again.",
+  not_found: "EmberWalk could not find that. Go back and open it again.",
+  method_not_allowed: SOMETHING_WRONG,
+  conflict: "That cannot be done now.",
+  not_ready: "Mark every Required Now item done first.",
+  send_failed: "The email did not go out. Try again.",
+  server_error: SOMETHING_WRONG,
+};
+
+const problemFor = (code: FixedFailure): string => (code in PROBLEMS ? PROBLEMS[code as keyof typeof PROBLEMS] : SOMETHING_WRONG);
+
+const messageLine = (message: Pick<Message, "status" | "channel" | "outbox" | "sentAt">): string => {
+  const sent = message.sentAt === null ? "" : ` on ${shortDay(localDay(Date.parse(message.sentAt)))}`;
+  switch (message.status) {
+    case "draft":
+      return "Written and waiting for your okay.";
+    case "approved":
+      if (message.channel === "text") return "Approved. Waiting for you to send the text.";
+      return message.outbox?.state === "failed" ? "Approved. The email did not go through yet." : "Approved. The email is on its way.";
+    case "sent":
+      return `Sent${sent}.`;
+    case "sent_by_phone":
+      return `Sent from your phone${sent}.`;
+    case "replied":
+      return "The crew replied.";
+  }
+};
+
 export const draft = {
+  portfolio: {
+    title: "Your Homes",
+    notWalked: "Not walked yet",
+    ready: "Ready for Inspection",
+    needsFixes: "Needs fixes",
+    seeResults: "See Results",
+    back: "Back to Home",
+  },
+  detail: {
+    mapTitle: "Your House From Above",
+    mapEmpty: "Nothing to place on the map yet.",
+    backToResults: "Back to Your Results",
+  },
+  fixed: {
+    title: "Get It Fixed",
+    nothingGoesOut: "Nothing goes out without your okay.",
+    zipLabel: "Your ZIP code",
+    zipButton: "Find Licensed Crews",
+    zipInvalid: "Enter a 5 digit ZIP code.",
+    finding: "Finding licensed crews near your house.",
+    trade: TRADE_NAMES,
+    job: JOB_LINES,
+    itemsOnList,
+    noCrews: "No licensed crews were found near your house for this kind of work.",
+    yourself: "Yours to Do",
+    yourselfLine: "No crew on the list covers these. They are yours to do.",
+    distance: (miles: number, approximate: boolean) => (approximate ? `about ${MILES(miles)}` : MILES(miles)),
+    license: (status: string, listedOn: string | null) =>
+      listedOn === null ? `License status ${status}` : `License status ${status} on the state list of ${shortDay(listedOn)}`,
+    text: "Text",
+    sample: "Sample crew",
+    emailOf: (email: string) => `Email: ${email}`,
+    addEmail: "Add Email",
+    emailLabel: (name: string) => `Email for ${name}`,
+    emailLocked: "A request is already written for this business, so its email can't change.",
+    writeRequests: "Write My Requests",
+    writing: "Writing your requests.",
+    requests: "Requests",
+    message: messageLine,
+    review: "Review and Approve",
+    replies: "Replies",
+    replyVia: { email: "Reply by email", homeowner: "Reply you added" },
+    read: "What EmberWalk read in it",
+    price: (price: string) => `Price they mentioned: ${price}`,
+    date: (date: string) => `Date they mentioned: ${date}`,
+    questions: "Questions they asked",
+    declined: "This crew said no.",
+    logReply: "Log a Reply",
+    replyLabel: "What the crew said",
+    replyHelp: "Type or paste a reply that came by text or by phone.",
+    replyEmpty: "Type what they said first.",
+    reminders: "Reminders",
+    reminderReady: (day: string) => `A reminder is ready. It was due ${day}.`,
+    reminderDue: (day: string) => `Due ${day}.`,
+    reviewReminder: "Review the Reminder",
+    writeReminders: "Write My Reminders",
+    remindersChecked: "Checked. Any reminders are listed under the requests.",
+    inspection: "Draft My Inspection Request",
+    inspectionLine: "When every Required Now item is Done, EmberWalk drafts an inspection request for you to send.",
+    loading: "Getting this from EmberWalk.",
+    tryAgain: "Try Again",
+    backToFix: "Back to Get It Fixed",
+    backToResults: "Back to Your Results",
+    problem: problemFor,
+  },
+  approve: {
+    title: "Approve This Request",
+    byEmail: (email: string | null) => (email === null ? "This goes by email." : `This goes by email to ${email}.`),
+    byText: (phone: string) => `This is sent by text from your phone to ${phone}.`,
+    subject: (subject: string) => `Subject: ${subject}`,
+    photos: "Photos That Go With It",
+    nothingSent: "Nothing is sent until you tap the button below.",
+    email: "Approve and Send",
+    text: "Approve This Text",
+    openText: "Open the Text",
+    approvedText: "Approved. Nothing has been sent yet. Tap Open the Text to send it from your phone.",
+    again: "Try Sending Again",
+    sentEmail: "Your email was sent.",
+    sentPhone: "Marked as sent from your phone.",
+    sendFailed: "The email did not go through. Nothing was lost. Tap Try Sending Again.",
+    notSent: "The text was not sent. Tap Open the Text when you are ready.",
+    markAgain: "Tell EmberWalk It Was Sent",
+    missing: "This request could not be found.",
+  },
+  history: {
+    intro: "Every walk you have done and every mark you have made on its list, with the day.",
+    empty: "No walks are on your record yet.",
+    noMarks: "No marks on this walk yet.",
+    mark: (kind: string, day: string) => `${kind} on ${day}`,
+  },
+  inspection: {
+    title: "Your Inspection Request",
+    intro: "This is a draft for you to read and send. EmberWalk does not schedule or carry out the inspection.",
+    subject: (subject: string) => `Subject: ${subject}`,
+    copy: "Copy",
+    copied: "Copied.",
+    copyFailed: "Could not copy. Press and hold the text to copy it yourself.",
+    links: "Links to Include",
+    writing: "Writing your request.",
+    notReady: "Not Ready Yet",
+    noRequired: "This walk has no Required Now item, so there is nothing to put in an inspection request.",
+  },
+  status: {
+    doneDay: "The day it was done",
+    doneOn: (iso: string) => `Done on ${shortDay(iso)}.`,
+    willSave: "Saved on this phone. It will be saved to EmberWalk when you have signal.",
+    refused: "EmberWalk could not save this mark to your record. It is still marked on this phone.",
+    futureDay: "Pick today or an earlier day.",
+  },
   home: { lead: "Film one walk around your house. EmberWalk checks what could carry fire to it." },
   record: {
     corners: ["Start at the front door.", "Turn the first corner.", "Turn the next corner.", "One corner to go.", "Back at the front. Tap Stop Recording."],
     propertyLine: "Point the phone at your property line, then tap Property Line.",
     pan: (side: Side) => `Stand at the ${side} side, face the yard and turn slowly from one end to the other. Tap Pan the Yard again when done.`,
   },
+  guided: {
+    now: (side: Side) => `Now the ${side} side. Tap Next at the corner.`,
+    next: "Next",
+    back: "Back at the front. Tap Pan the Yard at each corner, or Stop Recording.",
+  },
   results: {
     confidence: (share: number) => `EmberWalk is ${Math.round(share * 100)}% sure of this.`,
+  },
+  corners: {
+    gap: {
+      missing: (corner: Corner) => `The ${cornerWords(corner)} corner isn't in your video yet.`,
+      dark: (corner: Corner) => `The ${cornerWords(corner)} corner is too dark to check.`,
+      first_five_feet: (corner: Corner) => `The first five feet at the ${cornerWords(corner)} corner isn't in view yet.`,
+      not_checked: (corner: Corner) => `The ${cornerWords(corner)} corner still needs checking.`,
+    } satisfies Record<Gap["kind"], (corner: Corner) => string>,
+    hint: (corner: Corner) => `Stand at the ${cornerWords(corner)} corner and pan the yard, turning slowly from one side to the other.`,
+    panCorner: (corner: Corner) => `Pan the ${titledCorner(corner)} Corner`,
+    pan: (corner: Corner) =>
+      `Stand at the ${cornerWords(corner)} corner, face the yard and turn slowly from one side to the other. Tap Pan the Yard again when done.`,
+    oneCorner: (corner: Corner) =>
+      `Stand at the ${cornerWords(corner)} corner and face the yard. Tap Pan the Yard, turn slowly from one side to the other, then tap it again.`,
   },
 } as const;
 
@@ -83,6 +282,22 @@ const CONCEPT_WORDS: Record<Concept, string> = {
   shed: "sheds",
   trash_can: "trash cans",
   patio_furniture: "patio furniture",
+  gas_can: "gas cans",
+  stored_fuel: "stored fuel",
+  lawn_mower: "lawn mowers",
+  grill: "grills",
+  propane_cylinder: "small propane cylinders",
+  vehicle: "vehicles",
+  lumber_pile: "lumber piles",
+  tarp: "tarps",
+  doormat: "doormats",
+  boat_or_trailer: "boats and trailers",
+  wood_deck: "wood decks",
+};
+
+export const conceptLabel = (concept: string): string => {
+  const words = CONCEPT_WORDS[concept as Concept] ?? concept.replaceAll("_", " ");
+  return `${words[0]!.toUpperCase()}${words.slice(1)}`;
 };
 
 const distanceLine = (said: FeetSaid): string => {
@@ -105,6 +320,7 @@ export const unbacked = {
     location:
       "Location: used on your phone to find your fire rules and help nearby. To show the aerial photo, the map point of your house is sent to Esri, the map provider. Your address is never sent.",
   },
+  pin: { side: (side: Side) => `The ${side} side.` },
 } as const;
 
 export const copy = {
@@ -115,20 +331,21 @@ export const copy = {
     walks: "Your Walks",
     send: SEND,
     sample: "See a Sample House",
+    progress: "See Progress",
   },
   results: {
     ready: "Ready for Inspection",
     allClear: "All clear on everything EmberWalk could see.",
     insurance: "California requires insurers to offer discounts for some of this work. Ask yours what proof they need.",
     incomplete: "Walk Incomplete",
-    gap: ({ side, kind }: Gap) => GAP_LINES[kind](side),
+    gap: ({ side, kind }: SideGap) => GAP_LINES[kind](side),
     hint: {
       walk_side: (side) => `Walk the ${side} side, from one corner to the next.`,
       more_light: (side) => `Walk the ${side} side again when there's more daylight.`,
       tilt_down: (side) => `Walk the ${side} side again with the phone tipped down a little, so the ground by the wall shows.`,
       step_back: (side) => `Walk the ${side} side again one step further from the wall, so the ground by the wall shows.`,
       again: (side) => `Walk the ${side} side once more. Your video was fine; EmberWalk needs another look.`,
-    } satisfies Record<Gap["hint"], (side: Side) => string>,
+    } satisfies Record<SideGap["hint"], (side: Side) => string>,
     walkSide: (side: Side) => `Walk the ${titled(side)} Side`,
     soFar: "What We Found So Far",
     fixFirst: (count: number) => (count === 1 ? "Fix This First" : `Fix These ${count} First`),
@@ -145,6 +362,12 @@ export const copy = {
     old: "Over a year old. Walk again to update.",
     label: { required_now: "Required Now", recommended: "Recommended" } satisfies Record<Label, string>,
   },
+  fixed: {
+    honest: "Every licensed business on California's public contractor list, closest first. EmberWalk doesn't rank or recommend them.",
+    call: "Call",
+    checkLicense: "Check This License",
+  },
+  history: { title: "Defensible Space Record" },
   status: {
     kind: { needs_fixing: "Needs Fixing", fix_planned: "Fix Planned", done: "Done" } satisfies Record<StatusKind, string>,
     rechecked: "Rechecked",
@@ -157,6 +380,9 @@ export const copy = {
     more: "More",
     source: "Where This Comes From",
     said: "What You Said",
+    seeFixed: "See It Fixed",
+    aiPreview: "AI preview, not a photo",
+    secondCheck: (reason: string) => `Second check disagrees: ${reason}`,
     notRight: "This Isn't Right",
     removed: "Removed from your list.",
     undo: "Undo",
@@ -249,6 +475,9 @@ export const copy = {
       not_mp4: "This video cannot be checked. Record the walk again.",
       not_found: TRY_AGAIN,
       method_not_allowed: TRY_AGAIN,
+      conflict: TRY_AGAIN,
+      not_ready: TRY_AGAIN,
+      send_failed: TRY_AGAIN,
       spend_cap_reached: `EmberWalk has checked all the walks it can today. ${STAYS} Try again tomorrow.`,
       walk_limit_reached: `You have sent as many walks as EmberWalk allows today. ${STAYS} Try again tomorrow.`,
       walk_not_done: "This walk is still being checked.",

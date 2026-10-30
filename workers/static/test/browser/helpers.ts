@@ -77,6 +77,101 @@ export async function leftEdges(page: Page, selector: string) {
   );
 }
 
+export interface Item {
+  top: number;
+  cx: number;
+  width: number;
+  height: number;
+  front: boolean;
+  inView: boolean;
+}
+
+export interface Sample {
+  y: number;
+  vw: number;
+  vh: number;
+  items: (Item | null)[];
+}
+
+export async function headingTop(page: Page, pattern: string) {
+  return page.evaluate((source) => {
+    const re = new RegExp(source, "i");
+    const hits = [...document.querySelectorAll("body *")].filter(
+      (el) => re.test(el.textContent ?? "") && ![...el.children].some((child) => re.test(child.textContent ?? "")),
+    );
+    if (hits.length === 0) return null;
+    return hits[0].getBoundingClientRect().top + window.scrollY;
+  }, pattern);
+}
+
+export async function sweep(page: Page, phrases: string[], from: number, to: number, step = 30): Promise<Sample[]> {
+  return page.evaluate(
+    async ({ phrases, from, to, step }) => {
+      const frame = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const deepest = (phrase: string) => {
+        const re = new RegExp(phrase, "i");
+        return [...document.querySelectorAll("body *")].find(
+          (el) => re.test(el.textContent ?? "") && ![...el.children].some((child) => re.test(child.textContent ?? "")),
+        );
+      };
+      const opacity = (el: Element) => {
+        let value = 1;
+        for (let at: Element | null = el; at; at = at.parentElement) value *= Number(getComputedStyle(at).opacity);
+        return value;
+      };
+      const samples = [];
+      for (let y = from; y <= to; y += step) {
+        window.scrollTo(0, y);
+        await frame();
+        await new Promise((done) => setTimeout(done, 40));
+        const found = phrases.map(deepest);
+        const items = found.map((el, i) => {
+          if (!el) return null;
+          let own: Element = el;
+          for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+            if (found.some((other, k) => k !== i && other && up!.contains(other))) break;
+            own = up;
+          }
+          const box = own.getBoundingClientRect();
+          const text = el.getBoundingClientRect();
+          const x = text.left + text.width / 2;
+          const yy = text.top + text.height / 2;
+          const inside = x >= 0 && x <= innerWidth && yy >= 0 && yy <= innerHeight;
+          const hit = inside ? document.elementFromPoint(x, yy) : null;
+          const front = Boolean(hit && own.contains(hit)) && opacity(el) > 0.5 && getComputedStyle(el).visibility === "visible";
+          const inView = box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth;
+          return { top: box.top, cx: box.left + box.width / 2, width: box.width, height: box.height, front, inView };
+        });
+        samples.push({ y: window.scrollY, vw: innerWidth, vh: innerHeight, items });
+      }
+      return samples;
+    },
+    { phrases, from, to, step },
+  );
+}
+
+export const fronts = (samples: Sample[]) => Math.max(...samples.map((s) => s.items.filter((item) => item?.front).length));
+
+export const firstFront = (samples: Sample[], count: number) =>
+  [...Array(count).keys()]
+    .map((i) => ({ i, at: samples.findIndex((s) => s.items[i]?.front) }))
+    .filter((entry) => entry.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map((entry) => entry.i);
+
+export function pinnedSpan(samples: Sample[], i: number) {
+  const front = samples.filter((s) => s.items[i]?.front);
+  let best = 0;
+  for (let a = 0; a < front.length; a += 1) {
+    for (let b = a + 1; b < front.length; b += 1) {
+      const still = front.slice(a, b + 1).every((s) => Math.abs(s.items[i]!.top - front[a].items[i]!.top) <= 4);
+      if (!still) break;
+      best = Math.max(best, front[b].y - front[a].y);
+    }
+  }
+  return best;
+}
+
 export async function sideways(page: Page) {
   return page.evaluate(() => ({
     scroll: document.documentElement.scrollWidth,

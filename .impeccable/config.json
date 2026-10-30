@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "workers/static/public/site.css"
+        ],
+        "createdAt": "2026-10-30T12:51:07.783Z",
+        "reason": "Lead 238 call 5:53 AM Oct. 30th 2026: the only side-tab hit is the .checks li::before checklist tick from f5ba619, a rotated border pair, not a card border; the tool gives no value for this rule"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "workers/static/public/index.html"
+        ],
+        "createdAt": "2026-10-30T13:53:11.346Z",
+        "reason": "Hides the whole dark-glow report for this file: the detector extracts no value for dark-glow, so a value narrowing is refused by the CLI and a hand written one matches nothing. It exists for the .card.light elevation shadow, brown #54402e, 0 18px 50px at 0.18 alpha (site.css:103, DESIGN.md Cards), which the detector reports first. The orange #c2561a finish panel glow (site.css:450) sits behind the same ignore and is a by eye item in the landing findings"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "workers/static/public/privacy.html"
+        ],
+        "createdAt": "2026-10-30T13:53:11.355Z",
+        "reason": "Hides the whole dark-glow report for this file; same limit as index.html. It exists for the .card.light elevation shadow, brown #54402e, 0 18px 50px at 0.18 alpha (site.css:103, DESIGN.md Cards), approved look kept"
+      }
+    ]
+  }
+}

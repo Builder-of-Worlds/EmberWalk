@@ -1,6 +1,11 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+const decisions = await import("./license-decisions.mjs").catch((err) => {
+  if (err.code === "ERR_MODULE_NOT_FOUND") return null;
+  throw err;
+});
+
 const ALLOWED = new Set(["MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Apache-2.0", "0BSD", "CC0-1.0", "OFL-1.1"]);
 
 function readJson(file, fallback) {
@@ -89,6 +94,8 @@ function noticed(notice, name) {
 
 function shipsReason(e, json, lock, notice) {
   if (e.ships !== true || e.version !== json.version) return "not listed";
+  const undecided = decisions?.decisionReason(e);
+  if (undecided) return undecided;
   const loose = unpinned(lock, json.name, json.version);
   if (loose) return `not pinned: ${loose}`;
   if (!noticed(notice, json.name)) return "no notice in NOTICE";

@@ -69,9 +69,9 @@ describe("watchWalk", () => {
     expect(w.time.pending()).toBe(0);
   });
 
-  it("says a failed walk's own message and stops at once", async () => {
+  it("says a failed walk's own code and message and stops at once", async () => {
     const w = await watching([at({ name: "failed", step: "score" }, "Something went wrong while checking this walk.")]);
-    expect(w.seen).toEqual([{ kind: "failed", message: "Something went wrong while checking this walk." }]);
+    expect(w.seen).toEqual([{ kind: "failed", code: "pipeline_failed", message: "Something went wrong while checking this walk." }]);
     await w.tick(60_000);
     expect(w.asked).toHaveLength(1);
   });

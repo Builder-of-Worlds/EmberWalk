@@ -7,22 +7,6 @@ const Z0: readonly Band[] = ["zone_0"];
 const Z01: readonly Band[] = ["zone_0", "zone_1"];
 const Z012: readonly Band[] = ["zone_0", "zone_1", "zone_2"];
 
-const ESTIMATED: CatalogSource = { estimated: true };
-const READ_ON = "2026-10-27";
-
-const USFA = { url: "https://www.usfa.fema.gov/gallery/pictographs/wildfire-and-outdoor.html", retrievedOn: READ_ON };
-const CAL_FIRE_ZONE_0 = { url: "https://readyforwildfire.org/prepare-for-wildfire/defensible-space/", retrievedOn: "2026-10-24" };
-const MONTEREY_ZONE_0 = { url: "https://mcrfd.org/zone-0-information", retrievedOn: READ_ON };
-const NEW_MEXICO_CHECKLIST = {
-  url: "https://www.osi.state.nm.us/wp-content/uploads/2026/02/NM-Wildfire-Hardening-Defensible-Space-Checklist.pdf",
-  retrievedOn: READ_ON,
-};
-const CA_INSURANCE = { url: "https://www.insurance.ca.gov/01-consumers/140-catastrophes/WildfireBefore.cfm", retrievedOn: READ_ON };
-const IDAHO_FORM = {
-  url: "https://www.idl.idaho.gov/wp-content/uploads/2026/03/FMH-821-Attachment-2-Idaho-Wildfire-Home-Protection-Zone-Evaluation-Homeowner.pdf",
-  retrievedOn: READ_ON,
-};
-
 const ruleSource = (ruleKey: string): CatalogSource => {
   const rule = RULES.find((r) => r.key === ruleKey);
   if (rule === undefined) throw new Error(`catalog source: no rule ${ruleKey}`);
@@ -43,23 +27,6 @@ const existing = (concept: string, ruleKey: string, band: readonly Band[], why: 
   };
 };
 
-const pending = (
-  concept: string,
-  phrases: readonly string[],
-  band: readonly Band[],
-  source: CatalogSource,
-  why: string,
-): CatalogRow => ({
-  concept,
-  phrases,
-  point: null,
-  why,
-  source,
-  band,
-  pending: "shared",
-  proposedKey: `${concept.replaceAll("_", "-")}-zone-0`,
-});
-
 export const CATALOG: readonly CatalogRow[] = [
   existing("dry_brush", "dry-brush", Z012, "Dead branches and brush on the ground carry a ground fire toward the house."),
   existing("wood_pile", "wood-pile-uncovered", Z012, "Stacked firewood burns hot and long, so it belongs well away from the house or fully covered.", {
@@ -79,52 +46,37 @@ export const CATALOG: readonly CatalogRow[] = [
   existing("trash_can", "trash-can-zone-0", Z0, "Trash and recycling bins burn and sit right where embers land."),
   existing("patio_furniture", "furniture-deck", Z01, "Cushions and wood furniture burn under or beside a deck and can light it."),
 
-  pending(
-    "gas_can",
-    ["gas can", "gasoline can"],
-    Z012,
-    CA_INSURANCE,
-    "Gasoline fumes and spills ignite easily, so fuel cans belong far from the house, in a shed or garage.",
-  ),
-  pending(
+  existing("gas_can", "gas-can-zone-0", Z012, "Gasoline fumes and spills ignite easily, so fuel cans belong far from the house, in a shed or garage.", {
+    phrases: ["gas can", "gasoline can"],
+  }),
+  existing(
     "stored_fuel",
-    ["fuel drum", "jerry can", "fuel container"],
+    "stored-fuel-zone-0",
     Z012,
-    IDAHO_FORM,
     "Fuel drums and jerry cans feed a fire and can burst, so they belong at a distance with the area around them cleared.",
+    { phrases: ["fuel drum", "jerry can", "fuel container"] },
   ),
-  pending(
-    "lawn_mower",
-    ["lawn mower"],
-    Z01,
-    USFA,
-    "A mower holds gasoline, and spilled fuel can ignite on a hot engine, so it is stored away from the house.",
-  ),
-  pending("grill", ["grill", "barbecue grill"], Z01, USFA, "A grill near siding, railings, eaves or low branches can set them alight."),
-  pending(
+  existing("lawn_mower", "lawn-mower-zone-0", Z01, "A mower holds gasoline, and spilled fuel can ignite on a hot engine, so it is stored away from the house."),
+  existing("grill", "grill-zone-0", Z01, "A grill near siding, railings, eaves or low branches can set them alight.", { phrases: ["grill", "barbecue grill"] }),
+  existing(
     "propane_cylinder",
-    ["propane cylinder", "propane bottle"],
+    "propane-cylinder-zone-0",
     Z012,
-    USFA,
     "A small propane bottle can vent or burst in a fire, so it belongs away from the house and from anything that burns.",
+    { phrases: ["propane cylinder", "propane bottle"] },
   ),
-  pending("vehicle", ["vehicle", "car", "truck"], Z01, MONTEREY_ZONE_0, "A parked vehicle holds fuel and burns, so it is kept out of the first 5 feet."),
-  pending(
-    "lumber_pile",
-    ["lumber pile", "stack of lumber"],
-    Z012,
-    CAL_FIRE_ZONE_0,
-    "Stacked lumber burns like firewood, so it belongs in Zone 2 or covered, away from the house.",
-  ),
-  pending("tarp", ["tarp"], Z01, ESTIMATED, "A plastic or canvas tarp burns and melts, and can carry fire to what it covers."),
-  pending("doormat", ["doormat", "welcome mat"], Z0, NEW_MEXICO_CHECKLIST, "A doormat sits at the door, where embers land, and burns."),
-  pending(
-    "boat_or_trailer",
-    ["boat", "trailer"],
-    Z012,
-    MONTEREY_ZONE_0,
-    "A boat or trailer holds fuel and burns, so it is kept out of the first 5 feet.",
-  ),
+  existing("vehicle", "vehicle-zone-0", Z01, "A parked vehicle holds fuel and burns, so it is kept out of the first 5 feet.", { phrases: ["vehicle", "car", "truck"] }),
+  existing("lumber_pile", "lumber-pile-zone-0", Z012, "Stacked lumber burns like firewood, so it belongs in Zone 2 or covered, away from the house.", {
+    phrases: ["lumber pile", "stack of lumber"],
+  }),
+  existing("tarp", "tarp-zone-0", Z01, "A plastic or canvas tarp burns and melts, and can carry fire to what it covers."),
+  existing("doormat", "doormat-zone-0", Z0, "A doormat sits at the door, where embers land, and burns.", { phrases: ["doormat", "welcome mat"] }),
+  existing("boat_or_trailer", "boat-or-trailer-zone-0", Z012, "A boat or trailer holds fuel and burns, so it is kept out of the first 5 feet.", {
+    phrases: ["boat", "trailer"],
+  }),
+  existing("wood_deck", "wood-deck-zone-0", Z0, "A wood deck, porch or balcony built onto the house burns and carries fire to the wall.", {
+    phrases: ["wooden deck", "wood porch", "wood balcony"],
+  }),
 ];
 
 checkCatalog(CATALOG);

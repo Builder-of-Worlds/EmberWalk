@@ -1,4 +1,5 @@
 import { completeWalk, detectionsForClip, getWalk } from "@emberwalk/db";
+import { PAN_CONCEPTS } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { segmentClip } from "../src/segment.ts";
@@ -51,7 +52,7 @@ describe("storeWalk", () => {
     await storeWalk(deps(), walkId, clips.map((c) => c.id));
 
     for (const clip of clips) expect((await detectionsForClip(env.DB, clip.id)).tracks).toHaveLength(1);
-    expect((await detectionsForClip(env.DB, clips[1]!.id)).runs).toHaveLength(8);
+    expect((await detectionsForClip(env.DB, clips[1]!.id)).runs).toHaveLength(PAN_CONCEPTS.length);
   });
 
   it("keeps the walk processing and throws when a clip's detections are missing", async () => {

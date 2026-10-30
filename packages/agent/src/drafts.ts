@@ -31,6 +31,17 @@ export const CONCEPT_NAMES: { [C in Concept]: string } = {
   patio_furniture: "Patio furniture",
   chimney: "Chimney",
   house_wall: "House wall",
+  gas_can: "Gas can",
+  stored_fuel: "Stored fuel",
+  lawn_mower: "Lawn mower",
+  grill: "Grill",
+  propane_cylinder: "Small propane cylinder",
+  vehicle: "Vehicle",
+  lumber_pile: "Lumber pile",
+  tarp: "Tarp",
+  doormat: "Doormat",
+  boat_or_trailer: "Boat or trailer",
+  wood_deck: "Wood deck",
 };
 
 const byRank = (findings: Finding[]): Finding[] => [...findings].sort((a, b) => a.rank - b.rank);

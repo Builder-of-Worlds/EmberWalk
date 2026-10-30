@@ -58,7 +58,8 @@ describe("the shipped catalog", () => {
     const concepts = CATALOG.map((r) => r.concept);
     for (const concept of LOOP_CONCEPTS) expect(concepts).toContain(concept);
     for (const concept of HOUSE_OBJECTS) expect(concepts).toContain(concept);
-    expect(CATALOG.filter((r) => r.pending === "shared").length).toBeGreaterThanOrEqual(10);
+    expect(concepts).toContain("wood_deck");
+    expect(CATALOG.filter((r) => r.pending !== undefined)).toEqual([]);
   });
 
   it("maps every existing row to rules that exist for that concept", async () => {
@@ -108,7 +109,7 @@ describe("the shipped catalog", () => {
 
   it("keeps today's phrase for every existing concept", async () => {
     const CATALOG = await shipped();
-    for (const concept of LOOP_CONCEPTS) {
+    for (const concept of LOOP_CONCEPTS.filter((c) => !HOUSE_OBJECTS.includes(c) && c !== "wood_deck")) {
       const expected = PHRASE_CONCEPTS.includes(concept) ? samPhrase(concept as PhraseConcept) : concept.replaceAll("_", " ");
       expect(byConcept(CATALOG, concept).phrases[0], concept).toBe(expected);
     }
@@ -144,15 +145,17 @@ describe("the shipped catalog", () => {
     expect(byConcept(CATALOG, "wood_pile").phrases[0]).toBe("wood pile");
   });
 
-  it("gives every new object a pending row that names a rule key no rule has yet", async () => {
+  it("maps each of the ten yard objects and the wood deck to its own Zone 0 rule, asked by the phrases it had while pending", async () => {
     const CATALOG = await shipped();
-    const ruleKeys = new Set(RULES.map((rule) => rule.key));
-    for (const concept of HOUSE_OBJECTS) {
+    const phrases = { gas_can: "gas can", stored_fuel: "fuel drum", boat_or_trailer: "boat", wood_deck: "wooden deck" } as Record<string, string>;
+    for (const concept of [...HOUSE_OBJECTS, "wood_deck"]) {
       const r = byConcept(CATALOG, concept);
-      expect(r.pending, concept).toBe("shared");
-      expect(r.proposedKey, concept).toBeTruthy();
-      expect(ruleKeys.has(r.proposedKey ?? ""), concept).toBe(false);
+      const key = `${concept.replaceAll("_", "-")}-zone-0`;
+      expect([r.ruleKey, r.pending, r.proposedKey, r.point], concept).toEqual([key, undefined, undefined, null]);
+      expect(RULES.some((rule) => rule.concept === concept && rule.key === key), concept).toBe(true);
+      if (concept in phrases) expect(r.phrases[0], concept).toBe(phrases[concept]);
     }
+    expect(byConcept(CATALOG, "boat_or_trailer").phrases).toEqual(["boat", "trailer"]);
   });
 
   it("dates every cited source and marks every other source estimated", async () => {

@@ -9,7 +9,7 @@ type Load = (id: string) => Promise<WalkResults | null>;
 
 const NOT_YET = new Set(["unknown_walk", "walk_not_done"]);
 
-const LIVE_STILL = /^\/api\/walks\/[0-9a-f-]{36}\/stills\/[0-9a-f-]{36}$/;
+const LIVE_STILL = /^\/api\/walks\/[0-9a-f-]{36}\/(?:stills|previews)\/[0-9a-f-]{36}$/;
 
 export const toWalkResults = (body: WalkResultsResponse, base: string): WalkResults => ({
   id: body.walkId,
@@ -17,8 +17,14 @@ export const toWalkResults = (body: WalkResultsResponse, base: string): WalkResu
   synthetic: body.synthetic,
   coverage: body.coverage,
   gaps: body.gaps,
-  findings: body.findings.map((f) => ({ ...f, proof: { ...f.proof, still: new URL(f.proof.still, base).href } })),
+  findings: body.findings.map(({ preview, secondCheck, ...f }) => ({
+    ...f,
+    proof: { ...f.proof, still: new URL(f.proof.still, base).href },
+    ...(preview ? { preview: new URL(preview, base).href } : {}),
+    ...(secondCheck ? { secondCheck } : {}),
+  })),
   notChecked: body.notChecked,
+  ...(body.pins === undefined ? {} : { pins: body.pins }),
 });
 
 export const apiResults =

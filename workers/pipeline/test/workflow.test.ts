@@ -1,15 +1,17 @@
-import { CATALOG, isPending, samPhraseOf } from "@emberwalk/catalog";
-import { addTag, clipsForWalk, detectionsForClip, findingsForWalk, getWalk } from "@emberwalk/db";
-import { LOOP_CONCEPTS, PAN_CONCEPTS } from "@emberwalk/shared";
+import { CATALOG, samPhraseOf } from "@emberwalk/catalog";
+import { addTag, clipsForWalk, detectionsForClip, findingsForWalk, gapsForWalk, getWalk } from "@emberwalk/db";
+import { LOOP_CONCEPTS, OBJECT_CONCEPTS, PAN_CONCEPTS, type Tag } from "@emberwalk/shared";
 import { env, introspectWorkflowInstance } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PRIVACY_PHRASES, type PrivacyRecord, privacyKey } from "../src/privacy.ts";
 import { lookingSteps, orderProblems, STEP, WRITING_STEPS } from "../src/steps.ts";
-import { coverageKey } from "@emberwalk/rules";
+import { CoverageRecord, coverageKey } from "@emberwalk/rules";
+import guidedWalk from "../../../apps/web/test/unit/guided-walk.json";
+import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
 import { clipKey, detectionsKey, originalKey } from "../src/storage.ts";
 import { CLEAN_PHRASE } from "../src/voice-notes.ts";
 import { freshWalkId, resetAll, seedOriginal, seedTag, seedWalk, spentNano } from "./fixtures.ts";
-import { FRAME_HEIGHT, FRAME_WIDTH, harness, idFor, type Sighting } from "./harness.ts";
+import { FRAME_HEIGHT, FRAME_WIDTH, harness, idFor, type Sighting, stageSamePlace, stageSamePlaces } from "./harness.ts";
 
 beforeEach(resetAll);
 
@@ -54,7 +56,7 @@ describe("the walk workflow", () => {
     expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
   });
 
-  it("asks SAM for every pending catalog object on both clips of a walk", async () => {
+  it("asks SAM for each of the ten yard objects on both clips of a walk, and for the wood deck on the loop only", async () => {
     const walkId = await queuedWalk();
     await seedTag(walkId, 1, "loop", 10, 40);
     await seedTag(walkId, 2, "pan", 50, 80);
@@ -62,9 +64,10 @@ describe("the walk workflow", () => {
     await using instance = await run(walkId);
 
     expect(await instance.getOutput()).toEqual({ status: "done" });
-    const pending = CATALOG.filter(isPending);
-    expect(pending).toHaveLength(10);
-    for (const row of pending) expect(harness.asked.filter((p) => p === samPhraseOf(row)), row.concept).toHaveLength(2);
+    const objects = CATALOG.filter((row) => (OBJECT_CONCEPTS as readonly string[]).includes(row.concept));
+    expect(objects).toHaveLength(10);
+    for (const row of objects) expect(harness.asked.filter((p) => p === samPhraseOf(row)), row.concept).toHaveLength(2);
+    expect(harness.asked.filter((p) => p === "wooden deck")).toHaveLength(1);
   });
 
   it("fails the walk when the store step cannot read what segmenting left", async () => {
@@ -281,6 +284,47 @@ describe("privacy, blur and explain", () => {
     for (const f of findings) expect(f.instruction.length).toBeGreaterThan(0);
     expect(harness.steps.indexOf(STEP.complete)).toBeGreaterThan(harness.steps.indexOf(STEP.explain));
   });
+
+  it.each(["throws", "times out"] as const)("ends the walk done when the second check and the preview each %s", async (how) => {
+    const walkId = await foundWalk(["loop"]);
+    await using instance = await introspectWorkflowInstance(env.PIPELINE, walkId);
+    await instance.modify(async (m) => {
+      await m.disableRetryDelays();
+      for (const name of [STEP.secondCheck, STEP.preview]) {
+        if (how === "throws") await m.mockStepError({ name }, new Error(`${name} broke`));
+        else await m.forceStepTimeout({ name });
+      }
+    });
+    await env.PIPELINE.create({ id: walkId, params: { walkId } });
+    await instance.waitForStatus("complete");
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const walk = await getWalk(env.DB, walkId);
+    expect(walk?.state).toEqual({ name: "done" });
+    expect(walk?.failure).toBeNull();
+  });
+
+  const edits = () => harness.requests.filter((r) => r.path === "/images/edits");
+
+  it("asks Muse Image for previews on a walk with findings", async () => {
+    await using instance = await run(await foundWalk(["loop"]));
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(edits().length).toBeGreaterThan(0);
+  });
+
+  it("tries a failed preview step once and never again, so no edit is paid for twice", async () => {
+    const walkId = await foundWalk(["loop"]);
+    await using instance = await introspectWorkflowInstance(env.PIPELINE, walkId);
+    await instance.modify(async (m) => {
+      await m.disableRetryDelays();
+      await m.mockStepError({ name: STEP.preview }, new Error("preview broke"), 1);
+    });
+    await env.PIPELINE.create({ id: walkId, params: { walkId } });
+    await instance.waitForStatus("complete");
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(edits()).toEqual([]);
+  });
 });
 
 describe("coverage", () => {
@@ -296,6 +340,121 @@ describe("coverage", () => {
     expect(at(STEP.coverage)).toBeLessThan(at(STEP.deleteVideo));
     expect(await env.MEDIA.head(coverageKey(walkId))).not.toBeNull();
     expect(await videoLeft(walkId)).toEqual([]);
+  });
+
+  it("a walk tagged on every side with enough light, the same place on its return and a good wall base reaches coverage checked through the whole workflow", async () => {
+    const walkId = await queuedWalk();
+    for (const [i, tag] of sideWalk.tags.entries()) await addTag(env.DB, { ...tag, kind: tag.kind as Tag["kind"], id: idFor(7300 + i), walkId });
+    const loopSeconds = Math.max(...sideWalk.tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+    harness.clip = { frames: loopSeconds * 2, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT };
+    harness.answers["house wall"] = [{ found: seen(0, [0.1, 0.3, 0.9, 0.8], Array.from({ length: Math.floor(loopSeconds / 3) }, (_, i) => i * 6)) }];
+    stageSamePlace({ same: true, confidence: 0.99 });
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const record = CoverageRecord.parse(await (await env.MEDIA.get(coverageKey(walkId)))!.json());
+    expect(record).toMatchObject({ coverage: "checked", loop: "closed", gaps: [], sides: { front: "checked", left: "checked", back: "checked", right: "checked" } });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
+  });
+
+  it("a guided walk with motion refused and its left side tapped through stores the left side's gap alone, through the whole workflow", async () => {
+    const walkId = await queuedWalk();
+    for (const [i, tag] of guidedWalk.tags.entries()) await addTag(env.DB, { ...tag, kind: tag.kind as Tag["kind"], id: idFor(7400 + i), walkId });
+    const loopSeconds = Math.max(...guidedWalk.tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+    harness.clip = { frames: loopSeconds * 2, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT };
+    harness.answers["house wall"] = [{ found: seen(0, [0.1, 0.3, 0.9, 0.8], Array.from({ length: Math.floor(loopSeconds / 3) + 1 }, (_, i) => i * 6)) }];
+    stageSamePlace({ same: true, confidence: 0.99 });
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual(guidedWalk.gaps);
+    const record = CoverageRecord.parse(await (await env.MEDIA.get(coverageKey(walkId)))!.json());
+    expect(record).toMatchObject({ coverage: "not_checked", sides: { front: "partly_checked", left: "not_checked", back: "partly_checked", right: "partly_checked" } });
+    expect(record.gaps.filter((gap) => gap.side !== null)).toEqual([
+      { kind: "missing", side: "left", where: { startSeconds: 12, endSeconds: 14 }, reason: { measure: "seconds", measured: 2, needed: 5 } },
+    ]);
+  });
+
+  it("a guided walk that panned three corners stores the fourth corner's gap alone, through the whole workflow", async () => {
+    const { tags, gaps } = guidedWalk.missedCorner;
+    const walkId = await queuedWalk();
+    for (const [i, tag] of tags.entries()) await addTag(env.DB, { ...tag, kind: tag.kind as Tag["kind"], id: idFor(7500 + i), walkId });
+    const loopSeconds = Math.max(...tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+    harness.clip = { frames: loopSeconds * 2, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT };
+    harness.answers["house wall"] = [{ found: seen(0, [0.1, 0.3, 0.9, 0.8], Array.from({ length: Math.floor(loopSeconds / 3) + 1 }, (_, i) => i * 6)) }];
+    stageSamePlace({ same: true, confidence: 0.99 });
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual(gaps);
+  });
+
+  it("a guided walk whose tags carry light readings and no compass stores a dark gap for the side read below the dark line and none for a lit side, through the whole workflow", async () => {
+    const { tags, gaps } = guidedWalk.lit;
+    const walkId = await queuedWalk();
+    for (const [i, tag] of tags.entries()) await addTag(env.DB, { ...tag, kind: tag.kind as Tag["kind"], id: idFor(7600 + i), walkId });
+    const loopSeconds = Math.max(...tags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+    harness.clip = { frames: loopSeconds * 2, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT };
+    harness.answers["house wall"] = [{ found: seen(0, [0.1, 0.3, 0.9, 0.8], Array.from({ length: Math.floor(loopSeconds / 3) + 1 }, (_, i) => i * 6)) }];
+    stageSamePlace({ same: true, confidence: 0.99 });
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual(gaps);
+    const record = CoverageRecord.parse(await (await env.MEDIA.get(coverageKey(walkId)))!.json());
+    expect(record.gaps.filter((gap) => gap.side !== null)).toEqual([
+      expect.objectContaining({ kind: "dark", side: "right", reason: { measure: "light", measured: 20, needed: 40 } }),
+    ]);
+    expect(record.sides).toMatchObject({ front: "partly_checked", left: "partly_checked", back: "partly_checked", right: "partly_checked" });
+  });
+
+  describe("the guided walk's loop closure from the video", () => {
+    const litTags = guidedWalk.lit.tags.map((tag) => ({
+      ...tag,
+      kind: tag.kind as Tag["kind"],
+      light: tag.light.map((reading) => ({ ...reading, light: reading.light === 20 ? 150 : reading.light })),
+    }));
+    const guidedRun = async (...answers: Parameters<typeof stageSamePlaces>) => {
+      const walkId = await queuedWalk();
+      for (const [i, tag] of litTags.entries()) await addTag(env.DB, { ...tag, id: idFor(7700 + i), walkId });
+      const loopSeconds = Math.max(...litTags.filter((t) => t.kind === "loop").map((t) => t.endSeconds));
+      harness.clip = { frames: loopSeconds * 2, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT };
+      harness.answers["house wall"] = [{ found: seen(0, [0.1, 0.3, 0.9, 0.8], Array.from({ length: Math.floor(loopSeconds / 3) + 1 }, (_, i) => i * 6)) }];
+      stageSamePlaces(...answers);
+      await using instance = await run(walkId);
+      expect(await instance.getOutput()).toEqual({ status: "done" });
+      return { walkId, record: CoverageRecord.parse(await (await env.MEDIA.get(coverageKey(walkId)))!.json()) };
+    };
+
+    it("closes a guided walk whose end looks like its start and whose halfway point does not, and with every other check met it reaches checked", async () => {
+      const { walkId, record } = await guidedRun({ same: true, confidence: 0.95 }, { same: false, confidence: 0.95 });
+
+      expect(record).toMatchObject({
+        coverage: "checked",
+        loop: "closed",
+        gaps: [],
+        look: { same: true, confidence: 0.95, halfway: { same: false, confidence: 0.95 } },
+        sides: { front: "checked", left: "checked", back: "checked", right: "checked" },
+      });
+      expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
+    });
+
+    it("leaves a guided walk not checked, with its loop not checked, when the halfway point looks like the start", async () => {
+      const { record } = await guidedRun({ same: true, confidence: 0.95 }, { same: true, confidence: 0.95 });
+
+      expect(record).toMatchObject({ coverage: "not_checked", loop: "not_checked", gaps: [] });
+    });
+
+    it("calls a guided walk open when its end does not look like its start", async () => {
+      const { record } = await guidedRun({ same: false, confidence: 0.95 });
+
+      expect(record).toMatchObject({ coverage: "not_checked", loop: "open" });
+      expect(record.gaps.map((gap) => gap.kind)).toEqual(["loop_open"]);
+    });
   });
 
   it("ends done with the look recorded as not checked when Muse Spark gives no usable answer", async () => {
@@ -393,7 +552,7 @@ describe("the stage count", () => {
 
     expect(await instance.getOutput()).toEqual({ status: "done" });
     expect(await counted(instance, lookingSteps(["loop", "pan"]))).toEqual(rising(14));
-    expect(await counted(instance, WRITING_STEPS)).toEqual(rising(2));
+    expect(await counted(instance, WRITING_STEPS)).toEqual(rising(4));
     expect(orderProblems(harness.steps, ["loop", "pan"])).toEqual([]);
     expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
   });

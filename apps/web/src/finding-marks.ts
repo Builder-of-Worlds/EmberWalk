@@ -5,7 +5,7 @@ export type StatusKind = (typeof STATUSES)[number];
 
 export type Recheck = { photo: string; atMs: number };
 
-export type FindingStatus = { kind: StatusKind; note: string; recheck: Recheck | null };
+export type FindingStatus = { kind: StatusKind; note: string; recheck: Recheck | null; doneOn?: string };
 
 export const NEEDS_FIXING: FindingStatus = { kind: "needs_fixing", note: "", recheck: null };
 
@@ -17,7 +17,7 @@ export type FindingMarks = {
   remove(resultsId: string, findingId: string, atMs: number): void;
   restore(resultsId: string, findingId: string): void;
   statusOf(resultsId: string, findingId: string): FindingStatus;
-  setStatus(resultsId: string, findingId: string, kind: StatusKind, note?: string): void;
+  setStatus(resultsId: string, findingId: string, kind: StatusKind, note?: string, doneOn?: string): void;
 };
 
 type Stored = { removed: Record<string, number>; status: Record<string, FindingStatus> };
@@ -28,6 +28,8 @@ const empty = (): Stored => ({ removed: {}, status: {} });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const isTime = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
@@ -43,6 +45,7 @@ const statusIn = (value: unknown): FindingStatus | null => {
     kind,
     note: kind === "fix_planned" && typeof value.note === "string" ? value.note : "",
     recheck: kind === "done" ? recheckIn(value.recheck) : null,
+    ...(kind === "done" && typeof value.doneOn === "string" && DAY.test(value.doneOn) ? { doneOn: value.doneOn } : {}),
   };
 };
 
@@ -107,11 +110,20 @@ export const storageFindingMarks = (storage: () => Storage): FindingMarks => {
       write(resultsId, { ...stored, removed });
     },
     statusOf,
-    setStatus: (resultsId, findingId, kind, note = "") => {
-      if (kind === "done" && statusOf(resultsId, findingId).kind === "done") return;
+    setStatus: (resultsId, findingId, kind, note = "", doneOn) => {
+      const current = statusOf(resultsId, findingId);
+      const sameDay = doneOn === undefined || doneOn === current.doneOn;
+      if (kind === "done" && current.kind === "done" && sameDay) return;
       const stored = read(resultsId);
       const status = Object.fromEntries(Object.entries(stored.status).filter(([id]) => id !== findingId));
-      if (kind !== "needs_fixing") status[findingId] = { kind, note: kind === "fix_planned" ? note.trim() : "", recheck: null };
+      if (kind === "done" && current.kind === "done") status[findingId] = { ...current, doneOn: doneOn as string };
+      else if (kind !== "needs_fixing")
+        status[findingId] = {
+          kind,
+          note: kind === "fix_planned" ? note.trim() : "",
+          recheck: null,
+          ...(kind === "done" && doneOn !== undefined ? { doneOn } : {}),
+        };
       write(resultsId, { ...stored, status });
     },
   };

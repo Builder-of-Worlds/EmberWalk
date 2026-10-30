@@ -129,9 +129,13 @@ const record = (maxMs = 10_000, motion: Motion = null, sensors: Sensors = {}) =>
 };
 
 describe("startRecording", () => {
-  it("records MP4 at the walk bitrate in one second chunks", () => {
+  it("records MP4 at the walk bitrate in one second chunks, with a keyframe each chunk so every chunk carries video while recording", () => {
     const { recorder } = record();
-    expect(recorder.options).toEqual({ mimeType: "video/mp4", videoBitsPerSecond: VIDEO_BITS_PER_SECOND });
+    expect(recorder.options).toEqual({
+      mimeType: "video/mp4",
+      videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
+      videoKeyFrameIntervalDuration: CHUNK_MS,
+    });
     expect(recorder.timeslice).toBe(CHUNK_MS);
     expect(recorder.state).toBe("recording");
   });
@@ -323,6 +327,70 @@ describe("light", () => {
   });
 });
 
+describe("light while guiding, with no compass to carry it", () => {
+  const tick = (time: ReturnType<typeof fakeClock>, times: number) => {
+    for (let i = 0; i < times; i += 1) time.advance(MOTION_EVERY_MS);
+  };
+
+  it("reads the camera's light every motion interval into the take's light marks on video time, skips a reading the camera does not give, and stops the meter with the walk", async () => {
+    const light = meterOf([120, null, 64, 200]);
+    const { recording, time, marks } = record(100_000, null, { light, guided: true });
+    tick(time, 4);
+    recording.stop();
+    await recording.done;
+    expect(marks().light).toEqual([
+      { t: 0.1, light: 120 },
+      { t: 0.3, light: 64 },
+      { t: 0.4, light: 200 },
+    ]);
+    expect(marks().motion).toEqual([]);
+    expect(light.stop).toHaveBeenCalledOnce();
+  });
+
+  it("reads no light while paused, and goes on at video time after resume", async () => {
+    const light = meterOf([10, 20, 30]);
+    const { recording, time, marks } = record(100_000, null, { light, guided: true });
+    tick(time, 1);
+    recording.pause();
+    tick(time, 5);
+    recording.resume();
+    tick(time, 1);
+    recording.stop();
+    await recording.done;
+    expect(marks().light).toEqual([
+      { t: 0.1, light: 10 },
+      { t: 0.2, light: 20 },
+    ]);
+  });
+
+  it("reads no light for a walk with no meter, and sends none with a compass, where each motion sample carries its own", async () => {
+    const unmetered = record(100_000, null, { guided: true });
+    tick(unmetered.time, 3);
+    unmetered.recording.stop();
+    await unmetered.recording.done;
+    expect(unmetered.marks().light ?? []).toEqual([]);
+
+    const motion = fakeMotion();
+    const light = meterOf([120]);
+    const compass = record(100_000, { listen: motion.env.listen }, { light, guided: true });
+    tick(compass.time, 3);
+    compass.recording.stop();
+    await compass.recording.done;
+    expect(compass.marks().light ?? []).toEqual([]);
+    expect(light.read).not.toHaveBeenCalled();
+  });
+
+  it("reads light too for a walk of one side reshot with no compass, and keeps at most 10,000 readings", async () => {
+    const light = meterOf([77]);
+    const { recording, time, marks } = record(2_000_000, null, { light, part: "left" });
+    tick(time, 10_050);
+    recording.stop();
+    await recording.done;
+    expect(marks().light).toHaveLength(MAX_MOTION_SAMPLES);
+    expect(marks().light?.[0]).toEqual({ t: 0.1, light: 77 });
+  });
+});
+
 describe("side pans after the loop", () => {
   const corner = (motion: ReturnType<typeof fakeMotion>, time: ReturnType<typeof fakeClock>, headings: number[]) => {
     for (const heading of headings) {
@@ -351,10 +419,10 @@ describe("side pans after the loop", () => {
     recording.stop();
     await recording.done;
     expect(marks().pans).toEqual([
-      { side: "front", startMs: 900, endMs: 2900 },
-      { side: "left", startMs: 3900, endMs: 5900 },
-      { side: "back", startMs: 6900, endMs: 8900 },
-      { side: "right", startMs: 9900, endMs: 11_900 },
+      { side: "front", corner: "front_left", startMs: 900, endMs: 2900 },
+      { side: "left", corner: "back_left", startMs: 3900, endMs: 5900 },
+      { side: "back", corner: "back_right", startMs: 6900, endMs: 8900 },
+      { side: "right", corner: "front_right", startMs: 9900, endMs: 11_900 },
     ]);
   });
 
@@ -370,7 +438,7 @@ describe("side pans after the loop", () => {
     time.advance(1500);
     recording.stop();
     await recording.done;
-    expect(marks().pans).toEqual([{ side: "front", startMs: 1000, endMs: 2500 }]);
+    expect(marks().pans).toEqual([{ side: "front", corner: "front_right", startMs: 1000, endMs: 2500 }]);
   });
 
   it("pans only the one side of a walk of one side, once", async () => {
@@ -384,6 +452,78 @@ describe("side pans after the loop", () => {
     expect(recording.pansLeft()).toBe(0);
     recording.stop();
     await recording.done;
-    expect(marks().pans).toEqual([{ side: "back", startMs: 0, endMs: 1000 }]);
+    expect(marks().pans).toEqual([{ side: "back", corner: null, startMs: 0, endMs: 1000 }]);
+  });
+
+  it("pans only the one corner of a walk of one corner, once, from the side that ends there, and never guides", async () => {
+    const { recording, time, marks } = record(100_000, null, { part: "front_right", guided: true });
+    expect(recording.guide()).toBeNull();
+    expect(recording.pansLeft()).toBe(1);
+    recording.pan();
+    expect(recording.panning()).toBe("right");
+    time.advance(1000);
+    recording.pan();
+    recording.pan();
+    recording.next();
+    expect(recording.pansLeft()).toBe(0);
+    recording.stop();
+    await recording.done;
+    expect(marks().pans).toEqual([{ side: "right", corner: "front_right", startMs: 0, endMs: 1000 }]);
+    expect(marks().nextTaps ?? []).toEqual([]);
+  });
+});
+
+describe("a walk with no motion data is guided side by side, tagged at each Next tap", () => {
+  it("guides front, left, back, right, marks each Next tap on video time, then pans the corners in that order", async () => {
+    const { recording, time, marks } = record(100_000, null, { guided: true });
+    const guided: (string | null)[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      guided.push(recording.guide());
+      time.advance(10_000);
+      recording.next();
+    }
+    guided.push(recording.guide());
+    recording.next();
+    expect(guided).toEqual(["front", "left", "back", "right", null]);
+    recording.pan();
+    expect(recording.panning()).toBe("front");
+    time.advance(2000);
+    recording.pan();
+    recording.stop();
+    await recording.done;
+    expect(marks().nextTaps).toEqual([10_000, 20_000, 30_000, 40_000]);
+    expect(marks().pans).toEqual([{ side: "front", corner: "front_left", startMs: 40_000, endMs: 42_000 }]);
+  });
+
+  it("takes no Next tap while paused or panning", async () => {
+    const { recording, time, marks } = record(100_000, null, { guided: true });
+    recording.pause();
+    recording.next();
+    recording.resume();
+    time.advance(1000);
+    recording.pan();
+    recording.next();
+    time.advance(1000);
+    recording.pan();
+    recording.next();
+    recording.stop();
+    await recording.done;
+    expect(marks().nextTaps).toEqual([2000]);
+  });
+
+  it("guides nothing with motion data, on a walk of one side, or when not asked to", async () => {
+    const motion = { listen: () => () => undefined };
+    for (const [m, sensors] of [
+      [motion, { guided: true }],
+      [null, { guided: true, part: "back" as const }],
+      [null, {}],
+    ] as const) {
+      const { recording, marks } = record(100_000, m, sensors);
+      expect(recording.guide()).toBeNull();
+      recording.next();
+      recording.stop();
+      await recording.done;
+      expect(marks().nextTaps ?? []).toEqual([]);
+    }
   });
 });

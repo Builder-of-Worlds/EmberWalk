@@ -82,22 +82,22 @@ class MaskBoxes(unittest.TestCase):
 
 class Levels(unittest.TestCase):
     def test_a_level_is_the_linear_value_of_its_grey(self):
-        self.assertAlmostEqual(maskbox.level_to_linear(1), 0.04518, places=4)
-        self.assertAlmostEqual(maskbox.level_to_linear(4), 0.8714, places=3)
+        self.assertAlmostEqual(maskbox.level_to_linear(1), 0.001518, places=6)
+        self.assertAlmostEqual(maskbox.level_to_linear(4), 0.006995, places=6)
 
     def test_each_level_encodes_back_to_its_grey_and_classifies_to_its_index(self):
         for index in (1, 2, 3, 4):
             linear = maskbox.level_to_linear(index)
-            grey = round(255 * (1.055 * linear ** (1 / 2.4) - 0.055))
+            grey = round(255 * (linear * 12.92 if linear <= 0.0031308 else 1.055 * linear ** (1 / 2.4) - 0.055))
             self.assertEqual(grey, index * maskbox.LEVEL_STEP)
             self.assertEqual(maskbox.index_of(grey), index)
 
     def test_a_grey_within_half_a_step_still_classifies_and_black_is_nothing(self):
         self.assertEqual(maskbox.index_of(0), 0)
-        self.assertEqual(maskbox.index_of(29), 0)
-        self.assertEqual(maskbox.index_of(31), 1)
-        self.assertEqual(maskbox.index_of(89), 1)
-        self.assertEqual(maskbox.index_of(91), 2)
+        self.assertEqual(maskbox.index_of(2), 0)
+        self.assertEqual(maskbox.index_of(3), 1)
+        self.assertEqual(maskbox.index_of(7), 1)
+        self.assertEqual(maskbox.index_of(8), 2)
 
 
 def make_pass(walk, ids, visible, box=(100, 200, 400, 300), area=20000):

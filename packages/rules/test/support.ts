@@ -29,6 +29,7 @@ export const CASES: Record<string, Partial<Query>> = {
   "branch-dead": { plantState: "dead" },
   "branch-chimney": { flags: ["near_chimney"] },
   "chimney-branches": { flags: ["near_chimney"] },
+  "chimney-spark-arrester": {},
   "house-wall-zone-0": {},
   "branch-live": { plantState: "alive" },
   "tree-branch-over-roof-zone-0": {},
@@ -53,6 +54,17 @@ export const CASES: Record<string, Partial<Query>> = {
   "trash-can-zone-0": {},
   "furniture-deck": { flags: ["under_deck"] },
   "patio-furniture-zone-0": {},
+  "gas-can-zone-0": {},
+  "stored-fuel-zone-0": {},
+  "lawn-mower-zone-0": {},
+  "grill-zone-0": {},
+  "propane-cylinder-zone-0": {},
+  "vehicle-zone-0": {},
+  "lumber-pile-zone-0": {},
+  "tarp-zone-0": {},
+  "doormat-zone-0": {},
+  "boat-or-trailer-zone-0": {},
+  "wood-deck-zone-0": {},
 };
 
 export const NOT_MET: Record<string, Partial<Query>> = {

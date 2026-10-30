@@ -15,6 +15,7 @@ export type When = {
   spacing?: z.infer<typeof Spacing>[] | undefined;
   flags?: Flag[] | undefined;
   unless?: Flag[] | undefined;
+  within?: number | undefined;
 };
 
 export type RuleRow = Rule & { key: string; code: string; section: string; statute: string | null; when: When; unsure: string | null };
@@ -32,6 +33,17 @@ const SOURCES = {
     url: "https://www.townofparadise.com/sites/default/files/fileattachments/building/page/41601/wui_venting_requirements_2022_code.pdf",
     on: "2026-10-24",
   },
+  cawuic: { url: "https://codes.iccsafe.org/content/CAWUIC2025P1/chapter-6-fire-protection-requirements", on: "2026-10-29" },
+  cabc: { url: "https://codes.iccsafe.org/content/CABC2025P1/chapter-21-masonry", on: "2026-10-29" },
+  cdi: { url: "https://www.insurance.ca.gov/01-consumers/140-catastrophes/WildfireBefore.cfm", on: "2026-10-29" },
+  idl: {
+    url: "https://www.idl.idaho.gov/wp-content/uploads/2026/03/FMH-821-Attachment-2-Idaho-Wildfire-Home-Protection-Zone-Evaluation-Homeowner.pdf",
+    on: "2026-10-29",
+  },
+  usfa: { url: "https://www.usfa.fema.gov/gallery/pictographs/wildfire-and-outdoor.html", on: "2026-10-29" },
+  mcrfd: { url: "https://mcrfd.org/zone-0-information", on: "2026-10-29" },
+  nmosi: { url: "https://www.osi.state.nm.us/wp-content/uploads/2026/02/NM-Wildfire-Hardening-Defensible-Space-Checklist.pdf", on: "2026-10-29" },
+  cbc7a: { url: "https://www.iccsafe.org/wp-content/uploads/errata_central/2022-CA_Bldg-Vol-1_July24-Supp_COMPLETE.pdf", on: "2026-10-29" },
 } as const;
 
 type Cite = { tag: keyof typeof SOURCES; code: string; section: string; words: string; statute: Statute | null };
@@ -40,10 +52,36 @@ const ccr = (section: string, words: string): Cite => ({ tag: "ccr", code: "14 C
 const prc = (section: string, words: string): Cite => ({ tag: "prc", code: "PRC", section: `4291${section}`, words, statute: "sra" });
 const gov = (section: string, words: string): Cite => ({ tag: "gov", code: "Gov. Code", section: `51182${section}`, words, statute: "vhfhsz" });
 const calfire = (zone: string, words: string): Cite => ({ tag: "calfire", code: "CAL FIRE", section: `${zone} guidance`, words, statute: null });
+const guide = (tag: Cite["tag"], code: string, section: string, words: string): Cite => ({ tag, code, section, words, statute: null });
+const IDAHO = "Idaho Department of Lands";
+const USFA = "U.S. Fire Administration";
+const MONTEREY = "Monterey County Regional Fire Protection District";
+const NEW_MEXICO = "New Mexico Office of Superintendent of Insurance";
+const NM_ZONE_0 = "Remove combustible items from Zone 0 (doormats, brooms, boxes, patio cushions, etc.).";
+const MONTEREY_ZONE_0 = "Consider relocating boats, RVs, vehicles, and other combustible items outside this zone.";
 
 const CHIMNEY_TREE = "Remove that portion of a tree that extends within 10 feet of the outlet of a chimney or stovepipe.";
 const PLANT_ON_HOUSE = "Maintain a tree, shrub, or other plant adjacent to or overhanging a building free of dead or dying wood.";
 const ROOF = "Maintain the roof of a structure free of leaves, needles, or other vegetative materials.";
+
+export const draft = {
+  sparkArrester: "Make sure the chimney has a spark arrester: a metal screen cap with openings 3/8 to 1/2 inch wide.",
+  gasCan: "Store gas cans in a shed or detached garage, as far from the house as the yard allows.",
+  storedFuel: "Set drums and jerry cans at least 10 feet from the house, with bare ground around them.",
+  lawnMower: "Park the mower in the shed or garage, not beside the house.",
+  grill: "Place the grill at least 3 feet from siding, deck railings, eaves and branches overhead.",
+  propaneCylinder: "Move small propane bottles off the deck to a spot 10 to 30 feet out from your walls, away from the grill.",
+  vehicle: "Park cars and trucks more than 5 feet from the walls, on the driveway or the street.",
+  lumberPile: "Stack spare lumber at the back edge of your lot, more than 30 feet out.",
+  tarp: "Fold away tarps within 5 feet of the house and put them on a garage shelf.",
+  doormat: "Take the doormat off the step and keep it indoors, so the ground at the door stays bare.",
+  boatOrTrailer: "Leave boats, RVs and trailers parked beyond the first 5 feet around the house.",
+  woodDeck: "Over time, rebuild the deck surface nearest the house, out to 10 feet, in metal or fire treated boards.",
+};
+
+const english = (en: string): Words => ({ en, es: en });
+
+const SPARK_ARRESTER = draft.sparkArrester;
 
 export const CITES = {
   ccrA1: ccr("(a)(1)", "Remove all dead or dying grass, plants, shrubs, trees, branches, leaves, weeds, and pine needles from the Zone"),
@@ -80,6 +118,40 @@ export const CITES = {
   zone1Branches: calfire("Zone 1", "Trim overhanging branches"),
   zone1Windows: calfire("Zone 1", "Prune flammable plants and shrubs near windows"),
   zone1Trees: calfire("Zone 1", "maintain a 10-foot gap from others"),
+  sparkWui: {
+    tag: "cawuic",
+    code: "California Wildland-Urban Interface Code, Title 24 Part 7 (2025)",
+    section: "605.1",
+    words:
+      "Chimneys serving fireplaces, barbecues, incinerators or decorative heating appliances in which solid or liquid fuel is used shall be provided with a spark arrestor. Spark arrestors shall be constructed of woven or welded wire screening of 12 USA standard gage wire (0.1046 inch) (2.66 mm) having openings not exceeding 1/2 inch (12.7 mm).",
+    statute: null,
+  },
+  sparkCbc: {
+    tag: "cabc",
+    code: "California Building Code, Title 24 Part 2 (2025)",
+    section: "2113.9.2 [SFM]",
+    words:
+      "All chimneys attached to any appliance or fireplace that burns solid fuel shall be equipped with an approved spark arrester. Openings shall not permit the passage of spheres having a diameter greater than 1/2 inch (13 mm) nor block the passage of spheres having a diameter less than 3/8 inch (9.5 mm).",
+    statute: null,
+  },
+  gasCan: guide("cdi", "California Department of Insurance", "wildfire guidance", "Move combustible items (wood stacks, engines, oil/gas, etc) as far from the home as possible."),
+  fuelTanks: guide("idl", IDAHO, "Policy 821 Attachment 2", "Have propane/fuel tanks installed a minimum of 10 feet from your structure."),
+  mowers: guide(
+    "idl",
+    IDAHO,
+    "Policy 821 Attachment 2",
+    "Remember that lawnmowers, RVs, ATVs, and other mechanized equipment often contain gasoline; these items should be stored away from your structure",
+  ),
+  grill: guide("usfa", USFA, "wildfire and outdoor guidance", "Place your grill at least 3 feet from siding, deck railings, eaves and overhanging branches."),
+  propaneTanks: guide("usfa", USFA, "wildfire and outdoor guidance", "Keep fire pits, wood piles and propane tanks 10 to 30 feet from your home."),
+  vehicles: guide("mcrfd", MONTEREY, "Zone 0 guidance", MONTEREY_ZONE_0),
+  zone0Items: guide("nmosi", NEW_MEXICO, "defensible space checklist", NM_ZONE_0),
+  decking: guide(
+    "cbc7a",
+    "California Building Code, Title 24 Part 2 (2022, July 2024 supplement)",
+    "709A.2",
+    "The walking surface material of decks, porches, balconies and stairs shall comply with the requirements of this section when any portion of such surface is within 10 feet (3048 mm) of the building.",
+  ),
   vents: {
     tag: "cbc",
     code: "California Building Code",
@@ -115,6 +187,12 @@ const zone0 = (concept: Concept, cite: Cite, plain: Words = KEEP_CLEAR, unsure?:
   plain,
   ...(unsure === undefined ? {} : { unsure }),
   ...(when === undefined ? {} : { when }),
+});
+
+const reach = (concept: Concept, cite: Cite, feet: number, plain: Words): Spec => ({
+  ...zone0(concept, cite, plain, undefined, { within: feet }),
+  zones: feet <= BAND_FEET.zone_0[1] ? [0] : NEAR,
+  condition: `Within ${feet} feet of the house`,
 });
 
 const SPECS: Spec[] = [
@@ -268,6 +346,14 @@ const SPECS: Spec[] = [
     when: { flags: ["near_chimney"] },
     condition: "A branch within 10 feet of a chimney or stovepipe outlet",
     plain: CHIMNEY,
+  },
+  {
+    key: "chimney-spark-arrester",
+    concept: "chimney",
+    zones: [0],
+    cites: [CITES.sparkWui, CITES.sparkCbc],
+    condition: "A chimney on the house",
+    plain: { en: SPARK_ARRESTER, es: SPARK_ARRESTER },
   },
   {
     key: "branch-live",
@@ -474,9 +560,22 @@ const SPECS: Spec[] = [
     en: "Set wooden or wicker furniture at least 5 feet away from the walls, or use metal pieces close to the house.",
     es: "Aparte los muebles de madera o mimbre 5 pies de las paredes, o use muebles de metal junto a la casa.",
   }),
+  reach("gas_can", CITES.gasCan, 5, english(draft.gasCan)),
+  reach("stored_fuel", CITES.fuelTanks, 10, english(draft.storedFuel)),
+  reach("lawn_mower", CITES.mowers, 5, english(draft.lawnMower)),
+  reach("grill", CITES.grill, 3, english(draft.grill)),
+  reach("propane_cylinder", CITES.propaneTanks, 10, english(draft.propaneCylinder)),
+  reach("vehicle", CITES.vehicles, 5, english(draft.vehicle)),
+  reach("lumber_pile", CITES.zone0Wood, 30, english(draft.lumberPile)),
+  reach("tarp", CITES.zone0Items, 5, english(draft.tarp)),
+  reach("doormat", CITES.zone0Items, 5, english(draft.doormat)),
+  reach("boat_or_trailer", CITES.vehicles, 5, english(draft.boatOrTrailer)),
+  zone0("wood_deck", CITES.decking, english(draft.woodDeck)),
 ];
 
-const status = (cite: Cite): Rule["status"] => (cite.tag === "calfire" || cite.tag === "cbc" ? "recommended" : "in_force");
+const RECOMMENDED_TAGS: readonly Cite["tag"][] = ["calfire", "cbc", "cawuic", "cabc", "cdi", "idl", "usfa", "mcrfd", "nmosi", "cbc7a"];
+
+const status = (cite: Cite): Rule["status"] => (RECOMMENDED_TAGS.includes(cite.tag) ? "recommended" : "in_force");
 
 export const RULES: RuleRow[] = SPECS.flatMap((spec) =>
   spec.zones.flatMap((zone) =>

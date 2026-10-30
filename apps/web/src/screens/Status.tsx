@@ -1,4 +1,4 @@
-import { copy, longDate } from "../copy.ts";
+import { copy, draft, longDate } from "../copy.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
 
@@ -17,6 +17,7 @@ export const StatusLine = ({ status }: { status: FindingStatus }) => {
   return (
     <div className={`status ${status.kind}`} data-part="status" data-status={status.kind}>
       <p>{copy.status.kind[status.kind]}</p>
+      {status.kind === "done" && status.doneOn !== undefined ? <p data-part="done-on">{draft.status.doneOn(status.doneOn)}</p> : null}
       {status.kind === "done" ? <p>{copy.status.notRechecked}</p> : null}
     </div>
   );

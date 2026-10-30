@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FileKey, Id, Language, Point, Text, Timestamp } from "./common.ts";
+import { FileKey, Id, Language, Text, Timestamp, Unit } from "./common.ts";
 import { Concept, PLANT_CONCEPTS, SPACED_CONCEPTS } from "./walk.ts";
 
 export const BAND_FEET = { zone_0: [0, 5], zone_1: [5, 30], zone_2: [30, 100] } as const;
@@ -80,11 +80,15 @@ export const Report = z.strictObject({ id: Id, walkId: Id, file: FileKey, create
 
 export const ViewPreference = z.enum(["simple", "detailed"]);
 
+// Seen from above, the way round a pin's position runs; a walk takes SIDES the other way.
+export const PIN_SIDES_CLOCKWISE = ["front", "left", "back", "right"] as const;
+
 export const MapPin = z.strictObject({
   findingId: Id,
-  side: z.enum(["front", "back", "left", "right"]),
+  side: z.enum(PIN_SIDES_CLOCKWISE),
   band: Band,
-  position: Point,
+  position: Unit,
+  feet: z.number().nonnegative().lt(100),
 });
 
 export type Band = z.infer<typeof Band>;

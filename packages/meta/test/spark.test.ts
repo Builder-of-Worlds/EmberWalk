@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { MetaRefused } from "../src/errors.ts";
-import { sparkJsonCall } from "../src/spark.ts";
+import { REASONING_ROOM, sparkJsonCall } from "../src/spark.ts";
 import { ok, setup } from "./support.ts";
 
 const Verdict = z.strictObject({ keep: z.boolean() });
@@ -23,7 +23,7 @@ describe("sparkJsonCall", () => {
     expect(a.costUsd).toBe(5.06);
     expect(transport.requests[0]).toMatchObject({
       path: "/responses",
-      json: { model: "muse-spark-1.3", store: false, instructions: "Answer in JSON.", input: "Is it dry?", max_output_tokens: 500 },
+      json: { model: "muse-spark-1.3", store: false, instructions: "Answer in JSON.", input: "Is it dry?", max_output_tokens: 500 + REASONING_ROOM.medium },
     });
     expect(ledger.entries.map((e) => [e.units.count, e.unitPriceUsd])).toEqual([
       [600_000, 0.00000125],
@@ -38,7 +38,7 @@ describe("sparkJsonCall", () => {
   });
 
   it("reserves the input estimate and the full output budget against the cap", () => {
-    expect(sparkJsonCall(base, Verdict).estimateNano).toBe(1000 * 1250 + 500 * 4250);
+    expect(sparkJsonCall(base, Verdict).estimateNano).toBe(1000 * 1250 + (500 + REASONING_ROOM.medium) * 4250);
     expect(() => sparkJsonCall({ ...base, maxOutputTokens: 0 }, Verdict)).toThrow(/maxOutputTokens/);
     expect(() => sparkJsonCall({ ...base, inputTokenEstimate: 2.5 }, Verdict)).toThrow(/inputTokenEstimate/);
   });
@@ -58,7 +58,7 @@ describe("sparkJsonCall", () => {
     for (const usage of [{}, { input_tokens: 5, output_tokens: 5, input_tokens_details: { cached_tokens: 6 } }]) {
       const { client, ledger } = setup({ answer: () => ok(answer('{"keep":true}', usage)) });
       await client.call(sparkJsonCall(base, Verdict));
-      expect(await ledger.spentUsd("2026-10-26")).toBe((1000 * 1250 + 500 * 4250) / 1e9);
+      expect(await ledger.spentUsd("2026-10-26")).toBe((1000 * 1250 + (500 + REASONING_ROOM.medium) * 4250) / 1e9);
     }
   });
 });

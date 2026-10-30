@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 
 const FILES = new Set(["render.json", "motion.json", "walk.mp4", "truth.json"]);
-const TRUTH = fileURLToPath(new URL("../../fixtures/synthetic/test-yard-2/truth.json", import.meta.url));
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_TRUTH = path.join(HERE, "../../fixtures/synthetic/test-yard-2/truth.json");
+
+export const heroPath = (variable: string, fallback: string): string => process.env[variable] || fallback;
 
 const sha256Of = async (file: string): Promise<string> => {
   const hash = createHash("sha256");
@@ -14,11 +17,11 @@ const sha256Of = async (file: string): Promise<string> => {
   return hash.digest("hex");
 };
 
-const renderFiles = (folder: string) => async (request: Request): Promise<Response> => {
+export const renderFiles = (folder: string, truth: string = DEFAULT_TRUTH) => async (request: Request): Promise<Response> => {
   const url = new URL(request.url);
   const name = url.pathname.slice(1);
   if (!FILES.has(name)) return new Response("no such file", { status: 404 });
-  const file = name === "truth.json" ? TRUTH : path.join(folder, name);
+  const file = name === "truth.json" ? truth : path.join(folder, name);
   const info = await stat(file);
   const op = url.searchParams.get("op");
   if (op === "size") return Response.json({ size: info.size });
@@ -38,14 +41,14 @@ const renderFiles = (folder: string) => async (request: Request): Promise<Respon
   return new Response(await readFile(file, "utf8"), { headers: { "content-type": "application/json" } });
 };
 
-export const l2Project = async (name: string, renderFolder: string) => {
-  const migrations = await readD1Migrations(fileURLToPath(new URL("../../migrations", import.meta.url)));
+export const l2Project = async (name: string, renderFolder: string, truthPath: string = DEFAULT_TRUTH) => {
+  const migrations = await readD1Migrations(path.join(HERE, "../../migrations"));
   return {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "../../workers/pipeline/test/wrangler.test.jsonc" },
         miniflare: {
-          serviceBindings: { RENDER_FILES: renderFiles(renderFolder) },
+          serviceBindings: { RENDER_FILES: renderFiles(renderFolder, truthPath) },
           bindings: {
             TEST_MIGRATIONS: migrations,
             R2_ACCESS_KEY_ID: "test-key-id",

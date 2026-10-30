@@ -9,6 +9,7 @@ import type { Pan, Take, TagsSent, TakeSetup } from "../../src/take-store.ts";
 import { IDBFactory } from "fake-indexeddb";
 import sideWalk from "../../../../fixtures/synthetic/side-walk/walk.json";
 import "./fakes.ts";
+import guidedWalk from "./guided-walk.json";
 import { sideWalkTake } from "./side-walk.ts";
 
 const BASE = "https://app.test";
@@ -17,7 +18,7 @@ const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
 const VISITOR = "b".repeat(64);
 const DEVICE = { camera: "Back Camera", width: 1280, height: 720 };
-const WALK_FIELDS = ["device", "jurisdiction", "language", "partOf", "synthetic", "visitorId"];
+const WALK_FIELDS = ["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
@@ -114,7 +115,12 @@ describe("walkRequest", () => {
       device: DEVICE,
       synthetic: false,
       visitorId: VISITOR,
+      startKey: "t",
     });
+  });
+
+  it("names the take's own id as the start key, so a start sent again after Stop or a reload is the same walk", () => {
+    expect(walkRequest(bare({ id: "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a09" }), VISITOR).startKey).toBe("6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a09");
   });
 
   it("sends the fire rules key the phone's location gave the take", () => {
@@ -184,6 +190,28 @@ describe("walkSender", () => {
     expect(server.walksStarted()).toBe(1);
   });
 
+  it("sends a take again as a new walk when a server that repeats the walk for the same key answers with a failed walk, and the same new walk each time", async () => {
+    const FAILED = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a03";
+    const byKey = new Map<string, { walkId: string; state: { name: string; step?: string } }>();
+    const server: ReturnType<typeof fakeServer> = fakeServer({
+      walk: () => {
+        const { startKey } = server.seen.at(-1)?.body as { startKey: string };
+        const walk = byKey.get(startKey) ?? { walkId: WALK, state: { name: "uploading" } };
+        byKey.set(startKey, walk);
+        return json(walk);
+      },
+    });
+    const { send, store, take } = await setup(server);
+    byKey.set(take.id, { walkId: FAILED, state: { name: "failed", step: "segment" } });
+    const startKeys = () => server.seen.filter((r) => r.url === `${BASE}/api/walks`).map((r) => (r.body as { startKey: string }).startKey);
+
+    expect(await send(take, () => undefined)).toEqual({ walkId: WALK });
+    expect((await store.get(take.id)).upload?.walkId).toBe(WALK);
+    await store.saveUpload(take.id, null);
+    expect(await send(take, () => undefined)).toEqual({ walkId: WALK });
+    expect(startKeys()).toEqual([take.id, FAILED, take.id, FAILED]);
+  });
+
   it("gives the refusal when the walk cannot be started, and keeps the take unsent on the phone", async () => {
     const server = fakeServer({ walk: () => json({ error: { code: "invalid_request", message: "The request is not valid." } }, 400) });
     const { send, store, take } = await setup(server);
@@ -206,6 +234,9 @@ describe("walkSender", () => {
     expect((await store.get(take.id)).upload).toBeNull();
   });
 });
+
+type SentTag = { id: string; kind: string; label: string; startSeconds: number; endSeconds: number; samples: MotionSample[]; light?: { t: number; light: number }[] };
+const sentTags = (server: ReturnType<typeof fakeServer>) => (server.tagRequests()[0]?.body as { tags: SentTag[] }).tags;
 
 describe("the walk's tag", () => {
   const cutOffSender = (server: ReturnType<typeof fakeServer>, store: Awaited<ReturnType<typeof setup>>["store"]) =>
@@ -249,6 +280,68 @@ describe("the walk's tag", () => {
     ]);
   });
 
+  it("with no motion, sends one loop tag per side cut at each Next tap, front, left, back, right, then the corner pans", async () => {
+    const server = fakeServer();
+    const pans: Pan[] = [{ side: "front", corner: "front_left", startMs: 40_000, endMs: 42_000 }];
+    const { send, store, take } = await setup(server, {}, [], 45_000, pans);
+    const tapped = await store.mark(take.id, (marks) => ({ ...marks, nextTaps: [10_000, 20_000, 30_000, 40_000] }));
+    await send(tapped, () => undefined);
+    expect(sentTags(server).map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([
+      ["loop", "front", 0, 10],
+      ["loop", "left", 10, 20],
+      ["loop", "back", 20, 30],
+      ["loop", "right", 30, 40],
+      ["pan", "front left corner", 40, 42],
+    ]);
+  });
+
+  it("sends the guided walk the pipeline checks, with the left side tapped through in 2 seconds, byte for byte", async () => {
+    const server = fakeServer();
+    const { durationMs, nextTaps, pans } = guidedWalk.take;
+    const { send, store, take } = await setup(server, {}, [], durationMs, pans as Pan[]);
+    const tapped = await store.mark(take.id, (marks) => ({ ...marks, nextTaps }));
+    await send(tapped, () => undefined);
+    expect(sentTags(server)).toEqual(guidedWalk.tags.map((tag) => ({ ...tag, id: expect.any(String), walkId: WALK })));
+  });
+
+  it("sends the light readings of a guided walk on the tag each falls in, byte for byte what the pipeline judges, and a reading on a cut to the next tag", async () => {
+    const server = fakeServer();
+    const { durationMs, nextTaps, pans, light } = guidedWalk.lit.take;
+    const { send, store, take } = await setup(server, {}, [], durationMs, pans as Pan[]);
+    const tapped = await store.mark(take.id, (marks) => ({ ...marks, nextTaps, light }));
+    await send(tapped, () => undefined);
+    expect(sentTags(server)).toEqual(guidedWalk.lit.tags.map((tag) => ({ ...tag, id: expect.any(String), walkId: WALK })));
+
+    const edge = fakeServer();
+    const cut = await setup(edge, {}, [], 30_000);
+    const marked = await cut.store.mark(cut.take.id, (marks) => ({ ...marks, nextTaps: [10_000], light: [{ t: 9.9, light: 1 }, { t: 10, light: 2 }, { t: 30, light: 3 }] }));
+    await cut.send(marked, () => undefined);
+    expect(sentTags(edge).map((tag) => [tag.label, tag.light])).toEqual([
+      ["front", [{ t: 9.9, light: 1 }]],
+      ["left", [{ t: 10, light: 2 }, { t: 30, light: 3 }]],
+    ]);
+  });
+
+  it("sends no light field on a tag that holds no reading, as from a phone before light or a walk with a compass", async () => {
+    const server = fakeServer();
+    const { send, take } = await setup(server, {}, FOUR_SIDES, 45_000);
+    await send(take, () => undefined);
+    for (const tag of sentTags(server)) expect(tag).not.toHaveProperty("light");
+  });
+
+  it("with no motion, ends the guided loop where the first pan starts, and keeps the side walked when Next was not tapped again", async () => {
+    const server = fakeServer();
+    const pans: Pan[] = [{ side: "front", corner: "front_left", startMs: 25_000, endMs: 27_000 }];
+    const { send, store, take } = await setup(server, {}, [], 45_000, pans);
+    const tapped = await store.mark(take.id, (marks) => ({ ...marks, nextTaps: [10_000, 30_000] }));
+    await send(tapped, () => undefined);
+    expect(sentTags(server).map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([
+      ["loop", "front", 0, 10],
+      ["loop", "left", 10, 25],
+      ["pan", "front left corner", 25, 27],
+    ]);
+  });
+
   it("sends one tag per side of a synthetic four corner walk, joined end to end, each with its own motion", async () => {
     const server = fakeServer();
     const { send, store, take } = await setup(server, {}, FOUR_SIDES, 45_000);
@@ -276,10 +369,7 @@ describe("the walk's tag", () => {
     ]);
   });
 
-  type SentTag = { id: string; kind: string; label: string; startSeconds: number; endSeconds: number; samples: MotionSample[] };
-  const sentTags = (server: ReturnType<typeof fakeServer>) => (server.tagRequests()[0]?.body as { tags: SentTag[] }).tags;
-
-  it("sends the synthetic sample walk as its loop, one tag per side, then one pan per side, in walk order, each with light", async () => {
+  it('"two part walk (inner loop, then corner pans)": sends the synthetic sample walk as its loop, one tag per side, then one pan per corner, in walk order, each with light', async () => {
     const walk = sideWalkTake();
     expect({ durationMs: sideWalk.durationMs, motion: sideWalk.motion, pans: sideWalk.pans }).toEqual(walk);
     const server = fakeServer();
@@ -291,10 +381,10 @@ describe("the walk's tag", () => {
       "loop left",
       "loop back",
       "loop right",
-      "pan front",
-      "pan left",
-      "pan back",
-      "pan right",
+      "pan front left corner",
+      "pan back left corner",
+      "pan back right corner",
+      "pan front right corner",
     ]);
     expect(tags.find((t) => t.kind === "pan")?.startSeconds).toBe(tags.filter((t) => t.kind === "loop").at(-1)?.endSeconds);
     for (const tag of tags) {
@@ -345,6 +435,32 @@ describe("the walk's tag", () => {
       ["loop", "back", 0, 30],
       ["pan", "back", 30, 38],
     ]);
+  });
+
+  it("sends a take of one corner as its pan alone, labelled by the corner, and no loop", async () => {
+    const server = fakeServer();
+    const pans: Pan[] = [{ side: "right", corner: "front_right", startMs: 5_000, endMs: 12_000 }];
+    const { send, take } = await setup(server, { partOf: { walkId: PARENT, side: "front_right" } }, FOUR_SIDES, 45_000, pans);
+    await send(take, () => undefined);
+    expect(sentTags(server).map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([
+      ["pan", "front right corner", 5, 12],
+    ]);
+  });
+
+  it("sends a take of one corner with no pan marked as one pan of that corner covering the whole take", async () => {
+    const server = fakeServer();
+    const { send, take } = await setup(server, { partOf: { walkId: PARENT, side: "back_left" } }, FOUR_SIDES, 45_000);
+    await send(take, () => undefined);
+    const tags = sentTags(server);
+    expect(tags.map(({ kind, label, startSeconds, endSeconds }) => [kind, label, startSeconds, endSeconds])).toEqual([["pan", "back left corner", 0, 45]]);
+    expect(tags[0]?.samples).toEqual(FOUR_SIDES);
+  });
+
+  it("sends no tag for a take of one corner with no recorded length", async () => {
+    const server = fakeServer();
+    const { send, take } = await setup(server, { partOf: { walkId: PARENT, side: "front_left" } }, SAMPLES, 0);
+    expect(await send(take, () => undefined)).toEqual({ walkId: WALK });
+    expect(server.tagRequests()).toEqual([]);
   });
 
   it("sends no tag for a take of one side with no recorded length", async () => {

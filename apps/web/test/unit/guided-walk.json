@@ -1,0 +1,74 @@
+{
+  "take": {
+    "durationMs": 56000,
+    "nextTaps": [12000, 14000, 26000, 38000],
+    "pans": [
+      { "side": "front", "corner": "front_left", "startMs": 40000, "endMs": 42000 },
+      { "side": "left", "corner": "back_left", "startMs": 44000, "endMs": 46000 },
+      { "side": "back", "corner": "back_right", "startMs": 48000, "endMs": 50000 },
+      { "side": "right", "corner": "front_right", "startMs": 52000, "endMs": 54000 }
+    ]
+  },
+  "tags": [
+    { "kind": "loop", "startSeconds": 0, "endSeconds": 12, "label": "front", "samples": [], "propertyLine": null },
+    { "kind": "loop", "startSeconds": 12, "endSeconds": 14, "label": "left", "samples": [], "propertyLine": null },
+    { "kind": "loop", "startSeconds": 14, "endSeconds": 26, "label": "back", "samples": [], "propertyLine": null },
+    { "kind": "loop", "startSeconds": 26, "endSeconds": 38, "label": "right", "samples": [], "propertyLine": null },
+    { "kind": "pan", "startSeconds": 40, "endSeconds": 42, "label": "front left corner", "samples": [], "propertyLine": null },
+    { "kind": "pan", "startSeconds": 44, "endSeconds": 46, "label": "back left corner", "samples": [], "propertyLine": null },
+    { "kind": "pan", "startSeconds": 48, "endSeconds": 50, "label": "back right corner", "samples": [], "propertyLine": null },
+    { "kind": "pan", "startSeconds": 52, "endSeconds": 54, "label": "front right corner", "samples": [], "propertyLine": null }
+  ],
+  "gaps": [{ "side": "left", "kind": "missing", "hint": "walk_side" }],
+  "missedCorner": {
+    "take": {
+      "durationMs": 60000,
+      "nextTaps": [12000, 24000, 36000, 48000],
+      "pans": [
+        { "side": "front", "corner": "front_left", "startMs": 50000, "endMs": 52000 },
+        { "side": "left", "corner": "back_left", "startMs": 53000, "endMs": 55000 },
+        { "side": "back", "corner": "back_right", "startMs": 56000, "endMs": 58000 }
+      ]
+    },
+    "tags": [
+      { "kind": "loop", "startSeconds": 0, "endSeconds": 12, "label": "front", "samples": [], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 12, "endSeconds": 24, "label": "left", "samples": [], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 24, "endSeconds": 36, "label": "back", "samples": [], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 36, "endSeconds": 48, "label": "right", "samples": [], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 50, "endSeconds": 52, "label": "front left corner", "samples": [], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 53, "endSeconds": 55, "label": "back left corner", "samples": [], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 56, "endSeconds": 58, "label": "back right corner", "samples": [], "propertyLine": null }
+    ],
+    "gaps": [{ "side": "front_right", "kind": "missing", "hint": "pan_corner" }]
+  },
+  "lit": {
+    "take": {
+      "durationMs": 62000,
+      "nextTaps": [12000, 24000, 36000, 48000],
+      "pans": [
+        { "side": "front", "corner": "front_left", "startMs": 50000, "endMs": 52000 },
+        { "side": "left", "corner": "back_left", "startMs": 53000, "endMs": 55000 },
+        { "side": "back", "corner": "back_right", "startMs": 56000, "endMs": 58000 },
+        { "side": "right", "corner": "front_right", "startMs": 59000, "endMs": 61000 }
+      ],
+      "light": [
+        { "t": 1, "light": 150 }, { "t": 4, "light": 150 }, { "t": 7, "light": 150 }, { "t": 10, "light": 150 },
+        { "t": 13, "light": 140 }, { "t": 16, "light": 140 }, { "t": 19, "light": 140 }, { "t": 22, "light": 140 },
+        { "t": 25, "light": 160 }, { "t": 28, "light": 160 }, { "t": 31, "light": 160 }, { "t": 34, "light": 160 },
+        { "t": 37, "light": 20 }, { "t": 40, "light": 20 }, { "t": 43, "light": 20 }, { "t": 46, "light": 20 },
+        { "t": 51, "light": 90 }, { "t": 54, "light": 90 }, { "t": 57, "light": 90 }, { "t": 60, "light": 90 }
+      ]
+    },
+    "tags": [
+      { "kind": "loop", "startSeconds": 0, "endSeconds": 12, "label": "front", "samples": [], "light": [{ "t": 1, "light": 150 }, { "t": 4, "light": 150 }, { "t": 7, "light": 150 }, { "t": 10, "light": 150 }], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 12, "endSeconds": 24, "label": "left", "samples": [], "light": [{ "t": 13, "light": 140 }, { "t": 16, "light": 140 }, { "t": 19, "light": 140 }, { "t": 22, "light": 140 }], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 24, "endSeconds": 36, "label": "back", "samples": [], "light": [{ "t": 25, "light": 160 }, { "t": 28, "light": 160 }, { "t": 31, "light": 160 }, { "t": 34, "light": 160 }], "propertyLine": null },
+      { "kind": "loop", "startSeconds": 36, "endSeconds": 48, "label": "right", "samples": [], "light": [{ "t": 37, "light": 20 }, { "t": 40, "light": 20 }, { "t": 43, "light": 20 }, { "t": 46, "light": 20 }], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 50, "endSeconds": 52, "label": "front left corner", "samples": [], "light": [{ "t": 51, "light": 90 }], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 53, "endSeconds": 55, "label": "back left corner", "samples": [], "light": [{ "t": 54, "light": 90 }], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 56, "endSeconds": 58, "label": "back right corner", "samples": [], "light": [{ "t": 57, "light": 90 }], "propertyLine": null },
+      { "kind": "pan", "startSeconds": 59, "endSeconds": 61, "label": "front right corner", "samples": [], "light": [{ "t": 60, "light": 90 }], "propertyLine": null }
+    ],
+    "gaps": [{ "side": "right", "kind": "dark", "hint": "more_light" }]
+  }
+}

@@ -148,7 +148,7 @@ describe("start an upload", () => {
   });
 
   it("refuses sizes that are not allowed", async () => {
-    for (const totalBytes of [0, -1, 1.5, "100", null]) {
+    for (const totalBytes of [0, -1, 1.5, "100", false]) {
       const reply = await post("/api/uploads", { walkId: WALK_A, totalBytes });
       expect([reply.status, reply.json.error.code]).toEqual([400, "invalid_size"]);
     }
@@ -169,14 +169,11 @@ describe("start an upload", () => {
     }
   });
 
-  it("refuses an unknown walk, a walk that is not uploading, and a second open upload", async () => {
+  it("refuses an unknown walk and a walk that is not uploading", async () => {
     const unknown = await start(WALK_UNKNOWN);
     expect([unknown.status, unknown.json.error.code]).toEqual([404, "unknown_walk"]);
     const processing = await start(WALK_DONE);
     expect([processing.status, processing.json.error.code]).toEqual([409, "walk_not_uploading"]);
-    expect((await start(WALK_A)).status).toBe(200);
-    const again = await start(WALK_A);
-    expect([again.status, again.json.error.code]).toEqual([409, "upload_in_progress"]);
   });
 
   it("allows a new upload for the walk once the first is aborted", async () => {
@@ -360,6 +357,124 @@ describe("complete an upload", () => {
     expect((await post("/api/uploads/complete", { uploadId: b.uploadId, parts: partsB })).status).toBe(200);
     const twice = await post("/api/uploads/complete", { uploadId: b.uploadId, parts: partsB });
     expect([twice.status, twice.json.error.code]).toEqual([409, "upload_completed"]);
+  });
+});
+
+describe("an upload started while the walk is still being recorded", () => {
+  const openStart = (walkId = WALK_A) => post("/api/uploads", { walkId, totalBytes: null });
+  const sized = (uploadId: string, partNumber: number, bytes?: number) =>
+    post("/api/uploads/part", { uploadId, partNumber, ...(bytes === undefined ? {} : { bytes }) });
+
+  it("starts with no size, plans the most parts a walk may have, and stores no total yet", async () => {
+    const reply = await openStart();
+    expect(reply.status).toBe(200);
+    expect(StartUploadResponse.safeParse(reply.json).success).toBe(true);
+    expect(reply.json).toMatchObject({ partBytes: 5 * MiB, partCount: 4 });
+    expect(await r2UploadStore(env.MEDIA).get(reply.json.uploadId)).toMatchObject({ totalBytes: null, partCount: 4 });
+  });
+
+  it("signs each part at the size the phone names, and refuses no size or one over the part size", async () => {
+    const { json: started } = await openStart();
+    const reply = await sized(started.uploadId, 2, 3 * MiB);
+    expect(reply.status).toBe(200);
+    expect(reply.json.headers).toEqual({ "content-length": String(3 * MiB) });
+    expect(new URL(reply.json.url).searchParams.get("X-Amz-SignedHeaders")).toBe("content-length;host");
+    for (const bytes of [undefined, 0, 5 * MiB + 1, 1.5]) {
+      const bad = await sized(started.uploadId, 1, bytes);
+      expect([bad.status, bad.json.error.code]).toEqual([400, "invalid_size"]);
+    }
+    const past = await sized(started.uploadId, 5, 1);
+    expect([past.status, past.json.error.code]).toEqual([400, "invalid_part_number"]);
+  });
+
+  it("refuses a named size on a planned upload unless it is that part's size", async () => {
+    const { json: started } = await start(WALK_A, 12 * MiB);
+    expect((await sized(started.uploadId, 3, 2 * MiB)).json.headers).toEqual({ "content-length": String(2 * MiB) });
+    const wrong = await sized(started.uploadId, 3, 5 * MiB);
+    expect([wrong.status, wrong.json.error.code]).toEqual([400, "invalid_size"]);
+  });
+
+  it("joins the parts at complete, works out the total, and reads the file back", async () => {
+    const { json: started } = await openStart();
+    const sizes = [5 * MiB, 5 * MiB, 2 * MiB + 7];
+    const parts: { partNumber: number; etag: string }[] = [];
+    for (const [i, size] of sizes.entries()) {
+      const signed = (await sized(started.uploadId, i + 1, size)).json;
+      const res = await put(signed, i === 0 ? mp4Bytes(size, 1) : new Uint8Array(size).fill(i + 1));
+      expect(res.status).toBe(200);
+      parts.push({ partNumber: i + 1, etag: (res.headers.get("etag") ?? "").replaceAll('"', "") });
+    }
+    const total = 12 * MiB + 7;
+    const reply = await post("/api/uploads/complete", { uploadId: started.uploadId, parts });
+    expect([reply.status, reply.json]).toEqual([200, { walkId: WALK_A, bytes: total }]);
+    expect((await env.MEDIA.head(`originals/${WALK_A}/walk.mp4`))?.size).toBe(total);
+    expect(await r2UploadStore(env.MEDIA).get(started.uploadId)).toMatchObject({ status: "completed", totalBytes: total });
+    expect(uploadedWalks).toEqual([WALK_A]);
+  });
+
+  it("refuses a short part before the last, and a part never signed", async () => {
+    const { json: started } = await openStart();
+    const parts: { partNumber: number; etag: string }[] = [];
+    for (const n of [1, 2]) {
+      const signed = (await sized(started.uploadId, n, MiB)).json;
+      const res = await put(signed, n === 1 ? mp4Bytes(MiB, 1) : new Uint8Array(MiB).fill(2));
+      parts.push({ partNumber: n, etag: (res.headers.get("etag") ?? "").replaceAll('"', "") });
+    }
+    const short = await post("/api/uploads/complete", { uploadId: started.uploadId, parts });
+    expect([short.status, short.json.error.code]).toEqual([422, "parts_invalid"]);
+    const unsigned = await post("/api/uploads/complete", { uploadId: started.uploadId, parts: [...parts, { partNumber: 3, etag: "e" }] });
+    expect([unsigned.status, unsigned.json.error.code]).toEqual([422, "parts_invalid"]);
+    expect((await r2UploadStore(env.MEDIA).get(started.uploadId))?.status).toBe("uploading");
+  });
+});
+
+describe("a start sent again for a walk that has an open upload", () => {
+  const openStart = (walkId = WALK_A) => post("/api/uploads", { walkId, totalBytes: null });
+  const store = () => r2UploadStore(env.MEDIA);
+
+  it("answers the open upload to a start of the same size, so the phone resumes it and completes", async () => {
+    const first = await start(WALK_A, 12 * MiB);
+    const again = await start(WALK_A, 12 * MiB);
+    expect(again.status).toBe(200);
+    expect(again.json).toEqual(first.json);
+    const parts = await uploadAll(again.json.uploadId, 12 * MiB);
+    const done = await post("/api/uploads/complete", { uploadId: again.json.uploadId, parts });
+    expect([done.status, done.json]).toEqual([200, { walkId: WALK_A, bytes: 12 * MiB }]);
+  });
+
+  it("answers an upload started before its size was known to any later start, sized or not", async () => {
+    const first = await openStart();
+    expect((await openStart()).json).toEqual(first.json);
+    expect((await start(WALK_A, 12 * MiB)).json).toEqual(first.json);
+  });
+
+  it("stops an open upload of another size and starts a fresh one", async () => {
+    const first = await start(WALK_A, 12 * MiB);
+    const again = await start(WALK_A, 7 * MiB);
+    expect(again.status).toBe(200);
+    expect(again.json.uploadId).not.toBe(first.json.uploadId);
+    expect(again.json.partCount).toBe(2);
+    expect(await store().get(first.json.uploadId)).toMatchObject({ status: "aborted" });
+    const old = await link(first.json.uploadId, 1);
+    expect([old.status, old.json.error.code]).toEqual([409, "upload_aborted"]);
+  });
+
+  it("stops an open upload with a part out of tries and starts a fresh one", async () => {
+    const first = await start(WALK_A, 12 * MiB);
+    for (let n = 0; n < limits.uploadMaxTriesPerPart; n += 1) expect((await link(first.json.uploadId, 1)).status).toBe(200);
+    const again = await start(WALK_A, 12 * MiB);
+    expect(again.status).toBe(200);
+    expect(again.json.uploadId).not.toBe(first.json.uploadId);
+    expect(await store().get(first.json.uploadId)).toMatchObject({ status: "aborted" });
+    expect((await link(again.json.uploadId, 1)).status).toBe(200);
+  });
+
+  it("starts a fresh upload, leaving the old one alone, once the open one has run out of time", async () => {
+    const first = await start(WALK_A, 12 * MiB);
+    now = T0 + limits.uploadSessionTtlSeconds * 1000 + 1;
+    const again = await start(WALK_A, 12 * MiB);
+    expect(again.status).toBe(200);
+    expect(again.json.uploadId).not.toBe(first.json.uploadId);
   });
 });
 

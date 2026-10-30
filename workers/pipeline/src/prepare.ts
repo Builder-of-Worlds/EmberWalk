@@ -1,4 +1,4 @@
-import { getWalk, saveClip, tagsForWalk } from "@emberwalk/db";
+import { getWalk, markWalkReal, saveClip, tagsForWalk } from "@emberwalk/db";
 import { type Clip, type ClipKind, DEFAULT_LIMITS, type Tag } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
 import { type Outcome, pass, refuse } from "./outcome.ts";
@@ -26,6 +26,12 @@ export const clipStart = (tags: Tag[], kind: ClipKind): number =>
 export const prepareWalk = async (deps: Deps, walkId: string): Promise<Outcome<Clip[]>> => {
   const walk = await getWalk(deps.db, walkId);
   if (walk === null || walk.state.name !== "processing") return refuse("walk_not_processing", "This walk is not waiting to be checked.");
+  let synthetic = walk.synthetic;
+  if (synthetic && !(await deps.isSyntheticRender(originalKey(walkId)))) {
+    await markWalkReal(deps.db, walkId);
+    synthetic = false;
+  }
+  if (!synthetic && deps.billing !== "paid") return refuse("real_footage_not_allowed", "Real footage is not accepted yet.");
 
   const original = await deps.signer.get(originalKey(walkId));
   const probe = await deps.media.probe(original);

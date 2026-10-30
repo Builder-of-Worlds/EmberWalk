@@ -10,12 +10,15 @@ export type Prefs = {
   visitorId(): string;
   view(): ViewPreference;
   setView(view: ViewPreference): void;
+  agreedToSend(): boolean;
+  markAgreedToSend(): void;
 };
 
 export const INTRO_SEEN_KEY = "emberwalk.introSeen";
 export const JURISDICTION_KEY = "emberwalk.jurisdiction";
 export const VISITOR_KEY = "emberwalk.visitorId";
 export const VIEW_KEY = "emberwalk.view";
+export const AGREED_KEY = "emberwalk.agreedToSend";
 
 const VISITOR_ID = /^[0-9a-f]{64}$/;
 
@@ -27,6 +30,7 @@ export const storagePrefs = (storage: () => Storage): Prefs => {
   let chosen: Jurisdiction | null = null;
   let visitor: string | null = null;
   let view: ViewPreference | null = null;
+  let agreed = false;
   const read = (key: string): string | null => {
     try {
       return storage().getItem(key);
@@ -71,6 +75,11 @@ export const storagePrefs = (storage: () => Storage): Prefs => {
     setView: (chosen) => {
       view = chosen;
       write(VIEW_KEY, chosen);
+    },
+    agreedToSend: () => agreed || read(AGREED_KEY) === "1",
+    markAgreedToSend: () => {
+      agreed = true;
+      write(AGREED_KEY, "1");
     },
   };
 };

@@ -1,8 +1,10 @@
 import { cacheIndex, d1Ledger } from "@emberwalk/db";
-import { type AnswerCache, fetchTransport, MetaClient } from "@emberwalk/meta";
+import { type AnswerCache, basetenTransport, type Billing, fetchTransport, MetaClient, type Transport } from "@emberwalk/meta";
 import type { Env } from "./env.ts";
+import { mediaFetcher } from "./media-container.ts";
 import { containerMedia, type Media } from "./media.ts";
 import { r2Signer, type Signer } from "./storage.ts";
+import { parseRenders, renderCheck } from "./synthetic.ts";
 
 export type Deps = {
   db: D1Database;
@@ -10,10 +12,19 @@ export type Deps = {
   media: Media;
   signer: Signer;
   meta: () => MetaClient;
+  museImage: () => MetaClient;
   sleep: (ms: number) => Promise<void>;
   newId: () => string;
   voiceNotes: boolean;
+  billing: Billing;
+  isSyntheticRender: (key: string) => Promise<boolean>;
+  baseten?: () => Baseten | null;
+  secondCheckRealWalks?: boolean;
 };
+
+export type Baseten = { client: MetaClient; transport: Transport };
+
+const billingOf = (env: Env): Billing => (env.META_BILLING === "paid" ? "paid" : "free_credits");
 
 type CachedAnswer = Awaited<ReturnType<AnswerCache["get"]>>;
 
@@ -34,23 +45,42 @@ export const r2Cache = (db: D1Database, bucket: R2Bucket, now: () => Date = () =
   };
 };
 
-export const metaFor = (env: Env): MetaClient => {
+export const MUSE_IMAGE_TIMEOUT_MS = 90_000;
+
+export const metaFor = (env: Env, timeoutMs?: number): MetaClient => {
   if (!env.META_API_KEY) throw new Error("the Meta API key is not set up on this server");
   return new MetaClient({
-    transport: fetchTransport({ baseUrl: env.META_BASE_URL, apiKey: env.META_API_KEY }),
+    transport: fetchTransport({ baseUrl: env.META_BASE_URL, apiKey: env.META_API_KEY, ...(timeoutMs === undefined ? {} : { timeoutMs }) }),
+    cache: r2Cache(env.DB, env.MEDIA),
+    ledger: d1Ledger(env.DB),
+    billing: billingOf(env),
+  });
+};
+
+export const basetenFor = (env: Env): Baseten | null => {
+  if (!env.BASETEN_API_KEY) return null;
+  const transport = basetenTransport({ apiKey: env.BASETEN_API_KEY });
+  const client = new MetaClient({
+    transport,
     cache: r2Cache(env.DB, env.MEDIA),
     ledger: d1Ledger(env.DB),
     billing: env.META_BILLING === "paid" ? "paid" : "free_credits",
   });
+  return { client, transport };
 };
 
 export const depsFrom = (env: Env): Deps => ({
   db: env.DB,
   bucket: env.MEDIA,
-  media: containerMedia(env.MEDIA_CONTAINER),
+  media: containerMedia(mediaFetcher(env.MEDIA_CONTAINER)),
   signer: r2Signer(env),
   meta: () => metaFor(env),
+  museImage: () => metaFor(env, MUSE_IMAGE_TIMEOUT_MS),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   newId: () => crypto.randomUUID(),
   voiceNotes: env.VOICE_NOTES === "on",
+  billing: billingOf(env),
+  isSyntheticRender: renderCheck(env.MEDIA, parseRenders(env.SYNTHETIC_RENDERS)),
+  baseten: () => basetenFor(env),
+  secondCheckRealWalks: env.SECOND_CHECK_REAL_WALKS === "on",
 });

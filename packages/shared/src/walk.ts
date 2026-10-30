@@ -1,6 +1,18 @@
 import { z } from "zod";
 import { FileKey, Fingerprint, Id, Language, Point, Text, Timestamp, Unit } from "./common.ts";
 
+export const OBJECT_CONCEPTS = [
+  "gas_can",
+  "stored_fuel",
+  "lawn_mower",
+  "grill",
+  "propane_cylinder",
+  "vehicle",
+  "lumber_pile",
+  "tarp",
+  "doormat",
+  "boat_or_trailer",
+] as const;
 export const LOOP_CONCEPTS = [
   "dry_brush",
   "wood_pile",
@@ -17,8 +29,10 @@ export const LOOP_CONCEPTS = [
   "shed",
   "trash_can",
   "patio_furniture",
+  "wood_deck",
+  ...OBJECT_CONCEPTS,
 ] as const;
-export const PAN_CONCEPTS = ["dry_brush", "wood_pile", "shrub", "tree", "dry_grass", "propane_tank", "shed", "house_wall"] as const;
+export const PAN_CONCEPTS = ["dry_brush", "wood_pile", "shrub", "tree", "dry_grass", "propane_tank", "shed", "house_wall", ...OBJECT_CONCEPTS] as const;
 export const PLANT_CONCEPTS = ["dry_brush", "tree_branch_over_roof", "shrub", "tree", "dry_grass"] as const;
 export const SPACED_CONCEPTS = ["shrub", "tree"] as const;
 
@@ -90,6 +104,8 @@ export const MotionSample = z.strictObject({
   light: Light.optional(),
 });
 
+export const LightReading = z.strictObject({ t: Seconds, light: Light });
+
 export const Tag = z
   .strictObject({
     id: Id,
@@ -99,6 +115,7 @@ export const Tag = z
     endSeconds: Seconds,
     label: Text(60),
     samples: z.array(MotionSample).max(10_000),
+    light: z.array(LightReading).max(10_000).optional(),
     propertyLine: z.strictObject({ t: Seconds, at: Point }).nullable(),
   })
   .refine((tag) => tag.startSeconds < tag.endSeconds, { message: "a tag must end after it starts", path: ["endSeconds"] })
@@ -119,26 +136,43 @@ export const Clip = z.strictObject({
 });
 
 export const SIDES = ["front", "right", "back", "left"] as const;
+export const CORNERS = ["front_right", "back_right", "back_left", "front_left"] as const;
+export const PARTS = [...SIDES, ...CORNERS] as const;
 export const GAP_KINDS = ["missing", "dark", "first_five_feet", "not_checked"] as const;
-export const GAP_HINTS = ["walk_side", "more_light", "tilt_down", "step_back", "again"] as const;
+export const GAP_HINTS = ["walk_side", "more_light", "tilt_down", "step_back", "again", "pan_corner"] as const;
 
 export const HINTS_FOR: Record<(typeof GAP_KINDS)[number], readonly (typeof GAP_HINTS)[number][]> = {
-  missing: ["walk_side"],
+  missing: ["walk_side", "pan_corner"],
   dark: ["more_light"],
   first_five_feet: ["tilt_down", "step_back"],
   not_checked: ["again"],
 };
 
 export const Side = z.enum(SIDES);
+export const Corner = z.enum(CORNERS);
+export const Part = z.enum(PARTS);
+
+export const isCorner = (part: Part): part is Corner => Corner.safeParse(part).success;
+
+export const cornerBetween = (a: Side, b: Side): Corner | null =>
+  CORNERS.find((corner) => a !== b && corner.split("_").includes(a) && corner.split("_").includes(b)) ?? null;
+
+export const cornerLabel = (corner: Corner): string => `${corner.replace("_", " ")} corner`;
 
 export const tagSide = (tag: Pick<Tag, "label">): Side | null => {
   const side = Side.safeParse(tag.label);
   return side.success ? side.data : null;
 };
 
+export const tagCorner = (tag: Pick<Tag, "label">): Corner | null => CORNERS.find((corner) => cornerLabel(corner) === tag.label) ?? null;
+
 export const Gap = z
-  .strictObject({ side: Side, kind: z.enum(GAP_KINDS), hint: z.enum(GAP_HINTS) })
-  .refine((gap) => HINTS_FOR[gap.kind].includes(gap.hint), { message: "a gap's hint must suit its kind", path: ["hint"] });
+  .strictObject({ side: Part, kind: z.enum(GAP_KINDS), hint: z.enum(GAP_HINTS) })
+  .refine((gap) => HINTS_FOR[gap.kind].includes(gap.hint), { message: "a gap's hint must suit its kind", path: ["hint"] })
+  .refine((gap) => gap.kind !== "missing" || (gap.hint === "pan_corner") === isCorner(gap.side), {
+    message: "a missing corner asks for a corner pan, a missing side for a side walk",
+    path: ["hint"],
+  });
 
 export const Box = z
   .tuple([Unit, Unit, Unit, Unit])
@@ -168,9 +202,12 @@ export type Device = z.infer<typeof Device>;
 export type Visitor = z.infer<typeof Visitor>;
 export type Walk = z.infer<typeof Walk>;
 export type MotionSample = z.infer<typeof MotionSample>;
+export type LightReading = z.infer<typeof LightReading>;
 export type Tag = z.infer<typeof Tag>;
 export type Clip = z.infer<typeof Clip>;
 export type Side = z.infer<typeof Side>;
+export type Corner = z.infer<typeof Corner>;
+export type Part = z.infer<typeof Part>;
 export type Gap = z.infer<typeof Gap>;
 export type TrackFrame = z.infer<typeof TrackFrame>;
 export type Track = z.infer<typeof Track>;

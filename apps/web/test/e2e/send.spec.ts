@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Request, Route } from "@playwright/test";
 import { copy } from "../../src/copy.ts";
-import { ROUTES } from "../../src/router.ts";
+import { checkingFor, ROUTES } from "../../src/router.ts";
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
 
@@ -89,7 +89,11 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   await expect(page.getByRole("link", { name: copy.send.back })).toHaveCount(0);
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.home.title);
-  await expect(page.locator(".walks")).toHaveCount(0);
+  await expect(page.locator(".walks li")).toHaveCount(1);
+  await expect(page.locator(".walks li.checking a")).toHaveAttribute("href", checkingFor(WALK));
+  await expect(page.locator(".walks li.checking a")).toHaveText(copy.home.progress);
+  await expect(page.locator(".walks").getByRole("link", { name: copy.home.send })).toHaveCount(0);
+  expect(await page.evaluate(sideways)).toBe(0);
 });
 
 for (const code of ["walk_limit_reached", "spend_cap_reached"] as const) {

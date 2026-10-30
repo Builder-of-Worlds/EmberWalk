@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAND_FEET, Finding, FindingStatus, MapPin, Preview, Recheck, Report, Rule, ViewPreference } from "../src/index.ts";
+import { BAND_FEET, Finding, FindingStatus, MapPin, PIN_SIDES_CLOCKWISE, Preview, Recheck, Report, Rule, SIDES, ViewPreference } from "../src/index.ts";
 import { AT, id, refuses, refusesEach, refusesMissingAndExtra, roundTrips } from "./check.ts";
 
 const finding = {
@@ -110,13 +110,33 @@ describe("findings and what hangs off them", () => {
     roundTrips(Report, report);
     refusesMissingAndExtra(Report, report);
 
-    const pin = { findingId: id(10), side: "back", band: "zone_1", position: { x: 0.2, y: 0.8 } };
+    const pin = { findingId: id(10), side: "back", band: "zone_1", position: 0.2, feet: 12 };
     roundTrips(MapPin, pin);
+    roundTrips(MapPin, { ...pin, position: 0, feet: 0 });
+    roundTrips(MapPin, { ...pin, position: 1, feet: 99.9 });
     refusesMissingAndExtra(MapPin, pin);
-    refusesEach(MapPin, pin, [{ side: "top" }, { position: { x: 2, y: 0 } }]);
+    refusesEach(MapPin, pin, [
+      { side: "top" },
+      { side: "back_left" },
+      { position: 1.01 },
+      { position: -0.01 },
+      { position: { x: 0.2, y: 0.8 } },
+      { feet: -1 },
+      { feet: 100 },
+      { latitude: 38.58 },
+      { longitude: -121.49 },
+      { lat: 38.58, lng: -121.49 },
+    ]);
 
     roundTrips(ViewPreference, "simple");
     roundTrips(ViewPreference, "detailed");
     refuses(ViewPreference, "fancy");
+  });
+
+  it("names the sides of a pin in clockwise order seen from above, the way round opposite to the order a walk takes them", () => {
+    expect(PIN_SIDES_CLOCKWISE).toEqual(["front", "left", "back", "right"]);
+    expect([...PIN_SIDES_CLOCKWISE].reverse()).toEqual(["right", "back", "left", "front"]);
+    expect([PIN_SIDES_CLOCKWISE[0], ...[...SIDES].slice(1).reverse()]).toEqual([...PIN_SIDES_CLOCKWISE]);
+    for (const side of PIN_SIDES_CLOCKWISE) roundTrips(MapPin, { findingId: id(10), side, band: "zone_1", position: 0.5, feet: 12 });
   });
 });

@@ -108,6 +108,47 @@ describe("scoreWalk", () => {
     expect(() => scoreWalk({ hazards: [] })).toThrow();
     expect(() => scoreWalk({ hazards: [hazard({}), hazard({})] })).toThrow();
   });
+
+  it("takes one hazard and 100, and refuses 101", () => {
+    const hazards = (n: number) => Array.from({ length: n }, (_, i) => hazard({ id: `h${i}` }));
+    expect(scoreWalk({ hazards: hazards(1) })).toHaveLength(1);
+    expect(scoreWalk({ hazards: hazards(100) })).toHaveLength(100);
+    expect(() => scoreWalk({ hazards: hazards(101) })).toThrow();
+  });
+});
+
+describe("the limits of a hazard record", () => {
+  const frames = (n: number) => Array.from({ length: n }, (_, i) => i);
+  const box = (): [number, number, number, number] => [0, 0, 10, 10];
+
+  it("takes an id of 1 to 100 characters and refuses an empty or longer one", () => {
+    expect(scoreHazard(hazard({ id: "a" })).id).toBe("a");
+    expect(scoreHazard(hazard({ id: "a".repeat(100) })).id).toHaveLength(100);
+    expect(() => scoreHazard(hazard({ id: "" }))).toThrow();
+    expect(() => scoreHazard(hazard({ id: "a".repeat(101) }))).toThrow();
+  });
+
+  it("takes a window of 10000 frames and refuses 10001", () => {
+    expect(scoreHazard(hazard({ window: frames(10_000), truth: {} })).window).toBe(10_000);
+    expect(() => scoreHazard(hazard({ window: frames(10_001), truth: {} }))).toThrow();
+  });
+
+  it("takes 10000 frames with boxes and refuses 10001", () => {
+    const found = (n: number) => frames(n).map((frame) => ({ frame, boxes: [box()] }));
+    expect(scoreHazard(hazard({ window: [], truth: {}, found: found(10_000) })).falseAlarms).toBe(10_000);
+    expect(() => scoreHazard(hazard({ window: [], truth: {}, found: found(10_001) }))).toThrow();
+  });
+
+  it("takes 16 boxes on a frame and refuses 17", () => {
+    const boxes = (n: number) => Array.from({ length: n }, box);
+    expect(scoreHazard(hazard({ found: [{ frame: 1, boxes: boxes(16) }] })).falseAlarms).toBe(1);
+    expect(() => scoreHazard(hazard({ found: [{ frame: 1, boxes: boxes(17) }] }))).toThrow();
+  });
+
+  it("calls a one frame window found when its box hits", () => {
+    const s = scoreHazard(hazard({ window: [1], found: [{ frame: 1, boxes: [[0, 0, 100, 100]] }] }));
+    expect([s.hits, s.found]).toEqual([1, true]);
+  });
 });
 
 describe("iou", () => {
@@ -121,6 +162,11 @@ describe("iou", () => {
     expect(iou([10, 10, 20, 20], [15, 10, 25, 20])).toBeCloseTo(1 / 3);
     expect(iou([10, 10, 20, 20], [10, 15, 20, 25])).toBeCloseTo(1 / 3);
     expect(iou([10, 10, 20, 20], [30, 30, 40, 40])).toBe(0);
+  });
+
+  it("is 0 for boxes apart along one side only", () => {
+    expect(iou([0, 0, 10, 10], [20, 0, 30, 10])).toBe(0);
+    expect(iou([0, 0, 10, 10], [0, 20, 10, 30])).toBe(0);
   });
 });
 

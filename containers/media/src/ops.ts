@@ -68,6 +68,7 @@ export const clipOp = (req: ClipRequest) =>
       bytes,
       frames,
       fps: req.fps,
+      codec: made.video?.codec ?? null,
       durationSeconds: made.durationSeconds,
       width: made.video?.width ?? 0,
       height: made.video?.height ?? 0,

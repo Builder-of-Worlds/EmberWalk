@@ -108,11 +108,51 @@ def world_graph():
     return {"nodes": nodes, "links": links}
 
 
+class FreshMaterial:
+    def __init__(self, real):
+        self.__dict__.update(real=real, nodes_on=False)
+
+    @property
+    def use_nodes(self):
+        return self.nodes_on
+
+    @use_nodes.setter
+    def use_nodes(self, value):
+        self.nodes_on = bool(value)
+
+    @property
+    def node_tree(self):
+        if self.nodes_on and self.real.node_tree is None:
+            self.real.use_nodes = True
+        return self.real.node_tree if self.nodes_on else None
+
+    def __getattr__(self, name):
+        return getattr(self.real, name)
+
+
+class OldBlenderMaterials:
+    def get(self, name):
+        return None
+
+    def new(self, name):
+        return FreshMaterial(bpy.data.materials.new(name))
+
+
 def painted(asset_id):
     catalog = assets.load_catalog()
     manifest = assets.ensure(asset_id, catalog[asset_id], assets.cache_dir())
-    mat = blendscene.painted_material("Probe paint", manifest, "#808080", [1.0, 1.0, 1.0], blendscene.SIDING_GRAIN)
-    return {"use_nodes": mat.use_nodes, "nodes": sorted(n.bl_idname for n in mat.node_tree.nodes)}
+    real_bpy = blendscene.bpy
+    blendscene.bpy = types.SimpleNamespace(data=types.SimpleNamespace(materials=OldBlenderMaterials(), images=bpy.data.images))
+    try:
+        mats = {
+            "painted": blendscene.painted_material("Probe paint", manifest, "#808080", [1.0, 1.0, 1.0], blendscene.SIDING_GRAIN),
+            "plain": blendscene.plain_material("Probe plain", "#808080"),
+            "glass": blendscene.glass_material(),
+        }
+    finally:
+        blendscene.bpy = real_bpy
+    out = {k: {"use_nodes": m.use_nodes, "nodes": sorted(n.bl_idname for n in m.node_tree.nodes)} for k, m in mats.items()}
+    return {**out["painted"], "others": {k: out[k] for k in ("plain", "glass")}}
 
 
 PRINCIPLED = ("Base Color", "Roughness", "Metallic", "Transmission Weight", "IOR")
@@ -149,6 +189,30 @@ def cast(rays):
     return out
 
 
+def visible(request):
+    scene = bpy.context.scene
+    cols, rows = request["grid"]
+    out = {}
+    for frame in request["frames"]:
+        scene.frame_set(frame)
+        cam = scene.camera
+        corners = cam.data.view_frame(scene=scene)
+        xs, ys, depth = [c.x for c in corners], [c.y for c in corners], corners[0].z
+        turn, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+        graph = bpy.context.evaluated_depsgraph_get()
+        counts, spans = {}, {}
+        for row in range(rows):
+            for col in range(cols):
+                local = Vector((min(xs) + (col + 0.5) / cols * (max(xs) - min(xs)), min(ys) + (row + 0.5) / rows * (max(ys) - min(ys)), depth))
+                hit, _, _, _, obj, _ = scene.ray_cast(graph, origin, (turn @ local).normalized())
+                if hit:
+                    counts[obj.name] = counts.get(obj.name, 0) + 1
+                    lo, hi = spans.get(obj.name, (row, row))
+                    spans[obj.name] = (min(lo, row), max(hi, row))
+        out[str(frame)] = {"cols": cols, "rows": rows, "first_hits": counts, "row_span": spans}
+    return out
+
+
 def scene_record():
     scene = bpy.context.scene
     rd = scene.render
@@ -169,8 +233,12 @@ def main():
     parser.add_argument("--specs", nargs="*", default=[])
     parser.add_argument("--paint")
     parser.add_argument("--rays")
+    parser.add_argument("--visible")
     args = parser.parse_args(paths.script_args())
-    built = {"scene": scene_record(), "world": world_graph(), "materials": materials()}
+    built = {"scene": scene_record(), "world": world_graph()}
+    if args.visible:
+        with open(args.visible, encoding="utf-8") as f:
+            built["visible"] = visible(json.load(f))
     if args.rays:
         with open(args.rays, encoding="utf-8") as f:
             built["rays"] = cast(json.load(f))
@@ -183,6 +251,7 @@ def main():
             structures = json.load(f)
         for s in structures:
             blendscene._structure(s, structures)
+    built["materials"] = materials()
     body = {"objects": scene_objects(set(args.detail), set(args.verts)), "scripted": scripted(args.specs, set(args.detail)),
             "builders": sorted(blendscene.HOUSE_SCRIPTED), **built}
     with open(args.out, "w", encoding="utf-8") as f:

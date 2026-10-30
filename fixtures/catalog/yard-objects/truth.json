@@ -21,7 +21,7 @@
       "id": "gas-can-1",
       "concept": "gas can",
       "catalog_concept": "gas_can",
-      "pending": true,
+      "pending": false,
       "frame_boxes": [
         { "frame": 1, "box_px": [200, 210, 236, 262] },
         { "frame": 2, "box_px": [202, 212, 238, 264] }
@@ -31,7 +31,7 @@
       "id": "lawn-mower-1",
       "concept": "lawn mower",
       "catalog_concept": "lawn_mower",
-      "pending": true,
+      "pending": false,
       "frame_boxes": [
         { "frame": 0, "box_px": [180, 150, 300, 250] },
         { "frame": 1, "box_px": [184, 152, 304, 252] },
@@ -42,7 +42,7 @@
       "id": "grill-1",
       "concept": "grill",
       "catalog_concept": "grill",
-      "pending": true,
+      "pending": false,
       "frame_boxes": [
         { "frame": 2, "box_px": [20, 180, 90, 270] }
       ]
@@ -51,7 +51,7 @@
       "id": "tarp-1",
       "concept": "tarp",
       "catalog_concept": "tarp",
-      "pending": true,
+      "pending": false,
       "frame_boxes": [
         { "frame": 0, "box_px": [100, 220, 180, 300] },
         { "frame": 1, "box_px": [102, 222, 182, 302] }

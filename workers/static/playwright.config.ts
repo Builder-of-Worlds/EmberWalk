@@ -24,7 +24,7 @@ export default defineConfig({
     { name: "1440", use: { viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
-    command: `npx wrangler d1 migrations apply emberwalk --local --persist-to .wrangler/e2e && npx wrangler dev --local --port ${PORT} --ip 127.0.0.1 --persist-to .wrangler/e2e --var UNSUBSCRIBE_SECRET:${UNSUBSCRIBE_SECRET}`,
+    command: `npx wrangler d1 migrations apply DB --local --persist-to .wrangler/e2e && npx wrangler dev --local --port ${PORT} --ip 127.0.0.1 --persist-to .wrangler/e2e --var UNSUBSCRIBE_SECRET:${UNSUBSCRIBE_SECRET} --var TURNSTILE_SITE_KEY:1x00000000000000000000AA`,
     url: `http://127.0.0.1:${PORT}/api/config`,
     reuseExistingServer: false,
     timeout: 120_000,

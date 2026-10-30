@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmberWalk mix list of one synthetic walk",
+  "description": "The walk's frames 1 to frame_count cut into chunks in order, with no gap or overlap; each chunk names its part and its source, blender (the render) or openart (a clip). A chunk tried in OpenArt carries an openart record: the Blender frame given as the reference (inside the chunk), the creation id, model and credits, the clip by file name, size, sha256 and frame count, and a sam_check: not_run, pass or fail, with its cost in nano USD and per hazard (by truth id and concept) the checked frames, the box found in pixels as [x0, y0, x1, y1] and its overlap with the truth frame box (intersection over union). A chunk whose source is openart needs a pass and a recorded cost. credits_total is the sum of every openart record's credits; sam_cost_total_nano_usd the sum of every recorded SAM cost.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "synthetic", "label", "scene", "frame_count", "credits_total", "sam_cost_total_nano_usd", "chunks"],
+  "properties": {
+    "schema": {"const": "emberwalk.mix-list/1"},
+    "synthetic": {"const": true},
+    "label": {"const": "Synthetic sample house"},
+    "scene": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "frame_count": {"type": "integer", "minimum": 1},
+    "credits_total": {"type": "number"},
+    "sam_cost_total_nano_usd": {"type": "integer", "minimum": 0},
+    "chunks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end", "part", "source"],
+        "properties": {
+          "start": {"type": "integer", "minimum": 1},
+          "end": {"type": "integer", "minimum": 1},
+          "part": {"type": "string", "minLength": 1},
+          "source": {"enum": ["blender", "openart"]},
+          "openart": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reference_frame", "creation_id", "model", "credits", "clip", "sam_check"],
+            "properties": {
+              "reference_frame": {"type": "integer", "minimum": 1},
+              "creation_id": {"type": "string", "minLength": 1},
+              "model": {"type": "string", "minLength": 1},
+              "credits": {"type": "number"},
+              "clip": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["file", "bytes", "sha256", "frames"],
+                "properties": {
+                  "file": {"type": "string", "minLength": 1},
+                  "bytes": {"type": "integer", "minimum": 1},
+                  "sha256": {"type": "string"},
+                  "frames": {"type": "integer", "minimum": 1}
+                }
+              },
+              "sam_check": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status"],
+                "properties": {
+                  "status": {"enum": ["not_run", "pass", "fail"]},
+                  "cost_nano_usd": {"type": "integer", "minimum": 0},
+                  "hazards": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["id", "concept", "checks"],
+                      "properties": {
+                        "id": {"type": "string", "minLength": 1},
+                        "concept": {"type": "string", "minLength": 1},
+                        "checks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["frame", "box_px", "iou"],
+                            "properties": {
+                              "frame": {"type": "integer", "minimum": 1},
+                              "box_px": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "integer", "minimum": 0}},
+                              "iou": {"type": "number", "minimum": 0, "maximum": 1}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

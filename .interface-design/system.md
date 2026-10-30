@@ -75,6 +75,10 @@ There is no separate colour for Recommended: `.label.required_now` alone is colo
 
 **Video preview** (`.preview`, 91): full width, at most 60dvh, cover fit, bark ground behind it.
 
+**Fix preview** (`.fix-preview`, 375 to 404; `FixPreview.tsx`): a stone figure with radius 0.5rem held at 16 / 9 while the image loads, the image cover fit inside it. The AI label (`.ai-label`, 391) sits centered 0.5rem above the bottom edge on a bark chip with radius 0.375rem, paper text at 1rem, 700. If the preview cannot be fetched, the button and figure leave the screen.
+
+**Second check note** (`.second-check`, 407): a centered note under the finding sentence, soil text at 1rem, shown only when the second check flags the instruction (`FixPreview.tsx:35`).
+
 ## States
 
 - Pressed, disabled and focus as above; state lives in ARIA attributes (`aria-pressed`, `aria-expanded`) and `data-*` attributes (`data-route`, `data-verdict`, `data-view`, `data-status`, `data-stage`, `data-part`), which tests read.

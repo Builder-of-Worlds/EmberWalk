@@ -1,7 +1,8 @@
-import type { WalkPart } from "@emberwalk/shared";
 import { useEffect, useRef, useState } from "react";
-import { copy } from "../copy.ts";
+import { isCorner, type Side, type WalkPart } from "@emberwalk/shared";
+import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { draftWordsShown } from "../draft-words.ts";
 import { askMotion, CORNERS, cornersFor, turnBetween } from "../motion.ts";
 import type { Motion } from "../motion.ts";
 import { isJurisdiction, locateRules } from "../location.ts";
@@ -9,6 +10,7 @@ import { cameraDevice, openCamera, startRecording } from "../recorder.ts";
 import type { CameraRefusal, Recording } from "../recorder.ts";
 import { ROUTES } from "../router.ts";
 import type { Take } from "../take-store.ts";
+import { HOUSE_CORNERS, HouseShape } from "./HouseShape.tsx";
 
 type Phase =
   | { kind: "checking" }
@@ -40,12 +42,7 @@ const TimeLeft = ({ recording }: { recording: Recording }) => {
   );
 };
 
-const CORNER_AT = [
-  [12, 12],
-  [88, 12],
-  [88, 88],
-  [12, 88],
-] as const;
+const CORNER_AT = HOUSE_CORNERS;
 
 type Panned = { done: number; panning: boolean };
 
@@ -64,7 +61,7 @@ const Outline = ({ motion, panned }: { motion: NonNullable<Motion>; panned: Pann
   }, [motion]);
   return (
     <svg className="outline" viewBox="0 0 100 100" aria-hidden="true" data-corners={corners}>
-      <rect x="12" y="12" width="76" height="76" />
+      <HouseShape />
       {CORNER_AT.map(([x1, y1], i) => {
         const [x2, y2] = CORNER_AT[(i + 1) % CORNER_AT.length]!;
         const state = i < panned.done ? "panned" : i === panned.done && panned.panning ? "panning" : null;
@@ -77,21 +74,37 @@ const Outline = ({ motion, panned }: { motion: NonNullable<Motion>; panned: Pann
   );
 };
 
+const Guide = ({ side, held, onNext }: { side: Side | null; held: boolean; onNext: () => void }) => (
+  <>
+    <p>{side === null ? draft.guided.back : draft.guided.now(side)}</p>
+    {side === null ? null : (
+      <button className="button" type="button" disabled={held} onClick={onNext}>
+        {draft.guided.next}
+      </button>
+    )}
+  </>
+);
+
 const Toggle = ({ label, on, disabled, onPress }: { label: string; on: boolean; disabled?: boolean; onPress: () => void }) => (
   <button className="button toggle" type="button" aria-pressed={on} disabled={disabled} onClick={onPress}>
     {label}
   </button>
 );
 
+const onePart = ({ side }: WalkPart): string => (isCorner(side) ? draft.corners.oneCorner(side) : copy.record.oneSide(side));
+
 export const Record = ({ part = null }: { part?: WalkPart | null }) => {
   const deps = useDeps();
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const recording = useRef<Recording | null>(null);
+  const awake = useRef<(() => void) | null>(null);
   const [sound, setSound] = useState(true);
   const [soundOff, setSoundOff] = useState(false);
   const [paused, setPaused] = useState(false);
   const [panned, setPanned] = useState<Panned & { left: number }>({ ...NOT_PANNED, left: 0 });
   const [rules, setRules] = useState<keyof typeof copy.record.location>("finding");
+  const [draftWords] = useState(() => draftWordsShown());
+  const [guide, setGuide] = useState<Side | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -99,11 +112,14 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
       .takes()
       .then((takes) => takes.latest())
       .then((take) => {
-        if (live) setPhase(take === null ? { kind: "idle" } : { kind: "saved", take });
+        const beingChecked = take !== null && deps.sentWalks.all().some((walk) => walk.takeId === take.id);
+        if (live) setPhase(take === null || beingChecked ? { kind: "idle" } : { kind: "saved", take });
       });
     return () => {
       live = false;
       recording.current?.stop();
+      awake.current?.();
+      awake.current = null;
     };
   }, [deps]);
 
@@ -128,21 +144,34 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
     void located.then((key) =>
       key === null || key === take.jurisdiction ? undefined : takes.setJurisdiction(take.id, key).catch(() => undefined),
     );
+    const live = deps.prefs.agreedToSend() ? deps.live(takes, take.id, located) : null;
     const sink = {
-      chunk: (data: Blob) => takes.append(take.id, data),
+      chunk: async (data: Blob) => {
+        const kept = await takes.append(take.id, data);
+        live?.chunk(data);
+        return kept;
+      },
       mark: (change: Parameters<typeof takes.mark>[1]) => takes.mark(take.id, change),
-      finish: (durationMs: number, endedBy: Parameters<typeof takes.finish>[2]) => takes.finish(take.id, durationMs, endedBy),
+      finish: async (durationMs: number, endedBy: Parameters<typeof takes.finish>[2]) => {
+        await live?.stop();
+        return takes.finish(take.id, durationMs, endedBy);
+      },
     };
     recording.current = startRecording(camera, sink, deps.clock, deps.maxWalkMs, motion, {
       light: deps.light(camera.stream),
       part: part?.side ?? null,
+      guided: draftWords,
     });
+    setGuide(recording.current.guide());
     setSoundOff(!sound);
     setPaused(false);
     setPanned({ ...NOT_PANNED, left: recording.current.pansLeft() });
     setPhase({ kind: "recording", stream: camera.stream, motion });
+    awake.current = deps.awake.hold();
     await recording.current.done;
     recording.current = null;
+    awake.current?.();
+    awake.current = null;
     window.location.hash = ROUTES.send;
   };
 
@@ -155,6 +184,11 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
     setPanned((before) => ({ done: before.done + (was && !panning ? 1 : 0), panning, left: now.pansLeft() }));
   };
 
+  const pressNext = () => {
+    recording.current?.next();
+    setGuide(recording.current?.guide() ?? null);
+  };
+
   const togglePause = () => {
     if (paused) recording.current?.resume();
     else recording.current?.pause();
@@ -162,6 +196,8 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
   };
 
   const discard = async (take: Take) => {
+    const uploadId = take.upload?.uploadId ?? null;
+    if (uploadId !== null) await deps.abortUpload(uploadId).catch(() => undefined);
     await (await deps.takes()).remove(take.id);
     setPhase({ kind: "idle" });
   };
@@ -182,7 +218,7 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
       ) : null}
       {phase.kind === "idle" ? (
         <>
-          <p>{part === null ? copy.record.ready : copy.record.oneSide(part.side)}</p>
+          <p>{part === null ? copy.record.ready : onePart(part)}</p>
           <p>{copy.record.limit}</p>
           <Toggle label={copy.record.soundOff} on={!sound} onPress={() => setSound(!sound)} />
           <button className="button primary" type="button" onClick={() => void start()}>
@@ -196,8 +232,10 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
           <Preview stream={phase.stream} />
           <p role="status">{copy.record.location[rules]}</p>
           {part !== null ? (
-            <p>{copy.record.oneSide(part.side)}</p>
-          ) : phase.motion === null ? null : (
+            <p>{onePart(part)}</p>
+          ) : phase.motion === null ? (
+            draftWords ? <Guide side={guide} held={paused || panned.panning} onNext={pressNext} /> : null
+          ) : (
             <Outline motion={phase.motion} panned={panned} />
           )}
           {recording.current === null ? null : <TimeLeft recording={recording.current} />}

@@ -66,7 +66,7 @@ class Catalog(unittest.TestCase):
     def test_every_sky_is_shaped_like_the_test_yard_sky(self):
         catalog = assets.load_catalog()
         skies = {i: e for i, e in catalog.items() if e["kind"] == "hdri"}
-        self.assertTrue({"polyhaven:goegap", "polyhaven:dreifaltigkeitsberg"} <= set(skies))
+        self.assertTrue({"polyhaven:goegap", "polyhaven:dry_meadow"} <= set(skies))
         for asset_id, entry in skies.items():
             with self.subTest(asset=asset_id):
                 self.assertEqual(sorted(entry), sorted(skies["polyhaven:goegap"]))

@@ -1,0 +1,50 @@
+# Day 5: Friday Oct. 30th, 2026
+
+The fifth day built Get It Fixed from a finding to an approved request, gave each finding a picture of it fixed and a second check, drew the house with a pin for each finding, gave the newer objects on the list their rules, sent the walk up while it is still being recorded, kept a failed walk's video to send again and made the first deploy ready. Everything below runs and is tested on a laptop; nothing is deployed yet.
+
+## Built
+
+- **Get It Fixed** (`apps/web/`, `workers/getfixed/`, `workers/api/`, `packages/agent/`, `packages/directory/`, `packages/db/`, `migrations/0014_directory.sql`, `migrations/0016_get_it_fixed.sql`): from the results, the homeowner enters a ZIP code and sees licensed businesses from California's public contractor list for each kind of work the walk found, closest first, with miles, license status and a link to check the license; work no crew on the list covers is shown as Yours to Do. EmberWalk writes a request to each crew, and nothing goes out until the homeowner reads it and taps Approve and Send for an email, which goes with the proof photos, or sends a text from the phone and marks it sent. Replies are read for a price, a date and any questions, and a reply that came by phone can be typed in. Three days after a request, a reminder is written for approval, at most three per job, and approved emails stop at 25 a day. Get It Fixed is never offered on a sample house. Tested with recorded model answers and a stand in for the mail service only.
+- **Defensible space record** (`apps/web/`, `packages/db/`): each finding can be marked Needs Fixing, Fix Planned with an optional note, or Done with the day it was done, which cannot be after today. A mark made with no signal stays on the phone and is saved when signal returns. The record lists every walk, newest first, with each mark and its day. When every Required Now item is Done, EmberWalk drafts an inspection request for the homeowner to copy and send; it does not schedule the inspection.
+- **See It Fixed and a second check** (`packages/meta/`, `workers/pipeline/`, `apps/web/`): the pipeline asks Muse Image to show the top 3 findings fixed, each on its own blurred still, and a finding with a preview shows See It Fixed under More, labelled "AI preview, not a photo" on the picture. A second model, Muse Spark Open, reads each finding's photo with its rule and instruction; when it disagrees, the finding shows "Second check disagrees:" and the reason under the instruction. Neither step can fail a walk, and each stops after 4 minutes. For now the second check runs on sample walks only. Tested with recorded model answers only.
+- **The house drawn with its findings** (`apps/web/`, `workers/api/`, `packages/shared/`): the results draw the house from above with rings for 5, 30 and 100 feet and a numbered pin for each finding the loop saw within 100 feet, on the side it was seen from and at its measured distance. Pins that would overlap move apart along their side and stay inside the drawing, and each pin opens its finding.
+- **Back to a walk being checked** (`apps/web/`): Home shows a card for each walk still being checked, newest first, with its date and See Progress, which reopens its checking screen. The card goes when the results open or the check fails, and the checking screen says when it has failed.
+- **Pans by corner** (`apps/web/`, `workers/api/`, `workers/pipeline/`, `packages/db/`, `migrations/0017_corner_parts.sql`): the phone now tags each pan with the corner between the two sides walked before and after it, the pipeline counts a corner panned twice once, and the server takes a redo of one corner alone when that corner is missing. A walk with a corner missing never shows as Ready for Inspection.
+- **A full walk through the server** (`workers/pipeline/`): a test now sends one synthetic walk, tagged on every side with enough light and the same place at its start and end, through the whole server workflow, and it ends with all four sides checked and nothing left to walk. Tested with recorded model answers; no test yet starts that walk from the phone.
+- **Rules for the newer objects** (`packages/rules/`, `packages/catalog/`, `packages/shared/`, `workers/pipeline/`): each of the ten newer objects on the list (gas cans, stored fuel, lawn mowers, grills, small propane cylinders, vehicles, lumber piles, tarps, doormats, boats and trailers) now has its own rule at Recommended, citing a published fire safety source at the distance that source gives, such as 3 feet for a grill and 10 feet for stored fuel. Wooden decks within 5 feet of the house are added too. The pipeline now stores each one it sees like any other hazard. A chimney now gives a spark arrester finding at Recommended, citing the California fire and building codes. Tested with recorded model answers only.
+- **The walk sent while it is recorded** (`apps/web/`, `workers/api/`, `packages/shared/`): on a phone that has tapped Send My Walk once before, each later walk goes up in parts while it is still being recorded, and Send then sends only what is left; a phone's first walk still goes up after Send. A part that fails, or a walk started with no signal, goes up from the phone's storage when signal returns, and Stop never waits on the network. Delete It and Record Again and Not Now stop the upload on the server, and a stop that cannot reach the server is tried again later. A walk start or upload start that reaches the server twice gets the same walk and the same upload.
+- **A failed walk is sent again, not walked again** (`apps/web/`, `workers/api/`, `packages/db/`): when a walk's check fails, or EmberWalk can no longer find it, the phone keeps the video and offers Send My Walk for the same video as a new walk. A failed walk does not count toward the day's walks, so the resend goes through on a day at the limit. A redo of one side that fails opens the first walk's results, which ask for that side alone. A video refused as unreadable is not offered again, since the same video would be refused again.
+- **More on the phone** (`apps/web/`): Home shows the EmberWalk mark, a green shield in three layers with WILDFIRE HOME CHECK under it. The Simple and Detailed switch is now on each finding as well as the results, one choice for both, and Detailed adds how far the finding is from the house. The screen stays awake while recording. The last 40 proof photos opened are kept on the phone and open with no signal, and a walk recorded with no signal waits on Home to be sent. In the copy of the app that runs the sample houses with no network, Walk My House plays a sample walk, muted and without asking for the camera, then opens the sample house's results.
+- **Ready for a first deploy** (`scripts/`, `workers/api/`, `workers/pipeline/`, `workers/static/`, `containers/media/`): every Worker names the real database, the phone app is served beside the API at go.emberwalk.app and the site at emberwalk.app, and a boot check starts every Worker locally and asks each for its health answer before anything is deployed. Each visitor can send 3 walks a day; a fourth is refused with "You have sent as many walks as EmberWalk allows today. Try again tomorrow.", and a redo of one side or corner, a failed walk sent again and a walk start that reaches the server twice do not count. Phone recordings in HEVC or VP9 are turned into H.264 mp4 clips that any phone can play. Until real footage is switched on, the pipeline accepts only the sample walks it knows and refuses any other video with "Real footage is not accepted yet." Voice notes and Get It Fixed are switched on for the first deploy.
+- **Sample houses** (`blender/`): a sample house without a roof is refused, and the mobile home and apartment now have theirs. The house scene grows conifers and oaks at the places and sizes its spec gives, a wooden deck is a hazard the house's answer key names with its rule, the walk render writes one H.264 mp4 and refuses a scene that was never built, and each Required Now hazard can be rendered again as an after picture from the same camera place as its proof frame.
+
+## Numbers
+
+The push gate on this repository, run Friday Oct. 30th, 2026: 5,002 of 5,002 tests, all passing. Day 4 ended at 3,455.
+
+| Area | Tests | Since Day 4 |
+| --- | --- | --- |
+| Synthetic sample houses (`blender`) | 854 | +275 |
+| Phone app (`apps/web`) | 777 | +292 |
+| Build checks (`tools`) | 599 | +280 |
+| Rules engine (`packages/rules`) | 528 | +157 |
+| Walk pipeline (`workers/pipeline`) | 358 | +55 |
+| Meta model client (`packages/meta`) | 339 | +80 |
+| Walk and upload API (`workers/api`) | 306 | +103 |
+| Site (`workers/static`) | 251 | +17 |
+| Database (`packages/db`) | 195 | +48 |
+| Plain wording (`packages/explain`) | 180 | 0 |
+| Contracts (`packages/shared`) | 134 | +30 |
+| Crew directory (`packages/directory`) | 117 | new |
+| Sample walk import (`packages/sample-import`) | 103 | +4 |
+| Get It Fixed agent (`packages/agent`) | 79 | +22 |
+| Media Container (`containers/media`) | 73 | +2 |
+| Get It Fixed Worker (`workers/getfixed`) | 65 | new |
+| Object catalog (`packages/catalog`) | 38 | 0 |
+| Upload signing (`packages/sigv4`) | 6 | 0 |
+
+Live model spend since the last upload: none recorded.
+
+## Not built yet
+
+Nothing is deployed, so no walk has gone from a phone through the live pipeline and no request has gone to a real crew. Get It Fixed, See It Fixed, the second check and voice notes have not yet been run against the live models. When a walk did not come back to its start or is missing pans, it is held back from Ready for Inspection, but the phone does not yet say why, and it does not yet ask for one corner by name. A video the server cannot read still asks for the walk to be recorded again. A phone that gives no compass readings is not yet guided side by side on screen. The rules engine can judge from an object's outline whether it touches the wall, but the pipeline does not pass it the outlines yet. The sample walk rendered with the new trees and decks is not finished.

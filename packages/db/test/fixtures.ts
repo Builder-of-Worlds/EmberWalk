@@ -11,7 +11,9 @@ export const TRACK_2 = "9a0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
 export const FINDING = "aa0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 export const FINDING_2 = "aa0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
 
-const VISITOR = "a".repeat(64);
+export const VISITOR = "a".repeat(64);
+
+export const HOMEOWNER = { visitorId: VISITOR, photoKeys: ["stills/proof.jpg"] };
 
 export const seedWalk = async (id: string, state: string, step: string | null = null): Promise<void> => {
   await env.DB.prepare(
@@ -22,7 +24,7 @@ export const seedWalk = async (id: string, state: string, step: string | null = 
 };
 
 export const resetDb = async (): Promise<void> => {
-  await env.DB.batch(["fault_reports", "follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walk_gaps", "walks"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["get_it_fixed_uses", "fault_reports", "follow_ups", "agent_messages", "agent_steps", "agent_job_crews", "agent_jobs", "findings", "tracks", "concept_runs", "clips", "tags", "cost_records", "cache_entries", "walk_gaps", "walks"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 };
 
 export const tag = (over: Partial<Tag> = {}): Tag => ({

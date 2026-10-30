@@ -3,6 +3,7 @@ import type { Env } from "./env.ts";
 import { type StartResult, startWalk } from "./start.ts";
 import { sweepVideos } from "./sweep.ts";
 
+export { MediaContainer } from "./media-container.ts";
 export { WalkPipeline } from "./workflow.ts";
 
 export class PipelineEntry extends WorkerEntrypoint<Env> {

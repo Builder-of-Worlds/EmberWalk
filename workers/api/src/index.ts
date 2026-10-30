@@ -1,5 +1,7 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
+import { handleCrewSearch, handleFireLinks } from "./directory-route.ts";
 import { handleFaultReport } from "./fault-report.ts";
+import { type GetFixedService, handleGetFixed, isFixedPath } from "./get-it-fixed-routes.ts";
 import { createUploadApi } from "./upload-api.ts";
 import type { PipelineStarter } from "./upload-api.ts";
 import { r2UploadStore } from "./upload-store.ts";
@@ -18,6 +20,7 @@ export type Env = {
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
   PIPELINE_SERVICE: PipelineStarter;
+  GET_FIXED: GetFixedService;
 };
 
 const errorResponse = (code: string, message: string, status: number): Response =>
@@ -48,6 +51,9 @@ export default {
     const { pathname } = new URL(request.url);
     if (pathname === "/health") return Response.json({ status: "ok" });
     if (pathname === "/api/faults") return handleFaultReport(request, env.DB, Date.now);
+    if (pathname === "/api/crews") return handleCrewSearch(request, env.DB);
+    if (pathname === "/api/fire-links") return handleFireLinks(request);
+    if (isFixedPath(pathname)) return handleGetFixed(request, env, pathname);
     if (pathname === "/api/walks") return handleCreateWalk(request, env.DB, () => crypto.randomUUID());
     const tagsOf = TAGS_PATH.exec(pathname);
     if (tagsOf !== null) return handleAddTags(request, env.DB, tagsOf[1] ?? "");

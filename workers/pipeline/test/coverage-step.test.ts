@@ -7,7 +7,7 @@ import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
 import { checkCoverage, notCheckedConcepts, samplesWithin, sideLight } from "../src/coverage-step.ts";
 import { clipKey } from "../src/storage.ts";
 import { freshWalkId, resetAll, seedWalk } from "./fixtures.ts";
-import { harness, idFor, SAME_PLACE_PHRASE, stageSamePlace, testDeps } from "./harness.ts";
+import { harness, idFor, SAME_PLACE_PHRASE, stageSamePlace, stageSamePlaces, testDeps } from "./harness.ts";
 
 beforeEach(resetAll);
 
@@ -136,6 +136,219 @@ describe("the coverage step on a walk that went all the way around", () => {
 
     expect((await tagsForWalk(env.DB, walkId)).filter((t) => t.kind === "loop")).toHaveLength(2);
     expect((await recordOf(walkId)).loop).toBe("closed");
+  });
+});
+
+describe("the coverage step on a guided walk, which has no compass", () => {
+  const SAME = { same: true, confidence: 0.9 };
+  const DIFFERENT = { same: false, confidence: 0.9 };
+
+  const guided = async (light = 150, tapSeconds = 24) => {
+    const made = await seeded({ loopTag: false });
+    const n = Number(made.walkId.slice(-4));
+    for (const [i, side] of ["front", "left", "back", "right"].entries()) {
+      const at = i * tapSeconds;
+      await addTag(env.DB, {
+        id: idFor(3800 + n * 10 + i),
+        walkId: made.walkId,
+        kind: "loop",
+        startSeconds: at,
+        endSeconds: at + tapSeconds,
+        label: side,
+        samples: [],
+        light: [{ t: at + 1, light }],
+        propertyLine: null,
+      });
+    }
+    return made;
+  };
+  const threeStills = () => harness.stilled.filter((request) => request.stills.length === 3);
+  const imagesOf = (body: unknown): string[] =>
+    (body as { input: { content: { image_url?: string }[] }[] }).input.flatMap((m) => m.content.flatMap((c) => (c.image_url === undefined ? [] : [atob(c.image_url.slice(c.image_url.indexOf(",") + 1))])));
+  const halfwayAsked = () => harness.requests.some((req) => req.path === "/responses" && "json" in req && imagesOf(req.json).some((image) => image.includes("/look/2.jpg")));
+
+  it("closes the loop and reaches checked when the end looks like the start and the halfway point does not", async () => {
+    stageSamePlaces(SAME, DIFFERENT);
+    const { walkId, clips } = await guided();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    const record = await recordOf(walkId);
+    expect(record).toMatchObject({ loop: "closed", coverage: "checked", gaps: [], look: { ...SAME, halfway: DIFFERENT } });
+    expect(outcome).toEqual({ coverage: "checked", loop: "closed", gaps: 0, sides: { front: "checked", left: "checked", back: "checked", right: "checked" } });
+    expect(await gapsForWalk(env.DB, walkId)).toEqual([]);
+  });
+
+  it("cuts a third still at the halfway point, asks twice, and leaves no still in R2", async () => {
+    stageSamePlaces(SAME, DIFFERENT);
+    const { walkId, clips } = await guided();
+
+    await checkCoverage(deps(), walkId, clips);
+
+    expect(threeStills().map((request) => request.stills.map((s) => s.time))).toEqual([[2, 94, 48]]);
+    expect(askedForLook()).toBe(2);
+    expect(halfwayAsked()).toBe(true);
+    expect(await lookKeys(walkId)).toEqual([]);
+  });
+
+  it("stays not checked when the halfway point looks like the start, and still stores the side gaps it finds", async () => {
+    stageSamePlaces(SAME, { same: true, confidence: 0.95 });
+    const { walkId, clips } = await guided(20);
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: { ...SAME, halfway: { same: true, confidence: 0.95 } } });
+    expect(outcome.loop).toBe("not_checked");
+    expect((await gapsForWalk(env.DB, walkId)).map((gap) => `${gap.side}:${gap.kind}`).sort()).toEqual(["back:dark", "front:dark", "left:dark", "right:dark"]);
+  });
+
+  it("is open and asks no halfway look when the end does not look like the start", async () => {
+    stageSamePlaces(DIFFERENT, DIFFERENT);
+    const { walkId, clips } = await guided();
+
+    await checkCoverage(deps(), walkId, clips);
+
+    const record = await recordOf(walkId);
+    expect(record).toMatchObject({ loop: "open", coverage: "not_checked", look: DIFFERENT });
+    expect(askedForLook()).toBe(1);
+  });
+
+  it("asks once and compares no halfway still when the end looks like the start at only 0.69", async () => {
+    const UNSURE = { same: true, confidence: 0.69 };
+    stageSamePlaces(UNSURE, DIFFERENT);
+    const { walkId, clips } = await guided();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(askedForLook()).toBe(1);
+    expect(halfwayAsked()).toBe(false);
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: UNSURE });
+    expect((await recordOf(walkId)).look).not.toHaveProperty("halfway");
+    expect(outcome.loop).toBe("not_checked");
+    expect(await lookKeys(walkId)).toEqual([]);
+  });
+
+  it("keeps the end look and stays not checked when the halfway call still answers 500 after its retries", async () => {
+    harness.answers[SAME_PLACE_PHRASE] = [{ text: JSON.stringify(SAME) }, { status: 500 }];
+    const { walkId, clips } = await guided();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(askedForLook()).toBe(4);
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: { ...SAME, halfwayNotChecked: "Muse Spark answered 500" } });
+    expect((await recordOf(walkId)).look).not.toHaveProperty("halfway");
+    expect(outcome).toMatchObject({ loop: "not_checked", coverage: "not_checked" });
+    expect(await lookKeys(walkId)).toEqual([]);
+  });
+
+  it("keeps the end look and stays not checked when the daily cap refuses the halfway call", async () => {
+    stageSamePlaces(SAME, DIFFERENT);
+    harness.onRequest = async (req) => {
+      if (req.path === "/responses") harness.capUsd = 0.000001;
+    };
+    const { walkId, clips } = await guided();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(askedForLook()).toBe(1);
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: { ...SAME, halfwayNotChecked: expect.stringContaining("daily_cap_reached") } });
+    expect((await recordOf(walkId)).look).not.toHaveProperty("halfway");
+    expect(outcome).toMatchObject({ loop: "not_checked", coverage: "not_checked" });
+    expect(await lookKeys(walkId)).toEqual([]);
+  });
+
+  it("keeps the end look and stays not checked when the halfway answer cannot be read, and leaves no still", async () => {
+    stageSamePlaces(SAME, "not json at all");
+    const { walkId, clips } = await guided();
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: { ...SAME, halfwayNotChecked: expect.stringContaining("refused") } });
+    expect((await recordOf(walkId)).look).not.toHaveProperty("halfway");
+    expect(outcome.loop).toBe("not_checked");
+    expect(await lookKeys(walkId)).toEqual([]);
+  });
+
+  it("never closes on the side taps and corner pans alone: the end look must be asked and answered", async () => {
+    stageSamePlaces("not json at all");
+    const { walkId, clips } = await guided();
+
+    await checkCoverage(deps(), walkId, clips);
+
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", coverage: "not_checked", look: { notChecked: expect.any(String) } });
+  });
+
+  it("asks no halfway look and cuts two stills on a loop under 20 seconds", async () => {
+    stageSamePlaces(SAME, DIFFERENT);
+    const { walkId, clips } = await guided();
+    const short: Clip = { ...(clips[0] as Clip), frameCount: 24 };
+
+    await checkCoverage(deps(), walkId, [short]);
+
+    expect(askedForLook()).toBe(1);
+    expect(threeStills()).toEqual([]);
+    expect(await recordOf(walkId)).toMatchObject({ loop: "not_checked", look: SAME });
+  });
+
+  it("asks no halfway look of a walk with a compass, which the compass closes", async () => {
+    stageSamePlaces(SAME, DIFFERENT);
+    const { walkId, clips } = await seeded();
+
+    await checkCoverage(deps(), walkId, clips);
+
+    expect(askedForLook()).toBe(1);
+    expect(threeStills()).toEqual([]);
+    expect((await recordOf(walkId)).look).toEqual(SAME);
+  });
+});
+
+describe("the coverage step's corner gaps", () => {
+  const pan = (walkId: string, i: number, label: string): Tag => ({
+    id: idFor(3600 + Number(walkId.slice(-4)) * 10 + i),
+    walkId,
+    kind: "pan",
+    startSeconds: 100 + i * 5,
+    endSeconds: 102 + i * 5,
+    label,
+    samples: [],
+    propertyLine: null,
+  });
+  const cornerGaps = async (walkId: string) => (await gapsForWalk(env.DB, walkId)).filter((gap) => gap.hint === "pan_corner");
+
+  it("writes a missing gap with the pan_corner hint for each corner a side tagged walk never panned", async () => {
+    stageSamePlace({ same: true, confidence: 0.9 });
+    const { walkId, clips } = await seeded({ sideTags: 150, pans: 0 });
+
+    await checkCoverage(deps(), walkId, clips);
+
+    expect(await cornerGaps(walkId)).toEqual(
+      ["front_right", "back_right", "back_left", "front_left"].map((side) => ({ side, kind: "missing", hint: "pan_corner" })),
+    );
+  });
+
+  it("writes no gap on the corner a walk of one corner panned", async () => {
+    const walkId = freshWalkId();
+    await seedWalk(walkId);
+    await addTag(env.DB, pan(walkId, 0, "front right corner"));
+
+    await checkCoverage(deps(), walkId, []);
+
+    const gaps = await cornerGaps(walkId);
+    expect(gaps.map((gap) => gap.side)).not.toContain("front_right");
+    expect(gaps).toHaveLength(3);
+  });
+
+  it("counts a corner panned twice once, and writes no corner gap for a walk whose pans do not name corners", async () => {
+    stageSamePlace({ same: true, confidence: 0.9 });
+    const { walkId, clips } = await seeded({ sideTags: 150, pans: 0 });
+    for (const [i, corner] of ["front left corner", "front left corner", "back left corner", "back right corner", "front right corner"].entries())
+      await addTag(env.DB, pan(walkId, i, corner));
+    await checkCoverage(deps(), walkId, clips);
+    expect(await cornerGaps(walkId)).toEqual([]);
+
+    const other = await seeded({ sideTags: 150, pans: 2 });
+    await checkCoverage(deps(), other.walkId, other.clips);
+    expect(await cornerGaps(other.walkId)).toEqual([]);
   });
 });
 
@@ -384,10 +597,33 @@ describe('the walk went all the way around the house, on the synthetic side walk
       const seen = tags.filter((t) => t.kind === kind && t.label === side).flatMap((t) => t.samples.map((s) => s.light ?? Number.NaN));
       return seen.reduce((sum, value) => sum + value, 0) / seen.length;
     };
-    expect(mean("pan", "left")).toBe(5);
+    expect(mean("pan", "back left corner")).toBe(5);
     expect(sideLight(tags)).toEqual({ front: mean("loop", "front"), left: mean("loop", "left"), back: mean("loop", "back"), right: mean("loop", "right") });
     expect(sideLight(tags).front).toBe(150);
     expect((await checkCoverage(deps(), walkId, clips)).coverage).toBe("checked");
+  });
+
+  it("reads the light of a guided walk's side from the readings on its loop tags, with no compass samples, and never from a pan", () => {
+    const loop = (label: string, light?: { t: number; light: number }[]): Tag => ({
+      id: idFor(1),
+      walkId: freshWalkId(),
+      kind: "loop",
+      startSeconds: 0,
+      endSeconds: 10,
+      label,
+      samples: [],
+      propertyLine: null,
+      ...(light === undefined ? {} : { light }),
+    });
+    const pan: Tag = { ...loop("front left corner", [{ t: 1, light: 255 }]), kind: "pan" };
+    const read = sideLight([
+      loop("front", [{ t: 1, light: 100 }, { t: 2, light: 200 }]),
+      loop("front", [{ t: 11, light: 150 }]),
+      loop("left", [{ t: 1, light: 20 }]),
+      loop("back"),
+      pan,
+    ]);
+    expect(read).toEqual({ front: 150, left: 20, back: null, right: null });
   });
 
   it("holds green and marks a side partly checked when that side's light was never measured, as from a phone before light", async () => {
@@ -409,6 +645,25 @@ describe('the walk went all the way around the house, on the synthetic side walk
     expect(outcome.coverage).toBe("not_checked");
     expect((await recordOf(walkId)).gaps).toEqual([expect.objectContaining({ kind: "pans_missing", reason: { measure: "pans", measured: 2, needed: 4 } })]);
     expect(outcome.sides).toEqual(ALL_PARTLY);
+  });
+
+  it("counts a corner panned twice as one pan, so four pans of three corners still miss the pans", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ panSides: ["front left corner", "back left corner", "back left corner", "back right corner"] });
+
+    const outcome = await checkCoverage(deps(), walkId, clips);
+
+    expect(outcome.coverage).toBe("not_checked");
+    expect((await recordOf(walkId)).gaps).toEqual([expect.objectContaining({ kind: "pans_missing", reason: { measure: "pans", measured: 3, needed: 4 } })]);
+  });
+
+  it("counts four pans of the four corners as every pan", async () => {
+    stageSamePlace({ same: true, confidence: 0.99 });
+    const { walkId, clips } = await sideWalkSeeded({ panSides: ["front left corner", "back left corner", "back right corner", "front right corner"] });
+
+    await checkCoverage(deps(), walkId, clips);
+
+    expect((await recordOf(walkId)).gaps).toEqual([]);
   });
 
   it("marks no side checked when the loop did not come back to its start", async () => {

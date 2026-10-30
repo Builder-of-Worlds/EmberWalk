@@ -1,10 +1,12 @@
+import type { MediaContainer } from "./media-container.ts";
+
 export type PipelineParams = { walkId: string };
 
 export type Env = {
   DB: D1Database;
   MEDIA: R2Bucket;
   PIPELINE: Workflow<PipelineParams>;
-  MEDIA_CONTAINER: Fetcher;
+  MEDIA_CONTAINER: DurableObjectNamespace<MediaContainer>;
   R2_HOST: string;
   R2_BUCKET_NAME: string;
   R2_ACCESS_KEY_ID?: string;
@@ -14,4 +16,7 @@ export type Env = {
   META_BILLING: string;
   SWEEP_AFTER_HOURS?: string;
   VOICE_NOTES?: string;
+  SYNTHETIC_RENDERS?: string;
+  BASETEN_API_KEY?: string;
+  SECOND_CHECK_REAL_WALKS?: string;
 };

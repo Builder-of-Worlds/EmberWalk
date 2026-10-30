@@ -13,6 +13,13 @@
     "siding": "stucco",
     "terrain": "foothill lot",
     "area": "State Responsibility Area",
+    "roof": {
+      "eave_in": 12,
+      "blocks": [
+        {"min_in": [0, 0], "max_in": [960, 408], "ridge": "east_west", "rise_in": 51},
+        {"min_in": [0, 408], "max_in": [384, 600], "ridge": "north_south", "rise_in": 48}
+      ]
+    },
     "features": {
       "gutters": true,
       "windows": [
@@ -305,5 +312,5 @@
       "rule_id": "ca-dry-grass-far-ccr-z2"
     }
   ],
-  "route": {"placeholder": true}
+  "route": {"pan_s": 10}
 }

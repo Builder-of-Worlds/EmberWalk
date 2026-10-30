@@ -13,7 +13,7 @@ def check(path, changes_path):
     rules = house.load_rules()
     catalog = assets.load_catalog()
     house.validate(doc, catalog, rules)
-    line = house.summary(doc)
+    line = house.summary(doc, rules)
     if changes is not None:
         after = house.after_spec(doc, changes, catalog, rules)
         line += "; " + house.after_summary(doc, after)

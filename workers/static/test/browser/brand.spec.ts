@@ -42,6 +42,15 @@ for (const { path, url, title } of PAGES) {
       expect(meta["theme-color"]).toMatch(/^#[0-9a-f]{6}$/);
     });
 
+    test("sets the browser bar colour to the page's own ground", async ({ page }) => {
+      await page.goto(path);
+      const { meta } = await headTags(page);
+      const ground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      const [r, g, b] = ground.match(/\d+/g)!.map(Number);
+      const hex = `#${[r, g, b].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+      expect(meta["theme-color"]).toBe(hex);
+    });
+
     test("carries the share tags with absolute emberwalk.app addresses", async ({ page }) => {
       await page.goto(path);
       const { meta } = await headTags(page);

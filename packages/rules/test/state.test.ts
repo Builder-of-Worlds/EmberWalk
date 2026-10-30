@@ -102,3 +102,65 @@ describe("a state file as data", () => {
     for (const bad of [null, undefined, 7, "CA", [], Object.create(null)]) expect(refusalOf(bad).reason).toBe("invalid_file");
   });
 });
+
+describe("the limits of a state file", () => {
+  const accepted = (input: unknown) => expect(() => readState(input)).not.toThrow();
+
+  const sized = (rules: number, statutes: number): unknown =>
+    variant((f) => {
+      const model = f.rules[0]!;
+      f.rules = Array.from({ length: rules }, (_, i) => ({ ...structuredClone(model), id: `ca-r${i}`, key: `r${i}`, statute: i < statutes ? `s${i}` : null }));
+      f.jurisdictions = { ca: Array.from({ length: statutes }, (_, i) => `s${i}`) };
+    });
+
+  it("takes one rule, and refuses none, naming the rules", () => {
+    accepted(sized(1, 1));
+    expect(refusalOf(variant((f) => (f.rules = []))).message).toMatch(/rules: /);
+  });
+
+  it("takes 2000 rules and refuses 2001", () => {
+    accepted(sized(2000, 1));
+    expect(refusalOf(sized(2001, 1)).message).toMatch(/rules: /);
+  });
+
+  it("takes 10 statutes in a jurisdiction and refuses 11 or none", () => {
+    accepted(sized(10, 10));
+    expect(refusalOf(sized(11, 11)).message).toMatch(/jurisdictions\.ca: /);
+    expect(refusalOf(variant((f) => (f.jurisdictions.ca_empty = []))).message).toMatch(/jurisdictions\.ca_empty: /);
+  });
+
+  it("refuses an empty list in a rule's conditions, naming it", () => {
+    for (const name of ["contact", "plant", "spacing", "flags", "unless"] as const) {
+      const refusal = refusalOf(variant((f) => Object.assign(f.rules[3]!.when, { [name]: [] })));
+      expect(refusal.message, name).toMatch(new RegExp(`rules\\.3\\.when\\.${name}: `));
+    }
+  });
+
+  it("takes a rule key of 1 to 60 characters with digits and hyphens, and refuses 61", () => {
+    const keyed = (key: string) => variant((f) => (f.rules[0]!.key = key));
+    accepted(keyed("a"));
+    accepted(keyed("a29-90z"));
+    accepted(keyed("k".repeat(60)));
+    expect(refusalOf(keyed("k".repeat(61))).message).toMatch(/rules\.0\.key: /);
+  });
+
+  it("takes a code of 1 to 100 characters and a section of 1 to 150, and refuses an empty or longer one", () => {
+    const worded = (field: "code" | "section", text: string) => variant((f) => (f.rules[0]![field] = text));
+    for (const [field, longest] of [["code", 100], ["section", 150]] as const) {
+      accepted(worded(field, "a"));
+      accepted(worded(field, "a".repeat(longest)));
+      expect(refusalOf(worded(field, "")).message).toMatch(new RegExp(`rules\\.0\\.${field}: `));
+      expect(refusalOf(worded(field, "a".repeat(longest + 1))).message).toMatch(new RegExp(`rules\\.0\\.${field}: `));
+    }
+  });
+
+  it("takes a source name of 1 to 31 characters and refuses 32", () => {
+    const named = (name: string) =>
+      variant((f) => {
+        f.sources[name] = structuredClone(Object.values(f.sources)[0]!);
+      });
+    accepted(named("a"));
+    accepted(named(`a${"b".repeat(30)}`));
+    expect(refusalOf(named(`a${"b".repeat(31)}`)).message).toMatch(/sources\./);
+  });
+});

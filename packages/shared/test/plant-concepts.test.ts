@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Concept, Finding, LOOP_CONCEPTS, PLANT_CONCEPTS } from "../src/index.ts";
+import { Concept, Finding, PLANT_CONCEPTS } from "../src/index.ts";
 import { TAPPED_FINDING, refuses, roundTrips } from "./check.ts";
 
 describe("PLANT_CONCEPTS", () => {
@@ -12,8 +12,8 @@ describe("PLANT_CONCEPTS", () => {
   });
 
   it("refuses a plant state on every concept that is not a plant", () => {
-    const others = LOOP_CONCEPTS.filter((c) => !(PLANT_CONCEPTS as readonly string[]).includes(c));
-    expect(others.length).toBe(LOOP_CONCEPTS.length - PLANT_CONCEPTS.length);
+    const others = Concept.options.filter((c) => !(PLANT_CONCEPTS as readonly string[]).includes(c));
+    expect(others.length).toBe(Concept.options.length - PLANT_CONCEPTS.length);
     for (const concept of others) refuses(Finding, { ...TAPPED_FINDING, concept, plantState: "alive" });
   });
 });

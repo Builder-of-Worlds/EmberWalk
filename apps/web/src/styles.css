@@ -299,6 +299,72 @@ h2 {
   color: inherit;
 }
 
+.finding .number,
+.house-map .dot {
+  background: var(--leaf);
+  fill: var(--leaf);
+}
+
+.finding .number {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  border-radius: 1rem;
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.house-map {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 22rem;
+}
+
+.house-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.house-map .ring {
+  fill: var(--stone);
+  fill-opacity: 0.4;
+  stroke: var(--soil);
+  stroke-width: 0.5;
+}
+
+.house-map .house {
+  fill: var(--soil);
+  stroke: var(--bark);
+  stroke-width: 1;
+}
+
+.house-map .hit {
+  fill: transparent;
+}
+
+.house-map .dot {
+  stroke: var(--paper);
+  stroke-width: 1.5;
+}
+
+.house-map .pin:focus-visible .dot {
+  stroke: var(--bark);
+  stroke-width: 3;
+}
+
+.house-map text {
+  fill: var(--paper);
+  font-size: 9px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
 .one-finding p {
   margin: 0;
 }
@@ -370,6 +436,44 @@ h2 {
 
 .sources q {
   display: block;
+}
+
+.fix-preview {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--stone);
+  aspect-ratio: 16 / 9;
+}
+
+.fix-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fix-preview .ai-label {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 1rem);
+  text-align: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--bark);
+  color: var(--paper);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.one-finding .second-check {
+  text-align: center;
+  font-size: 1rem;
+  color: var(--soil);
 }
 
 .band,
@@ -519,4 +623,178 @@ h3 {
   .trail .bar span {
     transition: none;
   }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form label,
+.note label {
+  text-align: center;
+  font-weight: 700;
+}
+
+.form input,
+.form textarea,
+.note input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--paper);
+  border: 2px solid var(--bark);
+  border-radius: 0.5rem;
+}
+
+.form .help,
+.form p {
+  margin: 0;
+}
+
+.crews,
+.messages,
+.sentences {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fix p,
+.approve p,
+.inspection p,
+.history p {
+  margin: 0;
+}
+
+.job,
+.yourself,
+.remind,
+.inspection-ask,
+.record-walk,
+.proofs,
+.links,
+.replies,
+.reminders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.crew,
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--stone);
+}
+
+.crew p,
+.message [data-part="state"],
+.marks p {
+  text-align: center;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.who {
+  font-weight: 700;
+}
+
+.reply,
+.reading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.reply {
+  padding: 0.5rem 0;
+  border-top: 2px solid var(--paper);
+}
+
+.reading {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--paper);
+}
+
+.reading ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.body {
+  white-space: pre-wrap;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--stone);
+}
+
+.photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.5rem;
+}
+
+.photos img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.problem {
+  color: var(--bark);
+  font-weight: 700;
+}
+
+.brand-mark {
+  display: block;
+  width: 9rem;
+  height: auto;
+  margin: 0 auto;
+}
+
+.homes li,
+.map-ring li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--stone);
+  text-align: center;
+}
+
+.homes li p,
+.map-ring li p {
+  margin: 0;
+}
+
+.map-ring a {
+  color: inherit;
+}
+
+.links a,
+.open-items {
+  overflow-wrap: anywhere;
+}
+
+.links a {
+  color: var(--bark);
+  font-weight: 700;
 }

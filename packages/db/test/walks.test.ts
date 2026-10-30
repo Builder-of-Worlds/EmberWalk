@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DbRefused } from "../src/errors.ts";
-import { claimWalk, completeWalk, createWalk, failWalk, getWalk, moveWalkStep, setWalkProgress } from "../src/walks.ts";
+import { claimWalk, completeWalk, createWalk, failWalk, getWalk, markWalkReal, moveWalkStep, setWalkProgress, WalkLimitReached } from "../src/walks.ts";
 import type { NewWalk } from "../src/walks.ts";
 import { OTHER_WALK, resetDb, seedWalk, WALK } from "./fixtures.ts";
 
@@ -41,6 +41,48 @@ describe("creating a walk", () => {
     const created = await createWalk(env.DB, newWalk());
     expect(Date.parse(created.createdAt)).toBeGreaterThanOrEqual(before - 1000);
     expect(Date.parse(created.createdAt)).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  describe("under a daily cap", () => {
+    const id = (n: number) => `6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b${String(n).padStart(2, "0")}`;
+    const since = "2000-01-01T00:00:00.000Z";
+    const count = async () => (await env.DB.prepare("SELECT count(*) AS n FROM walks").first<{ n: number }>())?.n;
+    const live = (over: Partial<NewWalk> = {}) => newWalk({ synthetic: false, ...over });
+
+    it("stores walks up to the cap and refuses the next one, storing nothing", async () => {
+      for (const n of [1, 2]) await createWalk(env.DB, live({ id: id(n) }), { since, most: 2 });
+      await expect(createWalk(env.DB, live({ id: id(3) }), { since, most: 2 })).rejects.toBeInstanceOf(WalkLimitReached);
+      expect(await count()).toBe(2);
+    });
+
+    it("counts only this visitor's walks since the given time, and never part walks", async () => {
+      await createWalk(env.DB, live({ id: id(1), visitorId: "c".repeat(64) }));
+      await createWalk(env.DB, live({ id: id(2) }));
+      await env.DB.prepare("UPDATE walks SET created_at = '1999-12-31T23:59:59.999Z' WHERE id = ?").bind(id(2)).run();
+      await createWalk(env.DB, live({ id: id(3), partOf: { walkId: id(2), side: "front" } }));
+      await createWalk(env.DB, live({ id: id(6), partOf: { walkId: id(2), side: "back_left" } }));
+      expect((await createWalk(env.DB, live({ id: id(4) }), { since, most: 1 })).id).toBe(id(4));
+      await expect(createWalk(env.DB, live({ id: id(5) }), { since, most: 1 })).rejects.toBeInstanceOf(WalkLimitReached);
+    });
+
+    it("never counts sample walks, so a visitor can try several samples and still start every live walk allowed", async () => {
+      for (const n of [1, 2, 3, 4]) await createWalk(env.DB, newWalk({ id: id(n) }), { since, most: 1 });
+      expect((await createWalk(env.DB, live({ id: id(5) }), { since, most: 1 })).id).toBe(id(5));
+      await expect(createWalk(env.DB, live({ id: id(6) }), { since, most: 1 })).rejects.toBeInstanceOf(WalkLimitReached);
+      expect(await count()).toBe(5);
+    });
+
+    it("still refuses a repeated id as a repeat, not as the cap", async () => {
+      await createWalk(env.DB, live(), { since, most: 5 });
+      await expect(createWalk(env.DB, live(), { since, most: 5 })).rejects.toBeInstanceOf(DbRefused);
+    });
+  });
+
+  it("marks a walk real, and refuses a walk that is not stored", async () => {
+    await createWalk(env.DB, newWalk({ synthetic: true }));
+    await markWalkReal(env.DB, WALK);
+    expect((await getWalk(env.DB, WALK))?.synthetic).toBe(false);
+    await expect(markWalkReal(env.DB, OTHER_WALK)).rejects.toBeInstanceOf(DbRefused);
   });
 
   it("refuses an id that is already a walk and leaves the first walk alone", async () => {

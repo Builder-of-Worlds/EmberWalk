@@ -89,7 +89,7 @@ Pairing in `index.html`: glass and solid cards sit on forest or night tones; lig
 
 - Headings `h1` to `h3` are centered everywhere (69); card titles therefore center.
 - Captions center (`.pinboard figcaption` 344, `.phone figcaption` 422), as do figures (211), stats (226), zones (282), timeline steps (393), flow nodes (435), the statement (462), the checks list (468), the signup form and its button (489), and the footer (550).
-- Running paragraphs may stay left aligned inside a centered column: the privacy prose (`privacy.html:40`, `.column.prose.card`) keeps its paragraphs at the default start alignment while the card is centered by `margin: 0 auto` (86). On the landing page, paragraphs that stand alone in a card carry `.center`.
+- Running paragraphs may stay left aligned inside a centered column: the privacy prose (`privacy.html:40`, `.column.prose.card`) keeps its paragraphs at the default start alignment while the card is centered by `margin: 0 auto` (86). On the landing page, the running paragraphs of the insurance card, the first five feet card and its zone cards (`.zone p`, 295) and the house apart cards (`.apart-cards .card p`, 705) stay left aligned inside their centred card; other paragraphs that stand alone in a card carry `.center`.
 - Nothing hugs the left edge: every section has at least 1rem side padding (119, 121, 125, 481) and every card is a centered column with a max width.
 
 ## Motion

@@ -17,8 +17,6 @@ def checked(spec_path, changes_path, catalog):
     house.validate(doc, catalog, rules)
     if changes_path:
         doc = house.after_spec(doc, house.load_json(changes_path), catalog, rules)
-    if doc.get("trees"):
-        raise house.HouseError("refused", "trees are not built yet")
     house.roof_prisms(doc)
     motion_doc, parts_doc = route.build(doc)
     return doc, motion_doc, parts_doc
@@ -47,7 +45,8 @@ def main():
         u["id"]: assets.ensure(u["id"], catalog[u["id"]], assets.cache_dir())
         for u in used if u["kind"] != "scripted"
     }
-    blendscene.build_house(doc, catalog, manifests, motion_doc)
+    findings = [f["id"] for f in house.wood_findings(doc, house.load_rules())]
+    blendscene.build_house(doc, catalog, manifests, motion_doc, findings=findings)
     blend = os.path.join(out, "scene.blend")
     bpy.ops.wm.save_as_mainfile(filepath=blend, compress=True)
     record = {
@@ -60,6 +59,8 @@ def main():
         "assets": [dict(u, resolution=catalog[u["id"]].get("resolution")) for u in used],
         "build_seconds": round(time.monotonic() - started, 1),
     }
+    if doc.get("trees"):
+        record["trees"] = blendscene.tree_record(doc)
     with open(os.path.join(out, "scene.json"), "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2)
     print("EW_BUILT %s in %.1f s" % (blend, record["build_seconds"]))

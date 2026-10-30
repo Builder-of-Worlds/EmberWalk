@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EmberWalk | Get your home ready for wildfire season</title>
   <meta name="description" content="EmberWalk launches Nov. 4th, 2026. Take one walk around your house with your phone and see what could catch, what to fix first, and what California requires.">
-  <meta name="theme-color" content="#f1ecdb">
+  <meta name="theme-color" content="#1a271e">
   <link rel="icon" href="/brand/icon-32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="/brand/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
@@ -66,32 +66,33 @@
       <div class="beat"></div>
     </section>
 
-    <section class="section tone-forest">
+    <section class="section tone-forest" id="stats">
+      <div class="drift" aria-hidden="true"></div>
       <div class="card wide rise">
         <span class="eyebrow as-typed">Why It Matters</span>
         <h2>The cost of not being ready</h2>
-        <div class="stats three">
+        <div class="stats three cost">
           <div class="stat">
-            <span class="figure">16,264</span>
+            <span class="figure" data-count>16,264</span>
             <p>homes and other buildings destroyed by the Eaton and Palisades fires in Los Angeles County in January 2025.</p>
             <p>CAL FIRE counts 16,264 structures destroyed, 9,419 in Eaton and 6,845 in Palisades, across about 37,500 burned acres.</p>
             <p class="source">CAL FIRE incident pages, checked Oct. 27th, 2026</p>
           </div>
           <div class="stat">
-            <span class="figure">18,804</span>
+            <span class="figure" data-count>18,804</span>
             <p>buildings destroyed by the 2018 Camp Fire in Butte County, which burned through the town of Paradise.</p>
             <p>In its first 24 hours, NIST found, winds reached 50 mph and embers landed up to 3.9 miles ahead of the fire.</p>
             <p class="source">CAL FIRE incident page; NIST case study, Feb. 8th, 2021</p>
           </div>
           <div class="stat">
-            <span class="figure">3.7 <small>million</small></span>
+            <span class="figure" data-count>3.7 <small>million</small></span>
             <p>Californians live in the high and very high fire hazard zones CAL FIRE mapped in 2025 where local fire departments respond.</p>
             <p>Those zones have grown 168 percent since 2011, to 3,626 square miles.</p>
             <p class="source">CalMatters analysis of CAL FIRE maps, Mar. 24th, 2025</p>
           </div>
         </div>
         <h3 class="subhead">And the proof that getting ready works</h3>
-        <div class="stats two">
+        <div class="stats three proof">
           <div class="stat">
             <span class="figure">54% vs 36%</span>
             <p>In the 2025 Los Angeles fires, homes with all four of a fire-rated roof, fire-resistant siding, double-pane windows and enclosed eaves came through undamaged 54 percent of the time. Homes with only one: 36 percent.</p>
@@ -103,16 +104,20 @@
             <p>IBHS surveyed 252 buildings and ran 17 controlled tests on plants in that zone.</p>
             <p class="source">IBHS findings, Dec. 10th, 2025; IBHS Zone 0 research</p>
           </div>
+          <div class="stat">
+            <p>Under California's Safer from Wildfires rule, in force since October 2022, insurers must offer lower premiums for listed safety work, like clearing the first five feet.</p>
+            <p class="source">California Code of Regulations, title 10, section 2644.9.</p>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="section tone-night">
+    <section class="section tone-umber">
       <div class="card rise">
         <span class="eyebrow">Insurance</span>
         <h2>Proof you did the work</h2>
-        <p class="center">Since October 2022, California's Safer from Wildfires rule has required insurers to reward listed wildfire safety work in their rates, including keeping the first five feet around your home clear and meeting the state's defensible space law.</p>
-        <p class="center">EmberWalk keeps the date of every walk and every fix you mark done, so when your insurer asks what you've done, you have an answer.</p>
+        <p>Since October 2022, California's Safer from Wildfires rule has required insurers to reward listed wildfire safety work in their rates, including keeping the first five feet around your home clear and meeting the state's defensible space law.</p>
+        <p>EmberWalk keeps the date of every walk and every fix you mark done, so when your insurer asks what you've done, you have an answer.</p>
         <p class="source center">California Code of Regulations, title 10, section 2644.9.</p>
       </div>
     </section>
@@ -190,7 +195,7 @@
       <div class="card wide rise">
         <span class="eyebrow">What California requires</span>
         <h2>The first five feet matter most</h2>
-        <p class="center">California's defensible space law asks for up to 100 feet of cleared space around homes in the state's fire hazard areas, split into three zones. The closest, 0 to 5 feet from the walls, is known as Zone 0. The Board of Forestry adopted rules for it in August 2026; they are not in effect yet. The IBHS findings above show why they matter.</p>
+        <p>California's defensible space law asks for up to 100 feet of cleared space around homes in the state's fire hazard areas, split into three zones. The closest, 0 to 5 feet from the walls, is known as Zone 0. The Board of Forestry adopted rules for it in August 2026; they are not in effect yet. The IBHS findings above show why they matter.</p>
         <p class="source center">Public Resources Code 4291; Board of Forestry Zone 0 rulemaking, Aug. 2026.</p>
         <div class="zone-map" data-live="zones">
           <figure class="zones" id="zones">
@@ -228,10 +233,19 @@
             </div>
           </div>
         </div>
+        <figure class="pinboard cleared" data-live="pins">
+          <img src="/landing/synthetic-five-feet-1920.webp" srcset="/landing/synthetic-five-feet-960.webp 960w, /landing/synthetic-five-feet-1920.webp 1920w" sizes="(min-width: 900px) 52rem, 92vw" width="1920" height="1289" loading="lazy" decoding="async" alt="A clean strip of gravel along the wall of a house, with low plants spaced apart and an empty gutter.">
+          <span class="pin c1" aria-hidden="true"><span class="tip below">Clean gutter</span></span>
+          <span class="pin c2" aria-hidden="true"><span class="tip start">Nothing against the wall</span></span>
+          <span class="pin c3" aria-hidden="true"><span class="tip start">Gravel, not bark mulch</span></span>
+          <span class="pin c4" aria-hidden="true"><span class="tip end">Low plants, spaced apart</span></span>
+          <figcaption>What the first five feet should look like</figcaption>
+        </figure>
       </div>
     </section>
 
-    <section class="section tone-night">
+    <section class="section tone-night" id="how">
+      <div class="drift" aria-hidden="true"></div>
       <div class="card wide rise">
         <span class="eyebrow">How EmberWalk works</span>
         <h2>One walk with your phone. A clear list of what to fix.</h2>
@@ -266,6 +280,10 @@
         </div>
         <div class="phones">
           <figure class="phone">
+            <div class="bezel"><img src="/landing/synthetic-app-record.webp" width="780" height="1688" alt="The EmberWalk record screen, filming one slow walk around the house."></div>
+            <figcaption>Film one walk: EmberWalk guides you around the house</figcaption>
+          </figure>
+          <figure class="phone">
             <div class="bezel"><img src="/landing/synthetic-app-results.webp" width="780" height="1688" alt="The EmberWalk results screen, listing what was found in the first five feet."></div>
             <figcaption>Your results, and any side of the house the walk missed</figcaption>
           </figure>
@@ -280,6 +298,7 @@
     <section class="section tone-forest">
       <div class="card wide rise" id="after">
         <span class="eyebrow">After the walk</span>
+        <p class="order">It goes in order: you walk, you get your list, and each step after it shows here when it is built.</p>
         <p class="center">No calling around. Nothing goes out without your okay.</p>
         <div class="ring">
           <div class="ring-track" aria-hidden="true"></div>
@@ -293,10 +312,13 @@
       </div>
     </section>
 
-    <section class="section tone-night">
-      <div class="card rise">
-        <span class="eyebrow">The finish line</span>
-        <p class="statement"><strong>EmberWalk drafts your inspection request,</strong> with every fix listed and the CAL FIRE pages that find your local fire agency.</p>
+    <section class="section tone-night finish-stage">
+      <div class="card wide rise finish-card" id="finish">
+        <figure class="finish-shot"><img src="/landing/synthetic-inspector-1920.webp" srcset="/landing/synthetic-inspector-960.webp 960w, /landing/synthetic-inspector-1920.webp 1920w" sizes="(orientation: portrait) 190svh, 100vw" width="1920" height="1072" loading="lazy" decoding="async" alt="A fire inspector, seen from behind, looking over a house made ready for wildfire."></figure>
+        <div class="finish-panel">
+          <span class="eyebrow">The finish line</span>
+          <p class="statement"><strong>EmberWalk drafts your inspection request,</strong> with every fix listed and the CAL FIRE pages that find your local fire agency.</p>
+        </div>
       </div>
     </section>
 

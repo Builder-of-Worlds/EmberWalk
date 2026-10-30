@@ -43,6 +43,7 @@ export function holds(when: When, q: Query): boolean {
   if (when.plant && !when.plant.includes(q.plantState)) return false;
   if (when.spacing && (q.spacing === null || !when.spacing.includes(q.spacing))) return false;
   if (when.flags && !when.flags.every(has)) return false;
+  if (when.within !== undefined && q.distanceFeet.low > when.within) return false;
   return !(when.unless ?? []).some(has);
 }
 

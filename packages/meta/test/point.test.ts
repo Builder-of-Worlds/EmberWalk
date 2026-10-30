@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MetaRefused } from "../src/errors.ts";
 import { gridToPixels, readSparkBox, sparkBoxCall, toBase64 } from "../src/point.ts";
 import { samBoxVideoCall } from "../src/sam.ts";
+import { REASONING_ROOM } from "../src/spark.ts";
 import type { HttpRequest } from "../src/transport.ts";
 import type { BoxRow } from "./live/box-probe.ts";
 import { type Hazard, REPO, truth, YARD_TWO } from "./live/env.ts";
@@ -97,7 +98,7 @@ describe("the pointing call", () => {
     expect(a.value.box).toEqual({ left: 10, top: 20, right: 300, bottom: 400 });
     expect(s.transport.requests).toHaveLength(1);
     const json = (s.transport.requests[0] as Extract<HttpRequest, { json: unknown }>).json as Record<string, unknown>;
-    expect(json).toMatchObject({ store: false, reasoning: { effort: "minimal" }, max_output_tokens: 600 });
+    expect(json).toMatchObject({ store: false, reasoning: { effort: "minimal" }, max_output_tokens: 600 + REASONING_ROOM.minimal });
     expect(call.step).toBe("segment");
     expect(call.walkId).toBe(WALK_ID);
   });

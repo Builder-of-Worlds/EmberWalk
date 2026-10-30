@@ -4,6 +4,7 @@ export * from "./detections.ts";
 export * from "./errors.ts";
 export * from "./faults.ts";
 export * from "./findings.ts";
+export * from "./get-it-fixed.ts";
 export * from "./ledger.ts";
 export * from "./parts.ts";
 export * from "./tags.ts";

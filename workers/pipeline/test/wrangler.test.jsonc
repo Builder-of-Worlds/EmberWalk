@@ -13,6 +13,8 @@
     }
   ],
   "workflows": [{ "name": "walk-pipeline", "binding": "PIPELINE", "class_name": "WalkPipeline" }],
+  "durable_objects": { "bindings": [{ "name": "MEDIA_CONTAINER", "class_name": "MediaStandIn" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MediaStandIn"] }],
   "vars": {
     "R2_HOST": "test-account.r2.cloudflarestorage.com",
     "R2_BUCKET_NAME": "emberwalk-media",

@@ -4,3 +4,10 @@ export class DbRefused extends Error {
     this.name = "DbRefused";
   }
 }
+
+export class CapReached extends DbRefused {
+  constructor(message: string) {
+    super(message);
+    this.name = "CapReached";
+  }
+}

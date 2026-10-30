@@ -1,8 +1,8 @@
-import { Device } from "@emberwalk/shared";
-import type { MotionSample, Side } from "@emberwalk/shared";
+import { cornerBetween, Device, isCorner } from "@emberwalk/shared";
+import type { LightReading, MotionSample, Part, Side } from "@emberwalk/shared";
 import type { LightMeter } from "./light.ts";
 import type { Motion } from "./motion.ts";
-import { walkOrder } from "./parts.ts";
+import { GUIDED_ORDER, walkOrder } from "./parts.ts";
 import type { Pan, StopReason, WalkMarks } from "./take-store.ts";
 
 export const MP4_TYPES = ["video/mp4;codecs=avc1,mp4a", "video/mp4"] as const;
@@ -32,8 +32,10 @@ export const cameraDevice = (stream: MediaStream): Device | null => {
 
 export type CameraRefusal = "denied" | "unsupported" | "failed";
 
+type RecorderOptions = MediaRecorderOptions & { videoKeyFrameIntervalDuration?: number };
+
 type RecorderClass = {
-  new (stream: MediaStream, options?: MediaRecorderOptions): MediaRecorder;
+  new (stream: MediaStream, options?: RecorderOptions): MediaRecorder;
   isTypeSupported(type: string): boolean;
 };
 
@@ -90,11 +92,19 @@ export type Recording = {
   pan(): void;
   panning(): Side | null;
   pansLeft(): number;
+  next(): void;
+  guide(): Side | null;
   videoMs(): number;
   done: Promise<StopReason>;
 };
 
-export type Sensors = { light?: LightMeter | null; part?: Side | null };
+export type Sensors = { light?: LightMeter | null; part?: Part | null; guided?: boolean };
+
+const stopFor = (part: Part): Pick<Pan, "side" | "corner"> => {
+  if (!isCorner(part)) return { side: part, corner: null };
+  const side = GUIDED_ORDER.find((s, i) => cornerBetween(s, GUIDED_ORDER[(i + 1) % GUIDED_ORDER.length]!) === part)!;
+  return { side, corner: part };
+};
 
 const MAX_PANS = 4;
 
@@ -107,11 +117,12 @@ export const startRecording = (
   clock: Clock,
   maxMs: number,
   motion: Motion = null,
-  { light = null, part = null }: Sensors = {},
+  { light = null, part = null, guided = false }: Sensors = {},
 ): Recording => {
   const recorder = new camera.Recorder(camera.stream, {
     mimeType: camera.mimeType,
     videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
+    videoKeyFrameIntervalDuration: CHUNK_MS,
   });
   const startedAt = clock.now();
   let endedBy: StopReason = "stopped";
@@ -124,6 +135,12 @@ export const startRecording = (
   let lastSampleMs = -Infinity;
   let panSide: Side | null = null;
   let pansTaken = 0;
+  const guiding = guided && part === null && motion === null;
+  const meter = motion === null && (guided || part !== null) ? light : null;
+  let readings: LightReading[] = [];
+  let readingsTaken = 0;
+  let cancelReadings: () => void = () => undefined;
+  let nextTaps = 0;
 
   const videoMs = () => (pausedAt ?? clock.now()) - startedAt - pausedMs;
   const queue = (work: () => Promise<unknown>) => {
@@ -150,6 +167,20 @@ export const startRecording = (
     samples = [];
     mark((marks) => ({ ...marks, motion: [...marks.motion, ...batch] }));
   };
+  const flushLight = () => {
+    if (readings.length === 0) return;
+    const batch = readings;
+    readings = [];
+    mark((marks) => ({ ...marks, light: [...(marks.light ?? []), ...batch] }));
+  };
+  const readLight = () => {
+    cancelReadings = clock.later(readLight, MOTION_EVERY_MS);
+    if (pausedAt !== null || recorder.state !== "recording" || readingsTaken >= MAX_MOTION_SAMPLES) return;
+    const lux = meter?.read() ?? null;
+    if (lux === null) return;
+    readingsTaken += 1;
+    readings.push({ t: videoMs() / 1000, light: lux });
+  };
   const stopListening =
     motion?.listen((bearing) => {
       if (pausedAt !== null || recorder.state !== "recording" || taken.length >= MAX_MOTION_SAMPLES) return;
@@ -162,7 +193,11 @@ export const startRecording = (
       samples.push(sample);
     }) ?? (() => undefined);
 
-  const panSides = (): readonly Side[] => (part === null ? walkOrder(taken).slice(0, MAX_PANS) : [part]);
+  const panStops = (): readonly Pick<Pan, "side" | "corner">[] => {
+    if (part !== null) return [stopFor(part)];
+    const order = guiding ? GUIDED_ORDER : walkOrder(taken);
+    return order.slice(0, MAX_PANS).map((side, i) => ({ side, corner: cornerBetween(side, order[(i + 1) % order.length]!) }));
+  };
   const closePan = (atMs: number) => {
     if (panSide === null) return;
     panSide = null;
@@ -181,6 +216,7 @@ export const startRecording = (
   recorder.ondataavailable = (event) => {
     if (event.data.size > 0) queue(() => sink.chunk(event.data));
     flushMotion();
+    flushLight();
   };
   recorder.onerror = fail;
 
@@ -188,9 +224,11 @@ export const startRecording = (
     recorder.onstop = () => {
       cancelLimit();
       stopListening();
+      cancelReadings();
       light?.stop();
       endPause();
       flushMotion();
+      flushLight();
       closePan(videoMs());
       stopTracks(camera.stream);
       const durationMs = videoMs();
@@ -201,6 +239,7 @@ export const startRecording = (
   });
 
   recorder.start(CHUNK_MS);
+  if (meter !== null) cancelReadings = clock.later(readLight, MOTION_EVERY_MS);
   return {
     stop: stopNow,
     pause: () => {
@@ -231,14 +270,21 @@ export const startRecording = (
       if (recorder.state !== "recording") return;
       const atMs = videoMs();
       if (panSide !== null) return closePan(atMs);
-      const side = panSides()[pansTaken];
-      if (side === undefined) return;
-      panSide = side;
+      const stop = panStops()[pansTaken];
+      if (stop === undefined) return;
+      panSide = stop.side;
       pansTaken += 1;
-      mark((marks) => ({ ...marks, pans: [...(marks.pans ?? []), { side, startMs: atMs, endMs: null }] }));
+      mark((marks) => ({ ...marks, pans: [...(marks.pans ?? []), { ...stop, startMs: atMs, endMs: null }] }));
     },
     panning: () => panSide,
-    pansLeft: () => panSides().length - pansTaken,
+    pansLeft: () => panStops().length - pansTaken,
+    next: () => {
+      if (!guiding || recorder.state !== "recording" || panSide !== null || nextTaps >= GUIDED_ORDER.length) return;
+      nextTaps += 1;
+      const atMs = videoMs();
+      mark((marks) => ({ ...marks, nextTaps: [...(marks.nextTaps ?? []), atMs] }));
+    },
+    guide: () => (guiding ? (GUIDED_ORDER[nextTaps] ?? null) : null),
     videoMs,
     done,
   };

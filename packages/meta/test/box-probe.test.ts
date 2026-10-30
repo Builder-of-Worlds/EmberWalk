@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { MetaRefused } from "../src/errors.ts";
+import { REASONING_ROOM } from "../src/spark.ts";
 import type { HttpRequest } from "../src/transport.ts";
 import { pickPromptFrames, runBoxProbe } from "./live/box-probe.ts";
 import { frameJpeg, type Hazard, iou, type Rect, truth, YARD_ONE, YARD_TWO } from "./live/env.ts";
@@ -167,7 +168,7 @@ describe("the Muse Spark pointing call", () => {
     const s = setup({ answer: () => ok(sparkBody('{"found": true, "box": [10, 20, 300, 400]}')) });
     const a = await s.client.call(sparkBoxCall({ concept: "dry brush", jpeg: JPEG, content: "synthetic" }));
     const body = sent(s.transport.requests[0]!);
-    expect(body).toMatchObject({ model: "muse-spark-1.3", store: false, instructions: INSTRUCTIONS, max_output_tokens: 600, reasoning: { effort: "minimal" } });
+    expect(body).toMatchObject({ model: "muse-spark-1.3", store: false, instructions: INSTRUCTIONS, max_output_tokens: 600 + REASONING_ROOM.minimal, reasoning: { effort: "minimal" } });
     expect(body.input[0]!.content[0]).toEqual({ type: "input_text", text: expect.stringContaining("dry brush") });
     expect(body.input[0]!.content[1]).toEqual({ type: "input_image", image_url: `data:image/jpeg;base64,${Buffer.from(JPEG).toString("base64")}` });
     expect(a.value).toEqual({ found: true, box: { left: 10, top: 20, right: 300, bottom: 400 } });

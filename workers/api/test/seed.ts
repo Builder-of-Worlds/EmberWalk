@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { addGap, addTag, saveClip, saveFindings, storeDetections } from "@emberwalk/db";
 import { coverageKey } from "@emberwalk/rules";
-import type { Clip, Finding, Gap, Side, Tag, Track } from "@emberwalk/shared";
+import type { Clip, Finding, Gap, Part, Tag, Track } from "@emberwalk/shared";
 
 const VISITOR = "a".repeat(64);
 
@@ -28,9 +28,9 @@ const seedId = (prefix: string, n: number): string => `${prefix}-0000-4000-8000-
 
 export type DoneWalk = { walkId: string; loop: Clip; pan: Clip; brush: Finding; fence: Finding; vetoed: Finding; stills: Map<string, Uint8Array> };
 
-export const seedDoneWalk = async (walkId: string, n = 1): Promise<DoneWalk> => {
+export const seedDoneWalk = async (walkId: string, n = 1, synthetic = true): Promise<DoneWalk> => {
   await seedWalk(walkId, "done");
-  await env.DB.prepare("UPDATE walks SET synthetic = 1 WHERE id = ?").bind(walkId).run();
+  await env.DB.prepare("UPDATE walks SET synthetic = ? WHERE id = ?").bind(synthetic ? 1 : 0, walkId).run();
   const tag = (k: number, kind: "loop" | "pan", start: number): Tag => ({
     id: seedId("7b000000", n * 10 + k),
     walkId,
@@ -137,11 +137,11 @@ export const seedCoverage = (walkId: string, over: Record<string, unknown> = {})
     JSON.stringify({ walkId, checkedAt: "2026-10-27T18:00:00.000Z", coverage: "not_checked", loop: "closed", gaps: [], look: { same: true, confidence: 0.9 }, ...over }),
   );
 
-export const seedGap =(walkId: string, side: Side, kind: Gap["kind"] = "not_checked", hint: Gap["hint"] = "again"): Promise<void> =>
+export const seedGap =(walkId: string, side: Part, kind: Gap["kind"] = "not_checked", hint: Gap["hint"] = "again"): Promise<void> =>
   addGap(env.DB, walkId, { side, kind, hint });
 
-export const seedDonePart = async (parentId: string, walkId: string, side: Side, n: number): Promise<DoneWalk> => {
+export const seedDonePart = async (parentId: string, walkId: string, side: Part, n: number): Promise<DoneWalk> => {
   const part = await seedDoneWalk(walkId, n);
-  await env.DB.prepare("UPDATE walks SET part_of = ?, part_side = ? WHERE id = ?").bind(parentId, side, walkId).run();
+  await env.DB.prepare("INSERT INTO walk_parts (walk_id, part_of, part) VALUES (?, ?, ?)").bind(walkId, parentId, side).run();
   return part;
 };
