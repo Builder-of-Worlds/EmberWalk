@@ -1,6 +1,10 @@
+import { launchDateShown } from "./launch-date";
 import type { Message } from "./types";
 
-export function welcomeMessage(to: string, unsubscribeUrl: string): Message {
+export function welcomeMessage(to: string, unsubscribeUrl: string, env: object): Message {
+  const launchLine = launchDateShown(env)
+    ? "EmberWalk launches Nov. 4th, 2026. We'll email you when it does."
+    : "We'll email you when EmberWalk launches.";
   return {
     to,
     unsubscribeUrl,
@@ -8,7 +12,7 @@ export function welcomeMessage(to: string, unsubscribeUrl: string): Message {
     body: [
       "Thank you for signing up. You're on the list for EmberWalk.",
       "",
-      "EmberWalk launches Nov. 4th, 2026. We'll email you when it does.",
+      launchLine,
       "",
       "We'll email you about EmberWalk's launch and updates.",
       "",

@@ -60,6 +60,29 @@ describe("GET /api/walks/{walkId}", () => {
     expect(await (await get(`/api/walks/${WALK}`)).json()).toEqual({ walkId: WALK, state: { name: "done" }, failure: null });
   });
 
+  it("names the part a failed part walk was for, and nothing for a whole walk or a walk still being checked", async () => {
+    const failure = "failure_code = 'score_failed', failure_message = 'Something went wrong.'";
+    const asked = async (id: string) => WalkStatusResponse.parse(await (await get(`/api/walks/${id}`)).json());
+    const whole = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d10";
+    await seedWalk(whole, "failed", "score");
+    await env.DB.prepare(`UPDATE walks SET ${failure} WHERE id = ?`).bind(whole).run();
+    expect((await asked(whole)).failure).toEqual({ code: "score_failed", message: "Something went wrong." });
+
+    const parts = ["back", "front_left"] as const;
+    for (const [i, side] of parts.entries()) {
+      const id = `6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d2${i}`;
+      await seedWalk(id, "failed", "score");
+      await env.DB.prepare(`UPDATE walks SET ${failure} WHERE id = ?`).bind(id).run();
+      await env.DB.prepare("INSERT INTO walk_parts (walk_id, part_of, part) VALUES (?, ?, ?)").bind(id, WALK, side).run();
+      expect((await asked(id)).failure).toEqual({ code: "score_failed", message: "Something went wrong.", part: side });
+    }
+
+    const checking = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d30";
+    await seedWalk(checking, "processing", "score");
+    await env.DB.prepare("INSERT INTO walk_parts (walk_id, part_of, part) VALUES (?, ?, ?)").bind(checking, WALK, "back").run();
+    expect((await asked(checking)).failure).toBeNull();
+  });
+
   it("carries the count of a processing stage, and none once the walk is done", async () => {
     const counting = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d10";
     await seedWalk(counting, "processing", "segment");

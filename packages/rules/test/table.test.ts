@@ -94,8 +94,10 @@ describe("the California rule table", () => {
     for (const row of RULES) {
       const plant = (PLANT_CONCEPTS as readonly string[]).includes(row.concept) && (row.when.plant?.includes("unsure") ?? true);
       expect(row.unsure !== null, row.id).toBe(plant && /\bdead\b/i.test(row.plain.en));
-      if (row.unsure !== null) expect(row.unsure, row.id).toMatch(/\b(?:may|might|could) be dead\b/);
-      if (row.unsure !== null) expect(row.unsure.replace(/\b(?:may|might|could) be dead\b/, ""), row.id).not.toMatch(/\bdead\b/i);
+      if (row.unsure !== null) expect(row.unsure.en, row.id).toMatch(/\b(?:may|might|could) be dead\b/);
+      if (row.unsure !== null) expect(row.unsure.en.replace(/\b(?:may|might|could) be dead\b/, ""), row.id).not.toMatch(/\bdead\b/i);
+      if (row.unsure !== null) expect(row.unsure.es, row.id).toMatch(/\b(?:podría|podrían) estar muert[ao]s?\b/);
+      if (row.unsure !== null) expect(row.unsure.es.replace(/\b(?:podría|podrían) estar muert[ao]s?\b/, ""), row.id).not.toMatch(/muert/i);
     }
   });
 
@@ -108,6 +110,7 @@ describe("the California rule table", () => {
           for (const row of lookup(query({ concept, plantState: "alive", contact }, feet), "ca")) {
             checked++;
             expect(`${row.requirement} ${row.plain.en}`, row.id).not.toMatch(dead);
+            expect(row.plain.es, row.id).not.toMatch(/muert|moribund/i);
           }
         }
       }
@@ -119,7 +122,8 @@ describe("the California rule table", () => {
     const words = (text: string) => text.split(/\s+/).length;
     for (const row of RULES) {
       expect(words(row.plain.en), row.id).toBeLessThanOrEqual(25);
-      if (row.unsure !== null) expect(words(row.unsure), row.id).toBeLessThanOrEqual(25);
+      if (row.unsure !== null) expect(words(row.unsure.en), row.id).toBeLessThanOrEqual(25);
+      if (row.unsure !== null) expect(words(row.unsure.es), row.id).toBeLessThanOrEqual(25);
     }
   });
 
@@ -321,7 +325,9 @@ describe("the plain wording a homeowner reads", () => {
       for (const language of ["en", "es"] as const) {
         for (const word of [...CODE[language], ...URGENT[language]]) expect(has(row.plain[language], word), `${row.id} ${language} "${word}"`).toBe(false);
       }
-      for (const word of [...CODE.en, ...URGENT.en]) if (row.unsure !== null) expect(has(row.unsure, word), `${row.id} unsure "${word}"`).toBe(false);
+      for (const language of ["en", "es"] as const) {
+        for (const word of [...CODE[language], ...URGENT[language]]) if (row.unsure !== null) expect(has(row.unsure[language], word), `${row.id} unsure ${language} "${word}"`).toBe(false);
+      }
     }
   });
 
@@ -342,7 +348,7 @@ describe("the plain wording a homeowner reads", () => {
   });
 
   const texts = (language: "en" | "es") =>
-    [...new Set(RULES.flatMap((r) => [r.plain[language], ...(language === "en" && r.unsure !== null ? [r.unsure] : [])]))];
+    [...new Set(RULES.flatMap((r) => [r.plain[language], ...(r.unsure !== null ? [r.unsure[language]] : [])]))];
   const words = (text: string) => text.toLowerCase().replace(/[.,;:]/g, "").split(/\s+/);
 
   it("opens every distinct plain and may be dead text with its own first two words, so a walk never reads as a refrain", () => {
@@ -371,6 +377,7 @@ describe("the plain wording a homeowner reads", () => {
   it("keeps the distance of its condition in English and Spanish alike", () => {
     const feet = (text: string) => [...text.matchAll(/(\d+)\s*(?:to|a|y)?\s*(\d+)?\s*(?:feet|foot|pies)/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean);
     for (const row of RULES) expect(feet(row.plain.es), row.id).toEqual(feet(row.plain.en));
+    for (const row of RULES) if (row.unsure !== null) expect(feet(row.unsure.es), row.id).toEqual(feet(row.unsure.en));
   });
 });
 

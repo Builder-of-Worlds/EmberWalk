@@ -75,14 +75,17 @@ describe("prepareWalk decides on the server whether a walk is a sample house", (
     expect(await synthetic(walkId)).toBe(true);
   });
 
-  it("marks a walk that claims to be a sample but is not a known render as real footage, and refuses it on free credits", async () => {
+  it("refuses a walk that claims to be a sample but is not a known render, keeps it a sample and never checks its video, paid or not", async () => {
     harness.syntheticRender = false;
-    const walkId = await walkSeeded(true);
-    expect(await prepareWalk(deps(), walkId)).toEqual({
-      ok: false,
-      failure: { code: "real_footage_not_allowed", message: "Real footage is not accepted yet." },
-    });
-    expect(await synthetic(walkId)).toBe(false);
+    for (const billing of ["free_credits", "paid"] as const) {
+      harness.billing = billing;
+      const walkId = await walkSeeded(true);
+      expect(await prepareWalk(deps(), walkId)).toEqual({
+        ok: false,
+        failure: { code: "not_sample_render", message: "A sample walk can only use the built-in sample video." },
+      });
+      expect(await synthetic(walkId)).toBe(true);
+    }
     expect(harness.probed).toEqual([]);
   });
 
@@ -95,7 +98,7 @@ describe("prepareWalk decides on the server whether a walk is a sample house", (
   it("checks real footage once billing is paid", async () => {
     harness.billing = "paid";
     harness.syntheticRender = false;
-    const walkId = await walkSeeded(true);
+    const walkId = await walkSeeded(false);
     expect((await prepareWalk(deps(), walkId)).ok).toBe(true);
     expect(await synthetic(walkId)).toBe(false);
   });

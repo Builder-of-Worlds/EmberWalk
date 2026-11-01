@@ -1,6 +1,7 @@
-import { claimWalk, completeWalk, type Failure, failWalk, findingsForWalk, moveWalkStep, setWalkProgress, tagsForWalk } from "@emberwalk/db";
+import { claimWalk, clipsForWalk, completeWalk, dropClip, type Failure, failWalk, findingsForWalk, moveWalkStep, recordStepTime, setWalkProgress, tagsForWalk } from "@emberwalk/db";
 import type { Clip, PipelineStep } from "@emberwalk/shared";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
+import { clipWhere, framesWhere, leaveUnchecked, partsToLeave } from "./blame.ts";
 import { blurredStills } from "./blur.ts";
 import { checkCoverage } from "./coverage-step.ts";
 import { type Deps, depsFrom } from "./deps.ts";
@@ -31,17 +32,56 @@ export const stuck = (step: PipelineStep): Failure => ({
   message: "Something went wrong while checking this walk. Please try again.",
 });
 
-const blurWalk = async (deps: Deps, walkId: string, clips: Clip[]): Promise<Outcome<{ stills: number }>> => {
-  const [findings, tags] = await Promise.all([findingsForWalk(deps.db, walkId), tagsForWalk(deps.db, walkId)]);
+const standingOf = async (db: D1Database, walkId: string, clips: Clip[]): Promise<Clip[]> => {
+  const rows = new Set((await clipsForWalk(db, walkId)).map((c) => c.id));
+  return clips.filter((c) => rows.has(c.id));
+};
+
+const blurWalk = async (deps: Deps, walkId: string, kept: Clip[]): Promise<Outcome<{ stills: number }>> => {
+  const [findings, tags, clips] = await Promise.all([findingsForWalk(deps.db, walkId), tagsForWalk(deps.db, walkId), standingOf(deps.db, walkId, kept)]);
+  const left = new Set<string>();
   let stills = 0;
   for (const clip of clips) {
     const proofs = findings.filter((f) => f.proofFrame.clipId === clip.id).map((f) => [f.proofFrame.still, f.proofFrame.frame] as const);
     const wanted = [...new Map(proofs)].map(([output, frame]) => ({ frame, output }));
     const made = await blurredStills(deps, walkId, clip, clipStart(tags, clip.kind), wanted);
-    if (!made.ok) return made;
-    stills += made.value.stills;
+    if (made.ok) {
+      stills += made.value.stills;
+      continue;
+    }
+    const failing = framesWhere(tags, clip, wanted.map((w) => w.frame));
+    const standing = clips.filter((c) => c !== clip && !left.has(c.id));
+    if (!(await leaveUnchecked(deps.db, walkId, partsToLeave(tags, failing, clip, standing)))) return made;
+    left.add(clip.id);
+    await dropClip(deps.db, clip.id);
   }
   return pass({ stills });
+};
+
+type Doer = { do: (name: string, ...rest: unknown[]) => Promise<unknown> };
+
+// A timing write that fails must never fail the step it timed.
+export const timeSteps = (step: WorkflowStep, db: D1Database, walkId: string, now: () => number = Date.now): WorkflowStep =>
+  ({
+    do: (name: string, ...rest: unknown[]) => {
+      const inner = step as unknown as Doer;
+      const work = rest.pop() as (...args: unknown[]) => Promise<unknown>;
+      if (name.startsWith(STEP.count(""))) return inner.do(name, ...rest, work);
+      return inner.do(name, ...rest, async (...args: unknown[]) => {
+        const start = now();
+        const value = await work(...args);
+        const ms = Math.max(0, Math.round(now() - start));
+        await recordStepTime(db, { walkId, step: name, startedAt: new Date(start).toISOString(), ms }).catch(() => undefined);
+        return value;
+      });
+    },
+  }) as unknown as WorkflowStep;
+
+const leaveClip = async (deps: Deps, walkId: string, clip: Clip, standing: Clip[]): Promise<boolean> => {
+  const tags = await tagsForWalk(deps.db, walkId);
+  if (!(await leaveUnchecked(deps.db, walkId, partsToLeave(tags, clipWhere(tags, clip), clip, standing)))) return false;
+  await dropClip(deps.db, clip.id);
+  return true;
 };
 
 export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
@@ -49,9 +89,10 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
     return depsFrom(this.env);
   }
 
-  override async run(event: WorkflowEvent<PipelineParams>, step: WorkflowStep): Promise<PipelineResult> {
+  override async run(event: WorkflowEvent<PipelineParams>, given: WorkflowStep): Promise<PipelineResult> {
     const { walkId } = event.payload;
     const deps = this.deps();
+    const step = timeSteps(given, deps.db, walkId);
     const claimed = await step.do(STEP.claim, () => claimWalk(deps.db, walkId));
     if (!claimed) return { status: "skipped" };
 
@@ -80,6 +121,29 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
     return { status: "failed", failure };
   }
 
+  private async lookAt(
+    deps: Deps,
+    step: WorkflowStep,
+    walkId: string,
+    clip: Clip,
+    progress: Progress,
+    clipIds: string[],
+    counted: (name: string) => Promise<unknown>,
+  ): Promise<Failure | null> {
+    const uploaded = await step.do(STEP.upload(clip.kind), RETRY, () => uploadClip(deps, walkId, clip));
+    if (!uploaded.ok) return uploaded.failure;
+    progress.uploads.push(uploaded.value);
+    await counted(STEP.upload(clip.kind));
+    const segmented = await step.do(STEP.segment(clip.kind), RETRY, () => segmentClip(deps, walkId, clip, uploaded.value));
+    if (!segmented.ok) return segmented.failure;
+    await counted(STEP.segment(clip.kind));
+    const checked = await step.do(STEP.privacy(clip.kind), RETRY, () => findPrivacy(deps, walkId, clip, uploaded.value));
+    if (!checked.ok) return checked.failure;
+    await counted(STEP.privacy(clip.kind));
+    clipIds.push(segmented.value.clipId);
+    return null;
+  }
+
   private async work(deps: Deps, step: WorkflowStep, walkId: string, progress: Progress): Promise<Failure | null> {
     const prepared = await step.do(STEP.prepare, RETRY, () => prepareWalk(deps, walkId));
     if (!prepared.ok) return prepared.failure;
@@ -95,18 +159,24 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
     await step.do(STEP.enterSegment, () => moveWalkStep(deps.db, walkId, "segment"));
     await count(looking, STEP.enterSegment);
     const clipIds: string[] = [];
-    for (const clip of prepared.value) {
-      const uploaded = await step.do(STEP.upload(clip.kind), RETRY, () => uploadClip(deps, walkId, clip));
-      if (!uploaded.ok) return uploaded.failure;
-      progress.uploads.push(uploaded.value);
-      await count(looking, STEP.upload(clip.kind));
-      const segmented = await step.do(STEP.segment(clip.kind), RETRY, () => segmentClip(deps, walkId, clip, uploaded.value));
-      if (!segmented.ok) return segmented.failure;
-      await count(looking, STEP.segment(clip.kind));
-      const checked = await step.do(STEP.privacy(clip.kind), RETRY, () => findPrivacy(deps, walkId, clip, uploaded.value));
-      if (!checked.ok) return checked.failure;
-      await count(looking, STEP.privacy(clip.kind));
-      clipIds.push(segmented.value.clipId);
+    const kept: Clip[] = [];
+    for (const [i, clip] of prepared.value.entries()) {
+      let failure: Failure | null;
+      let thrown: unknown = null;
+      try {
+        failure = await this.lookAt(deps, step, walkId, clip, progress, clipIds, (name) => count(looking, name));
+      } catch (error) {
+        thrown = error;
+        failure = stuck(progress.step);
+      }
+      if (failure === null) {
+        kept.push(clip);
+        continue;
+      }
+      const standing = [...kept, ...prepared.value.slice(i + 1)];
+      if (await step.do(STEP.leave(clip.kind), RETRY, () => leaveClip(deps, walkId, clip, standing))) continue;
+      if (thrown !== null) throw thrown;
+      return failure;
     }
     await step.do(STEP.store, RETRY, () => storeWalk(deps, walkId, clipIds));
     await count(looking, STEP.store);
@@ -124,10 +194,10 @@ export class WalkPipeline extends WorkflowEntrypoint<Env, PipelineParams> {
     await count(looking, STEP.score);
     await step.do(STEP.voiceNotes, RETRY, () => storeVoiceNotes(deps, walkId));
     await count(looking, STEP.voiceNotes);
-    const blurred = await step.do(STEP.blur, RETRY, () => blurWalk(deps, walkId, prepared.value));
+    const blurred = await step.do(STEP.blur, RETRY, () => blurWalk(deps, walkId, kept));
     if (!blurred.ok) return blurred.failure;
     await count(looking, STEP.blur);
-    await step.do(STEP.coverage, RETRY, () => checkCoverage(deps, walkId, prepared.value));
+    await step.do(STEP.coverage, RETRY, async () => checkCoverage(deps, walkId, await standingOf(deps.db, walkId, kept)));
     await count(looking, STEP.coverage);
 
     if (scored.value.findings > 0) {

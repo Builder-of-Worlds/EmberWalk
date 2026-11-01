@@ -45,6 +45,17 @@ describe("MetaClient", () => {
     expect(await ledger.spentUsd("2026-10-26")).toBe(0.2);
   });
 
+  it("marks a cached answer with every walk that stored or reused it, and never marks a call with no walk", async () => {
+    const { client, cache } = setup({ answer: () => ok({ n: 7 }) });
+    const walk = (walkId: string | null) => ({ ...frames(1000), walkId });
+    const [w1, w2] = ["1", "2"].map((n) => `00000000-0000-4000-8000-00000000000${n}`) as [string, string];
+    const first = await client.call(walk(w1));
+    await client.call(walk(w2));
+    await client.call(walk(null));
+    await client.call(frames(10));
+    expect([...cache.marks].sort()).toEqual([`${w1}/${first.fingerprint}`, `${w2}/${first.fingerprint}`]);
+  });
+
   it("calls again when any part of the request differs", async () => {
     const { client, transport } = setup({ answer: () => ok({ n: 1 }) });
     await client.call(frames(1000, { tag: "a" }));

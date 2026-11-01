@@ -1,8 +1,9 @@
 import { copy, draft, longDate } from "../copy.ts";
+import { recheckWords } from "../draft-words.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
 
-export const StatusLine = ({ status }: { status: FindingStatus }) => {
+export const StatusLine = ({ status, recheck }: { status: FindingStatus; recheck?: string | undefined }) => {
   if (isRechecked(status)) {
     const day = new Date(status.recheck.atMs);
     return (
@@ -15,10 +16,17 @@ export const StatusLine = ({ status }: { status: FindingStatus }) => {
     );
   }
   return (
-    <div className={`status ${status.kind}`} data-part="status" data-status={status.kind}>
-      <p>{copy.status.kind[status.kind]}</p>
-      {status.kind === "done" && status.doneOn !== undefined ? <p data-part="done-on">{draft.status.doneOn(status.doneOn)}</p> : null}
-      {status.kind === "done" ? <p>{copy.status.notRechecked}</p> : null}
-    </div>
+    <>
+      <div className={`status ${status.kind}`} data-part="status" data-status={status.kind}>
+        <p>{copy.status.kind[status.kind]}</p>
+        {status.kind === "done" && status.doneOn !== undefined ? <p data-part="done-on">{draft.status.doneOn(status.doneOn)}</p> : null}
+        {status.kind === "done" ? <p>{copy.status.notRechecked}</p> : null}
+      </div>
+      {status.kind === "done" && recheck !== undefined ? (
+        <a className="button" data-part="recheck" href={recheck}>
+          {recheckWords.entry}
+        </a>
+      ) : null}
+    </>
   );
 };

@@ -6,7 +6,7 @@ import { resultsFor, ROUTES } from "../../src/router.ts";
 import { LIVE_WALK, liveBody } from "../unit/result-fakes.ts";
 import { sideways } from "./geometry.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const controlled = (page: Page) =>
   page.evaluate(async () => {

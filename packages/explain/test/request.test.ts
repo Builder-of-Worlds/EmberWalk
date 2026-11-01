@@ -97,6 +97,13 @@ describe("explainRequest, normal", () => {
     ]);
   });
 
+  it("tells the model never to repeat a name, email, phone number, street address or ZIP the homeowner says", () => {
+    const sent = body(input())["instructions"] as string;
+    const line = sent.split("\n").find((l) => l.includes("Never repeat"));
+    for (const kind of ["name", "email", "phone number", "street address", "ZIP"]) expect(line).toContain(kind);
+    expect(line).toContain("homeowner says");
+  });
+
   it("estimates more input for every frame", () => {
     expect(explainRequest(input()).estimateNano).toBeGreaterThan(explainRequest(input({ frames: [] })).estimateNano);
   });

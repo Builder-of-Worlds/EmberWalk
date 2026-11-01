@@ -7,8 +7,10 @@ import tempfile
 sys.path = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))] + sys.path
 
 import bpy
+import math
+
 import numpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from ewscene import output, paths
 
@@ -52,8 +54,10 @@ def main():
     parser = argparse.ArgumentParser(prog="probe_sky.py")
     parser.add_argument("--out", required=True)
     parser.add_argument("--frame", type=int, action="append", required=True)
+    parser.add_argument("--look_up", type=float, default=0.0)
     args = parser.parse_args(paths.script_args())
     scene = bpy.context.scene
+    lift = Matrix.Rotation(math.radians(args.look_up), 4, "X")
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = WIDTH, HEIGHT, 100
     output.png(scene.render)
     scene.render.use_file_extension = False
@@ -64,8 +68,15 @@ def main():
     found = []
     with tempfile.TemporaryDirectory() as tmp:
         still = os.path.join(tmp, "still.png")
+        poses = {}
         for f in args.frame:
             scene.frame_set(f)
+            poses[f] = scene.camera.matrix_world.copy()
+        scene.camera.animation_data_clear()
+        for f in args.frame:
+            scene.frame_set(f)
+            scene.camera.matrix_world = poses[f] @ lift
+            bpy.context.view_layer.update()
             mask = sky_mask(scene)
             env.image = real
             lit = render(scene, still)

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Concept, FindingLabel, PLANT_CONCEPTS } from "@emberwalk/shared";
-import { evaluate, loadState, rank, RULES, RulesRefusal, SEVERITY, severityOf, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
+import { evaluate, loadState, rank, RULES, RulesRefusal, SEVERITY, severityOf, templateInstruction, UNLISTED_SEVERITY, type Observation, type RuleFinding } from "../src/index.ts";
 import { CASES, query, ZZ } from "./support.ts";
 
 type TruthHazard = { id: string; concept: string; distance_ft: number; band: string; contact: boolean; label: string; rule: string };
@@ -192,9 +192,33 @@ describe("the instruction", () => {
       const maybe = one({ ...CASES[row.key], concept: row.concept, plantState: "unsure" }, MIDDLE[row.zone]);
       const dead = one({ ...CASES[row.key], concept: row.concept, plantState: "dead" }, MIDDLE[row.zone]);
       expect(maybe.ruleIds[0], row.id).toBe(row.id.replace(/-(prc|gov)-/, "-ccr-"));
-      expect(maybe.instruction, row.id).toBe(row.unsure);
+      expect(maybe.instruction, row.id).toBe(row.unsure!.en);
       expect(maybe.instruction, row.id).not.toMatch(/\bthe dead\b/i);
       expect(dead.instruction, row.id).toBe(row.plain.en);
+    }
+  });
+
+  const MAYBE_DEAD_ES = /\b(?:podría|podrían) estar muert[ao]s?\b/;
+
+  it("tells a Spanish walk a plant judged unsure may be dead, for each of the rows that carry that line, and never that it is", () => {
+    const rows = RULES.filter((r) => r.unsure !== null);
+    expect(rows).toHaveLength(21);
+    for (const row of rows) {
+      const text = templateInstruction(row, "unsure", "es");
+      expect(text, row.id).toMatch(MAYBE_DEAD_ES);
+      expect(text.replace(MAYBE_DEAD_ES, ""), row.id).not.toMatch(/muert/i);
+      expect(text, row.id).toBe(row.unsure!.es);
+    }
+  });
+
+  it("still tells a Spanish walk a dead plant is dead, and gives a plant not judged the plain wording, in both languages", () => {
+    for (const row of RULES.filter((r) => r.unsure !== null)) {
+      for (const language of ["en", "es"] as const) {
+        expect(templateInstruction(row, "dead", language), `${row.id} ${language} dead`).toBe(row.plain[language]);
+        expect(templateInstruction(row, null, language), `${row.id} ${language} not judged`).toBe(row.plain[language]);
+        expect(templateInstruction(row, "alive", language), `${row.id} ${language} alive`).toBe(row.plain[language]);
+      }
+      expect(templateInstruction(row, "dead", "es"), row.id).not.toBe(row.unsure!.es);
     }
   });
 

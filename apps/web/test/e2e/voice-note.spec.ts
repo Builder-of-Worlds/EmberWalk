@@ -4,7 +4,7 @@ import { copy } from "../../src/copy.ts";
 import { findingFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBody, liveFindingId } from "../unit/result-fakes.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
 

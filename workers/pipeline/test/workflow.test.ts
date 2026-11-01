@@ -10,6 +10,8 @@ import guidedWalk from "../../../apps/web/test/unit/guided-walk.json";
 import sideWalk from "../../../fixtures/synthetic/side-walk/walk.json";
 import { clipKey, detectionsKey, originalKey } from "../src/storage.ts";
 import { CLEAN_PHRASE } from "../src/voice-notes.ts";
+import { timeSteps } from "../src/workflow.ts";
+import type { WorkflowStep } from "cloudflare:workers";
 import { freshWalkId, resetAll, seedOriginal, seedTag, seedWalk, spentNano } from "./fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, harness, idFor, type Sighting, stageSamePlace, stageSamePlaces } from "./harness.ts";
 
@@ -327,6 +329,287 @@ describe("privacy, blur and explain", () => {
   });
 });
 
+describe("a failure the walk can tie to one part", () => {
+  const sidedWalk = async (corners: string[] = [], sides = ["front", "right", "back", "left"]): Promise<string> => {
+    const walkId = await queuedWalk();
+    const parts = [...sides.map((label) => ({ kind: "loop" as const, label })), ...corners.map((label) => ({ kind: "pan" as const, label }))];
+    for (const [i, { kind, label }] of parts.entries()) {
+      const start = i * 5 + (kind === "pan" ? 2 : 0);
+      const samples = Array.from({ length: 11 }, (_, k) => ({ t: start + k * 0.5, tiltDegrees: 25, headingDegrees: 0 }));
+      await addTag(env.DB, { id: idFor(7600 + i), walkId, kind, startSeconds: start, endSeconds: start + 5, label, samples, propertyLine: null });
+    }
+    return walkId;
+  };
+  const uploadsBreakAfter = (kept: number) => {
+    harness.onRequest = async (req) => {
+      if (req.method === "POST" && req.path === "/files" && harness.uploads >= kept) throw new Error("the upload answered 503");
+    };
+  };
+
+  const UNCHECKED = (side: string) => ({ side, kind: "not_checked", hint: "again" });
+  const unchecked = async (walkId: string) => (await gapsForWalk(env.DB, walkId)).filter((g) => g.kind === "not_checked");
+
+  it("ends done when the pan clip of a walk panned at one corner fails, scored on the loop, with that corner not checked", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    uploadsBreakAfter(1);
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const walk = await getWalk(env.DB, walkId);
+    expect(walk?.state).toEqual({ name: "done" });
+    expect(walk?.failure).toBeNull();
+    expect(await unchecked(walkId)).toEqual([UNCHECKED("back_left")]);
+    expect((await clipsForWalk(env.DB, walkId)).map((c) => c.kind)).toEqual(["loop"]);
+    expect(harness.steps).toContain(STEP.score);
+  });
+
+  it("fails as before when the loop clip fails, since it holds every side, and leaves no part unchecked", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    uploadsBreakAfter(0);
+
+    await using instance = await run(walkId, "errored");
+
+    expect((await instance.getError()).message).toContain("503");
+    const walk = await getWalk(env.DB, walkId);
+    expect(walk?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(walk?.failure).toEqual({ code: "segment_failed", message: expect.any(String) });
+    expect(await unchecked(walkId)).toEqual([]);
+  });
+
+  it("fails as before when the pan clip holds two corners", async () => {
+    const walkId = await sidedWalk(["back left corner", "front left corner"]);
+    uploadsBreakAfter(1);
+
+    await using instance = await run(walkId, "errored");
+
+    expect((await instance.getError()).message).toContain("503");
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(await unchecked(walkId)).toEqual([]);
+  });
+
+  it("fails when the blur step cannot make the proof frames of one side of a loop that holds every side and no other clip is scored", async () => {
+    const walkId = await sidedWalk();
+    harness.clip = { frames: 40, fps: 2, width: 1280, height: 720 };
+    harness.answers["house wall"] = [{ found: seen(0, [0.05, 0.2, 0.95, 0.6]) }];
+    harness.answers["wood pile"] = [{ found: seen(1, [0.2, 0.45, 0.4, 0.6]) }];
+    harness.answers.mailbox = [{ status: 500 }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "score" });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(proofStills()).toEqual([]);
+  });
+
+  it("ends done when the blur step loses the front of a loop that holds every side while the pan at one corner is scored, with all four sides not checked", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    harness.clip = { frames: 40, fps: 2, width: 1280, height: 720 };
+    harness.answers["house wall"] = [{ found: seen(0, [0.05, 0.2, 0.95, 0.6]) }];
+    harness.answers["wood pile"] = [{ found: seen(1, [0.2, 0.45, 0.4, 0.6]) }];
+    harness.answers.mailbox = [{ text: "<0f>not a record" }, { found: [] }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
+    expect((await unchecked(walkId)).sort((a, b) => a.side.localeCompare(b.side))).toEqual(["back", "front", "left", "right"].map(UNCHECKED));
+    const pan = (await clipsForWalk(env.DB, walkId)).find((c) => c.kind === "pan");
+    const findings = await findingsForWalk(env.DB, walkId);
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings.every((f) => f.proofFrame.clipId === pan?.id)).toBe(true);
+    expect(harness.stilled.filter((r) => r.stills.some((s) => s.output.includes("/look/")))).toEqual([]);
+  });
+
+  it("fails a part walk as before when its own part fails, so its retry asks for that part again", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    const parent = freshWalkId();
+    await seedWalk(parent, { state: "done", synthetic: false });
+    await env.DB.prepare("INSERT INTO walk_parts (walk_id, part_of, part) VALUES (?, ?, 'back_left')").bind(walkId, parent).run();
+    uploadsBreakAfter(1);
+
+    await using instance = await run(walkId, "errored");
+
+    expect((await instance.getError()).message).toContain("503");
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(await unchecked(walkId)).toEqual([]);
+  });
+
+  it("fails as before for a walk with no tags", async () => {
+    const walkId = await queuedWalk();
+    uploadsBreakAfter(0);
+
+    await using instance = await run(walkId, "errored");
+
+    expect((await instance.getError()).message).toContain("503");
+    expect((await getWalk(env.DB, walkId))?.failure).toMatchObject({ code: "segment_failed" });
+    expect(await unchecked(walkId)).toEqual([]);
+  });
+
+  const runBreaking = async (walkId: string, names: string[], finish: "complete" | "errored") => {
+    const instance = await introspectWorkflowInstance(env.PIPELINE, walkId);
+    await instance.modify(async (m) => {
+      await m.disableRetryDelays();
+      for (const name of names) await m.mockStepError({ name }, new Error(`${name} broke`));
+    });
+    await env.PIPELINE.create({ id: walkId, params: { walkId } });
+    await instance.waitForStatus(finish);
+    return instance;
+  };
+
+  it("fails as before when the loop clip of a walk tagged on one side only fails and no other clip is left to score", async () => {
+    const walkId = await sidedWalk([], ["front"]);
+    uploadsBreakAfter(0);
+
+    await using instance = await run(walkId, "errored");
+
+    expect((await instance.getError()).message).toContain("503");
+    const walk = await getWalk(env.DB, walkId);
+    expect(walk?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(walk?.failure).toEqual({ code: "segment_failed", message: expect.any(String) });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect((await clipsForWalk(env.DB, walkId)).map((c) => c.kind)).toEqual(["loop"]);
+    expect(harness.steps).not.toContain(STEP.score);
+  });
+
+  it.each(["upload", "segment", "privacy"] as const)("fails as before when the %s step of the only clip, a loop tagged on one side, fails", async (name) => {
+    const walkId = await sidedWalk([], ["front"]);
+
+    await using instance = await runBreaking(walkId, [STEP[name]("loop")], "errored");
+
+    expect((await instance.getError()).message).toContain("broke");
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(harness.steps).not.toContain(STEP.score);
+  });
+
+  it("ends done when the loop of a walk tagged on one side fails while a pan at one corner is still to come and is kept", async () => {
+    const walkId = await sidedWalk(["back left corner"], ["front"]);
+
+    await using instance = await runBreaking(walkId, [STEP.upload("loop")], "complete");
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await unchecked(walkId)).toEqual([UNCHECKED("front")]);
+    expect((await clipsForWalk(env.DB, walkId)).map((c) => c.kind)).toEqual(["pan"]);
+    expect(harness.steps).toContain(STEP.score);
+  });
+
+  it("fails when the loop of a walk tagged on one side and the pan at one corner both fail, so nothing is left to score", async () => {
+    const walkId = await sidedWalk(["back left corner"], ["front"]);
+
+    await using instance = await runBreaking(walkId, [STEP.upload("loop"), STEP.upload("pan")], "errored");
+
+    expect((await instance.getError()).message).toContain("broke");
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(harness.steps).not.toContain(STEP.score);
+  });
+
+  const frontFound = () => {
+    harness.clip = { frames: 40, fps: 2, width: 1280, height: 720 };
+    harness.answers["house wall"] = [{ found: seen(0, [0.05, 0.2, 0.95, 0.6]) }];
+    harness.answers["wood pile"] = [{ found: seen(1, [0.2, 0.45, 0.4, 0.6]) }];
+  };
+
+  it("fails as before when the blur step cannot make the proof frames of the only clip, a loop tagged on one side", async () => {
+    const walkId = await sidedWalk([], ["front"]);
+    frontFound();
+    harness.answers.mailbox = [{ status: 500 }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "score" });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(proofStills()).toEqual([]);
+  });
+
+  it("fails when the pan at one corner was left and the blur step then loses the loop tagged on one side, so nothing scored stays", async () => {
+    const walkId = await sidedWalk(["back left corner"], ["front"]);
+    frontFound();
+    harness.answers.mailbox = [{ status: 500 }];
+
+    await using instance = await runBreaking(walkId, [STEP.upload("pan")], "complete");
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "score" });
+    expect(proofStills()).toEqual([]);
+  });
+
+  it("fails when the blur step loses one side of the loop and the pan at one corner, so nothing scored stays", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    frontFound();
+    harness.answers.mailbox = [{ status: 500 }];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "score" });
+    expect(proofStills()).toEqual([]);
+  });
+
+  it("fails when the loop tagged on one side fails and the only other clip, a pan that names no corner, leaves nothing scored", async () => {
+    const walkId = await sidedWalk(["garage"], ["front"]);
+
+    await using instance = await runBreaking(walkId, [STEP.upload("loop")], "errored");
+
+    expect((await instance.getError()).message).toContain("broke");
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "segment" });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(harness.steps).not.toContain(STEP.score);
+  });
+
+  const stillsLeft = async (walkId: string) => (await env.MEDIA.list({ prefix: `stills/${walkId}/` })).objects;
+  const refusedMailbox = () => {
+    harness.answers.mailbox = [{ text: "<0f>not a record" }];
+  };
+
+  it("fails when a privacy phrase is refused on one side of a loop that holds every side and no other clip is scored, and makes no still at all", async () => {
+    const walkId = await sidedWalk();
+    frontFound();
+    refusedMailbox();
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    const [loop] = await clipsForWalk(env.DB, walkId);
+    const mailbox = (await privacyOf(walkId, loop!.id)).phrases.find((p) => p.phrase === "mailbox");
+    expect(mailbox).toMatchObject({ status: "not_checked", reason: expect.stringContaining("refused") });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(proofStills()).toEqual([]);
+    expect(await stillsLeft(walkId)).toEqual([]);
+  });
+
+  it("fails as before when a privacy phrase is refused and the proof frames hold no single part, and makes no still at all", async () => {
+    const walkId = await foundWalk(["loop"]);
+    refusedMailbox();
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "privacy_not_checked" } });
+    expect(await unchecked(walkId)).toEqual([]);
+    expect(proofStills()).toEqual([]);
+    expect(await stillsLeft(walkId)).toEqual([]);
+  });
+
+  it("fails when the blur step leaves the loop, throws on the pan and is retried, and the pan then fails, so the left loop never counts as scored", async () => {
+    const walkId = await sidedWalk(["back left corner"]);
+    frontFound();
+    harness.answers.mailbox = [{ text: "<0f>not a record" }, { found: [] }];
+    const refused = { refuse: { code: "media_refused", message: "The media container refused the video." } };
+    harness.originalStills = [{ throws: "the media container answered 503" }, refused];
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "media_refused" } });
+    expect((await getWalk(env.DB, walkId))?.state).toMatchObject({ name: "failed", step: "score" });
+    expect(proofStills()).toHaveLength(2);
+    expect(await unchecked(walkId)).not.toContainEqual(UNCHECKED("back_left"));
+    expect((await clipsForWalk(env.DB, walkId)).map((c) => c.kind)).toEqual(["pan"]);
+    expect(harness.steps).not.toContain(STEP.coverage);
+  });
+});
+
 describe("coverage", () => {
   it("runs after blur, before explain and before the video is deleted, and its record outlives the video", async () => {
     const walkId = await foundWalk(["loop"]);
@@ -597,5 +880,61 @@ describe("the stage count", () => {
     expect(harness.steps.filter((name) => name.startsWith("count "))).toEqual(before.map(STEP.count));
     expect(await counted(instance, before)).toEqual(rising(11).slice(0, before.length));
     expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "failed", step: "score" });
+  });
+});
+
+describe("the time of each step", () => {
+  type Timing = { walk_id: string; step: string; started_at: string; ms: number };
+  const timings = async (walkId: string): Promise<Timing[]> =>
+    (await env.DB.prepare("SELECT walk_id, step, started_at, ms FROM step_timings WHERE walk_id = ?").bind(walkId).all<Timing>()).results;
+  const passing = { do: (_name: string, ...rest: unknown[]) => (rest.at(-1) as () => Promise<unknown>)() } as unknown as WorkflowStep;
+  const clock = (...times: number[]) => () => times.shift() ?? 0;
+
+  it("is recorded once for every step a finished walk ran, and never for a count", async () => {
+    const walkId = await foundWalk();
+
+    await using instance = await run(walkId);
+
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    const rows = await timings(walkId);
+    const named = harness.steps.filter((name) => !name.startsWith("count "));
+    expect(rows.map((r) => r.step).sort()).toEqual([...named].sort());
+    expect(named).toContain(STEP.score);
+    for (const row of rows) expect(Number.isInteger(row.ms) && row.ms >= 0).toBe(true);
+  });
+
+  it("times a step from its start to its end and hands back its value and its retry settings", async () => {
+    const walkId = await queuedWalk();
+    const passed: unknown[][] = [];
+    const watched = {
+      do: (name: string, ...rest: unknown[]) => {
+        passed.push([name, ...rest.slice(0, -1)]);
+        return (rest.at(-1) as () => Promise<unknown>)();
+      },
+    } as unknown as WorkflowStep;
+    const config = { retries: { limit: 1, delay: "1 second" } } as const;
+
+    const value = await timeSteps(watched, env.DB, walkId, clock(Date.UTC(2026, 9, 30, 10), Date.UTC(2026, 9, 30, 10) + 450)).do(STEP.store, config, async () => ({ kept: 2 }));
+
+    expect(value).toEqual({ kept: 2 });
+    expect(passed).toEqual([[STEP.store, config]]);
+    expect(await timings(walkId)).toEqual([{ walk_id: walkId, step: STEP.store, started_at: "2026-10-30T10:00:00.000Z", ms: 450 }]);
+  });
+
+  it("records nothing for a count or for a step that throws, and lets the error through", async () => {
+    const walkId = await queuedWalk();
+    const timed = timeSteps(passing, env.DB, walkId, clock(1, 2, 3, 4));
+
+    await timed.do(STEP.count(STEP.store), async () => ({ done: 1, total: 2 }));
+    await expect(timed.do(STEP.score, async () => Promise.reject(new Error("SAM answered 503")))).rejects.toThrow("503");
+
+    expect(await timings(walkId)).toEqual([]);
+  });
+
+  it("keeps the step's value when the time cannot be written", async () => {
+    const walkId = await queuedWalk();
+    const broken = { prepare: () => { throw new Error("D1 is down"); } } as unknown as D1Database;
+
+    expect(await timeSteps(passing, broken, walkId, clock(1, 2)).do(STEP.blur, async () => "blurred")).toBe("blurred");
   });
 });

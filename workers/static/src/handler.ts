@@ -1,4 +1,6 @@
 import { welcomeMessage } from "./email-copy";
+import { applyLaunchDate, launchDateShown } from "./launch-date";
+import { applyPostalAddress } from "./postal-address";
 import { verifyTurnstile } from "./turnstile";
 import type { Deps, Env } from "./types";
 import { readToken, unsubscribeUrl } from "./unsubscribe";
@@ -24,6 +26,8 @@ const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
 };
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -76,7 +80,7 @@ async function signup(request: Request, env: Env, deps: Deps): Promise<Response>
 
   if (isNew && deps.mailer && env.UNSUBSCRIBE_SECRET) {
     try {
-      await deps.mailer.send(welcomeMessage(input.email, await unsubscribeUrl(input.email, env.UNSUBSCRIBE_SECRET)));
+      await deps.mailer.send(welcomeMessage(input.email, await unsubscribeUrl(input.email, env.UNSUBSCRIBE_SECRET), env));
       await env.DB.prepare("UPDATE signups SET welcomed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE email = ?1")
         .bind(input.email)
         .run();
@@ -117,7 +121,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   } else if (pathname.startsWith("/api/")) {
     response = fail(404, "not_found");
   } else {
-    response = await env.ASSETS.fetch(request);
+    response = await applyPostalAddress(applyLaunchDate(await env.ASSETS.fetch(request), launchDateShown(env)), env.POSTAL_ADDRESS);
   }
 
   const secured = new Response(response.body, response);

@@ -262,7 +262,7 @@ describe("Finding status", () => {
   it("shows Rechecked with its date only for a Done item with a recheck photo, and choosing another status drops it", async () => {
     const storage = memoryStorage();
     const atMs = Date.UTC(2026, 10, 2, 12);
-    storage.setItem(marksKey("walk-1"), JSON.stringify({ removed: {}, status: { req: { kind: "done", recheck: { photo: "r.jpg", atMs } } } }));
+    storage.setItem(marksKey("walk-1"), JSON.stringify({ removed: {}, status: { req: { kind: "done", recheck: { photo: "r.jpg", atMs, result: "cleared" } } } }));
     const view = await open(walk([REQUIRED]), REQUIRED.id, { marks: memoryMarks(storage) });
     expect(status(view.host)).toBe("rechecked");
     expect(view.text()).toContain(copy.status.rechecked);

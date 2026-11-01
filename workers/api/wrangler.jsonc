@@ -9,7 +9,7 @@
   "assets": {
     "directory": "../../apps/web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/health"]
+    "run_worker_first": ["/api/*", "/health", "/ops"]
   },
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "emberwalk-media" }],
   "d1_databases": [
@@ -24,8 +24,10 @@
     { "binding": "PIPELINE_SERVICE", "service": "emberwalk-pipeline", "entrypoint": "PipelineEntry" },
     { "binding": "GET_FIXED", "service": "emberwalk-getfixed", "entrypoint": "GetFixed" }
   ],
+  "browser": { "binding": "BROWSER" },
   "vars": {
     "R2_HOST": "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com",
-    "R2_BUCKET_NAME": "emberwalk-media"
+    "R2_BUCKET_NAME": "emberwalk-media",
+    "REPORT": "off"
   }
 }

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { clipsForWalk, saveClip } from "../src/clips.ts";
+import { clipsForWalk, dropClip, saveClip } from "../src/clips.ts";
 import { addTag, tagsForWalk } from "../src/tags.ts";
 import { CLIP, clip, OTHER_WALK, PAN_CLIP, resetDb, seedWalk, TAG, tag, WALK } from "./fixtures.ts";
 
@@ -98,5 +98,14 @@ describe("clips", () => {
     await saveClip(env.DB, clip());
     await env.DB.prepare("DELETE FROM walks WHERE id = ?").bind(WALK).run();
     expect(await clipsForWalk(env.DB, WALK)).toEqual([]);
+  });
+
+  it("drops one clip of a walk and keeps the other, and dropping it again changes nothing", async () => {
+    await saveClip(env.DB, clip());
+    await saveClip(env.DB, clip({ id: PAN_CLIP, kind: "pan", file: `clips/${WALK}/pan.mp4` }));
+    await dropClip(env.DB, PAN_CLIP);
+    await dropClip(env.DB, PAN_CLIP);
+    expect(await clipsForWalk(env.DB, WALK)).toEqual([clip()]);
+    await expect(dropClip(env.DB, "not an id")).rejects.toThrow();
   });
 });

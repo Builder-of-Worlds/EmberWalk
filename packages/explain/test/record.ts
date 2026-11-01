@@ -16,7 +16,7 @@ export type LiveRecord = {
   costUsd: number;
   refused: Explanation["refused"];
   entries: { model: string; totalUsd: number; cached: boolean }[];
-  findings: { findingId: string; wording: string; instruction: string; verdict: string; reason: string | null }[];
+  findings: { findingId: string; wording: string; instruction: string | null; verdict: string; reason: string | null }[];
 };
 
 const NANO = 1e9;

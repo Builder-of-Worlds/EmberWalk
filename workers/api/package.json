@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0",
     "@emberwalk/db": "*",
     "@emberwalk/directory": "*",
     "@emberwalk/rules": "*",

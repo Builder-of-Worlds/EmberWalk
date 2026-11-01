@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 import support
-from ewscene import chunks, house, motion, route, schema
+from ewscene import chunks, house, motion, route, schema, truth
 
 COVERAGE_JS = """
 import { readFileSync } from 'node:fs';
@@ -429,10 +429,142 @@ class Samples(unittest.TestCase):
         route.check_samples(spec(), self.samples((((x0 + x1) / 2, (y0 + y1) / 2, z1 + 1), 90),))
 
 
+def committed(name, file):
+    with open(os.path.join(support.REPO_DIR, "fixtures", "synthetic", name + "-before", file), encoding="utf-8") as f:
+        return f.read()
+
+
+def sweep_frames(parts):
+    return {f for p in frames_of(parts, "sweep") for f in range(p["start_frame"], p["end_frame"] + 1)}
+
+
+def steady(doc):
+    with mock.patch.object(motion, "_wave", lambda *a, **k: 0.0):
+        return route.build(doc)
+
+
+class UpSweep(unittest.TestCase):
+    def test_the_hero_and_mobile_walks_are_byte_identical_to_their_committed_files_without_the_setting(self):
+        for name in ("hero", "mobile"):
+            self.assertNotIn("up_sweep_deg", spec(name)["route"])
+            walk, parts = built(name)
+            self.assertEqual(truth.dumps(walk), committed(name, "motion.json"), name)
+            self.assertEqual(truth.dumps(parts), committed(name, "parts.json"), name)
+            self.assertEqual(frames_of(parts, "sweep"), [], name)
+
+    def test_a_sweep_of_0_is_the_same_walk_as_no_setting(self):
+        doc = spec("mobile")
+        doc["route"]["up_sweep_deg"] = 0
+        self.assertEqual(route.build(doc), built("mobile"))
+
+    def test_the_apartment_asks_for_a_35_degree_look_up_at_34_in_a_second(self):
+        r = spec("apartment")["route"]
+        self.assertEqual((r["up_sweep_deg"], r["speed_in_s"]), (35, 34))
+
+    def test_a_sweep_follows_each_apartment_pan_for_8_s_from_the_same_spot(self):
+        walk, parts = built("apartment")
+        kinds = [p["kind"] for p in parts["parts"]]
+        self.assertEqual(kinds, ["loop"] + ["walk", "pan", "sweep"] * 4 + ["walk"])
+        self.assertEqual(len(frames_of(parts, "sweep")), 4)
+        for i, p in enumerate(parts["parts"]):
+            if p["kind"] != "sweep":
+                continue
+            pan = parts["parts"][i - 1]
+            self.assertEqual((pan["kind"], p["side"], p["bearing_deg"]), ("pan", pan["side"], pan["bearing_deg"]))
+            self.assertAlmostEqual(p["end_s"] - p["start_s"], 8.0, places=6)
+            self.assertAlmostEqual(p["start_s"], pan["end_s"], places=6)
+            self.assertEqual(sample(walk, pan["end_frame"])["pos_in"][:2], sample(walk, p["end_frame"])["pos_in"][:2])
+        for a, b in zip(parts["parts"], parts["parts"][1:]):
+            self.assertEqual(b["start_frame"], a["end_frame"] + 1)
+            self.assertNotEqual(a["kind"], b["kind"])
+        self.assertEqual(parts["parts"][-1]["end_frame"], walk["frame_count"])
+
+    def test_the_apartment_walk_with_its_sweeps_fits_330_s(self):
+        walk, parts = built("apartment")
+        self.assertEqual(len(frames_of(parts, "sweep")), 4)
+        self.assertLessEqual(walk["duration_s"], route.MAX_S)
+        self.assertGreater(walk["duration_s"], 300)
+        route.check_samples(spec("apartment"), walk["samples"])
+
+    def test_the_camera_looks_up_past_the_old_floor_only_inside_a_sweep_and_reaches_35_up(self):
+        walk, parts = built("apartment")
+        inside_sweep = sweep_frames(parts)
+        outside = [s["tilt_deg"] for s in walk["samples"] if s["frame"] not in inside_sweep]
+        within = [s["tilt_deg"] for s in walk["samples"] if s["frame"] in inside_sweep]
+        self.assertGreaterEqual(min(outside), 2.0)
+        self.assertLess(min(within), 2.0)
+        self.assertAlmostEqual(min(within), -35, delta=1.0)
+
+    def test_each_sweep_turns_80_degrees_each_way_about_the_wall_normal_and_ends_where_it_began(self):
+        walk, parts = steady(spec("apartment"))
+        self.assertEqual(len(frames_of(parts, "sweep")), 4)
+        for p in frames_of(parts, "sweep"):
+            first, last = sample(walk, p["start_frame"]), sample(walk, p["end_frame"])
+            rows = walk["samples"][p["start_frame"] - 1:p["end_frame"]]
+            offs = [(s["heading_deg"] - first["heading_deg"] + 180) % 360 - 180 for s in rows]
+            self.assertAlmostEqual(min(offs), -80, delta=0.5, msg=p["side"])
+            self.assertAlmostEqual(max(offs), 80, delta=0.5, msg=p["side"])
+            self.assertAlmostEqual(min(s["tilt_deg"] for s in rows), -35, delta=0.1, msg=p["side"])
+            self.assertAlmostEqual(max(s["tilt_deg"] for s in rows), 12, delta=0.1, msg=p["side"])
+            self.assertAlmostEqual(turn(first["heading_deg"], last["heading_deg"]), 0, delta=1.0, msg=p["side"])
+            self.assertAlmostEqual(last["tilt_deg"], 12, delta=0.5, msg=p["side"])
+            self.assertAlmostEqual(first["tilt_deg"], 12, delta=0.5, msg=p["side"])
+
+    def test_a_sweep_turns_and_tilts_no_faster_than_7_degrees_a_frame(self):
+        walk, parts = built("apartment")
+        rows = walk["samples"]
+        inside_sweep = sweep_frames(parts)
+        heads = [turn(a["heading_deg"], b["heading_deg"]) for a, b in zip(rows, rows[1:]) if a["frame"] in inside_sweep]
+        tilts = [abs(b["tilt_deg"] - a["tilt_deg"]) for a, b in zip(rows, rows[1:]) if a["frame"] in inside_sweep]
+        self.assertGreater(len(heads), 4 * 8 * 15 - 8)
+        self.assertLessEqual(max(heads), 7)
+        self.assertLessEqual(max(tilts), 7)
+        self.assertGreater(max(heads), 3)
+
+    def leg_ends(self, made, heading_max, tilt_max):
+        """the frame pairs next to each leg's start and end inside the sweep: measured steady, heading at most 0.44 and tilt at most 0.26 a frame against 4.0 and 2.35 mid leg"""
+        walk, parts = made
+        rows = walk["samples"]
+        self.assertEqual(len(frames_of(parts, "sweep")), 4)
+        for p in frames_of(parts, "sweep"):
+            first = p["start_frame"] - 1
+            for leg in (0, 2, 6, 8):
+                i = first + leg * 15
+                pairs = [(rows[i - 1], rows[i]), (rows[i], rows[i + 1])][1 if leg == 0 else 0:]
+                for a, b in pairs:
+                    self.assertLessEqual(turn(a["heading_deg"], b["heading_deg"]), heading_max, (p["side"], leg))
+                    self.assertLessEqual(abs(b["tilt_deg"] - a["tilt_deg"]), tilt_max, (p["side"], leg))
+            mid = first + 4 * 15
+            self.assertGreater(turn(rows[mid]["heading_deg"], rows[mid + 1]["heading_deg"]), 3.0)
+
+    def test_each_sweep_leg_starts_and_ends_at_rest_with_no_step(self):
+        self.leg_ends(steady(spec("apartment")), 0.5, 0.3)
+
+    def test_the_hand_held_waves_add_no_step_at_the_leg_ends(self):
+        """the waves alone move the heading at most 0.27 and the tilt at most 0.12 a frame (1.2 and 0.5 degrees at 0.23 and 0.71 Hz; 0.9 degrees at 0.31 Hz, at 15 fps)"""
+        self.leg_ends(built("apartment"), 0.5 + 0.27, 0.3 + 0.12)
+
+    def test_the_sweep_is_refused_below_0_and_above_45_and_allowed_at_both_ends(self):
+        for bad in (46, -1):
+            doc = spec("mobile")
+            doc["route"]["up_sweep_deg"] = bad
+            with self.assertRaisesRegex(house.HouseError, "up sweep %s deg is outside 0 to 45 deg" % bad):
+                route.params(doc)
+            self.assertTrue(schema.errors(doc, schema.load("house-spec")), bad)
+        for good in (0, 45):
+            doc = spec("mobile")
+            doc["route"]["up_sweep_deg"] = good
+            self.assertEqual(route.params(doc)["up_sweep_deg"], good)
+            self.assertEqual(schema.errors(doc, schema.load("house-spec")), [], good)
+
+    def test_the_apartment_spec_passes_its_schema(self):
+        self.assertIn("up_sweep_deg", spec("apartment")["route"])
+        self.assertEqual(schema.errors(spec("apartment"), schema.load("house-spec")), [])
+
+
 class Placeholder(unittest.TestCase):
     def test_a_placeholder_route_takes_the_defaults(self):
-        doc = spec("mobile")
-        self.assertEqual(doc["route"], {"placeholder": True})
+        doc = dict(spec("mobile"), route={"placeholder": True})
         self.assertEqual(route.params(doc), route.DEFAULTS)
 
 

@@ -1,0 +1,93 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "apartment-before",
+  "file": "apartment-before/walk.mp4",
+  "size_bytes": 202263061,
+  "sha256": "229847a76080b77a689cb18bd9973395a4c45e8a74e9f41bae18aeb3676ef5fa",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1280,
+  "height": 720,
+  "fps": 15.0,
+  "duration_s": 322.2,
+  "frame_count": 4833,
+  "settings": {
+    "engine": "CYCLES",
+    "samples": 64,
+    "render_seconds": 3007.6,
+    "blender": "5.2.3 LTS",
+    "machine": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "chunk_order": [
+      [
+        1501,
+        1800
+      ],
+      [
+        4501,
+        4800
+      ],
+      [
+        3001,
+        3300
+      ],
+      [
+        601,
+        900
+      ],
+      [
+        3601,
+        3900
+      ],
+      [
+        301,
+        600
+      ],
+      [
+        2701,
+        3000
+      ],
+      [
+        2401,
+        2700
+      ],
+      [
+        901,
+        1200
+      ],
+      [
+        3301,
+        3600
+      ],
+      [
+        1801,
+        2100
+      ],
+      [
+        1,
+        300
+      ],
+      [
+        2101,
+        2400
+      ],
+      [
+        4201,
+        4500
+      ],
+      [
+        1201,
+        1500
+      ],
+      [
+        3901,
+        4200
+      ],
+      [
+        4801,
+        4833
+      ]
+    ]
+  }
+}

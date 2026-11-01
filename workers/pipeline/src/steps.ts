@@ -5,6 +5,7 @@ export const STEP = {
   upload: (kind: string) => `upload ${kind}`,
   segment: (kind: string) => `segment ${kind}`,
   privacy: (kind: string) => `privacy ${kind}`,
+  leave: (kind: string) => `leave ${kind} unchecked`,
   store: "store",
   transcribe: "transcribe",
   enterScore: "enter score",

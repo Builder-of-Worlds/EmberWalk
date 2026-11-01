@@ -3,11 +3,12 @@ import type { MouseEvent } from "react";
 import { copy } from "./copy.ts";
 import { DepsContext } from "./deps.ts";
 import type { Deps } from "./deps.ts";
-import { approveIdsIn, findingIdsIn, fixIdIn, inspectionIdIn, recordPartIn, resultsIdIn, routeFor, takeIdIn, walkIdIn } from "./router.ts";
+import { approveIdsIn, findingIdsIn, fixIdIn, inspectionIdIn, recheckIdsIn, recordPartIn, reportIdIn, resultsIdIn, routeFor, takeIdIn, walkIdIn } from "./router.ts";
 import type { WalkPart } from "@emberwalk/shared";
 import { draftWordsShown } from "./draft-words.ts";
 import type { ApproveIds, FindingIds, Route } from "./router.ts";
 import { JUDGE } from "./judge.ts";
+import { About } from "./screens/About.tsx";
 import { Approve } from "./screens/Approve.tsx";
 import { Finding } from "./screens/Finding.tsx";
 import { GetItFixed } from "./screens/GetItFixed.tsx";
@@ -16,7 +17,9 @@ import { Inspection } from "./screens/Inspection.tsx";
 import { Home } from "./screens/Home.tsx";
 import { JudgeWalk } from "./screens/JudgeWalk.tsx";
 import { How } from "./screens/How.tsx";
+import { Recheck } from "./screens/Recheck.tsx";
 import { Record } from "./screens/Record.tsx";
+import { Report } from "./screens/Report.tsx";
 import { Results } from "./screens/Results.tsx";
 import { CheckingWalk, Send } from "./screens/Send.tsx";
 
@@ -29,11 +32,14 @@ type ScreenProps = {
   fixId: string | null;
   approveIds: ApproveIds | null;
   inspectionId: string | null;
+  recheckIds: FindingIds | null;
+  reportId: string | null;
 };
 
 const SCREENS: Record<Route, (props: ScreenProps) => React.JSX.Element | null> = {
   home: Home,
   how: How,
+  about: About,
   record: JUDGE ? JudgeWalk : Record,
   send: Send,
   results: Results,
@@ -43,6 +49,8 @@ const SCREENS: Record<Route, (props: ScreenProps) => React.JSX.Element | null> =
   approve: Approve,
   inspection: Inspection,
   history: History,
+  recheck: Recheck,
+  report: Report,
 };
 
 const useHash = (): [string, (hash: string) => void] => {
@@ -102,6 +110,8 @@ export const App = ({ deps }: { deps: Deps }) => {
           fixId={fixIdIn(hash)}
           approveIds={approveIdsIn(hash)}
           inspectionId={inspectionIdIn(hash)}
+          recheckIds={recheckIdsIn(hash)}
+          reportId={reportIdIn(hash)}
         />
       </div>
     </DepsContext.Provider>

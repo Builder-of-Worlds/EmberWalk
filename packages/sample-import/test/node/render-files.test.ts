@@ -22,9 +22,9 @@ describe("the host folder behind the L2 and hero tests", () => {
     expect(await (await ask(handler, "render.json")).json()).toEqual({ scene: "from-folder" });
   });
 
-  it("serves the test yard 2 truth when no truth path is given", async () => {
+  it("serves the hero house truth when no truth path is given", async () => {
     const handler = renderFiles(await folder());
-    expect(await (await ask(handler, "truth.json")).json()).toMatchObject({ scene: "test-yard-2", synthetic: true });
+    expect(await (await ask(handler, "truth.json")).json()).toMatchObject({ scene: "hero-before", synthetic: true });
   });
 
   it("refuses a file name it does not serve, even with a truth path", async () => {

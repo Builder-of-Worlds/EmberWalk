@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LIMITS, Limits, limitsWith, maxWalkBytes, uploadMaxParts } from "../src/index.ts";
+import { DEFAULT_LIMITS, Limits, limitsFromConfig, limitsWith, maxWalkBytes, uploadMaxParts } from "../src/index.ts";
 import { refuses, refusesEach, refusesMissingAndExtra, roundTrips } from "./check.ts";
 
 const MiB = 1024 * 1024;
@@ -8,6 +8,7 @@ describe("limits", () => {
   it("holds the decided defaults", () => {
     expect(DEFAULT_LIMITS).toEqual({
       dailySpendUsd: 20,
+      deleteEverythingOn: false,
       liveWalksPerVisitorPerDay: 3,
       maxFps: 4,
       defaultFps: 2,
@@ -22,8 +23,21 @@ describe("limits", () => {
       faultCountMost: 1000,
       faultKeepDays: 30,
       faultRowsADay: 500,
+      recheckOn: false,
+      recheckPhotoBytes: 20 * MiB,
+      rechecksPerFinding: 5,
+      paymentsOn: false,
     });
     roundTrips(Limits, DEFAULT_LIMITS);
+  });
+
+  it("keeps the recheck flag a true or false switch and its counts whole and above zero", () => {
+    expect(limitsWith({ recheckOn: true }).recheckOn).toBe(true);
+    refusesEach(Limits, DEFAULT_LIMITS, [{ recheckOn: "true" }, { recheckOn: 1 }, { recheckOn: null }]);
+    for (const key of ["recheckPhotoBytes", "rechecksPerFinding"]) {
+      refusesEach(Limits, DEFAULT_LIMITS, [{ [key]: 0 }, { [key]: -1 }, { [key]: 1.5 }, { [key]: "5" }]);
+      expect(limitsWith({ [key]: 1 })[key as "rechecksPerFinding"]).toBe(1);
+    }
   });
 
   it("derives the walk size and part count from the walk length", () => {
@@ -61,6 +75,27 @@ describe("limits", () => {
       { uploadMaxTriesPerPart: "3" },
     ]);
     refuses(Limits, { ...DEFAULT_LIMITS, maxObjectsPerFrame: 0 });
+  });
+
+  it("keeps Delete Everything off by default behind a true or false switch", () => {
+    expect(DEFAULT_LIMITS.deleteEverythingOn).toBe(false);
+    expect(limitsWith({ deleteEverythingOn: true }).deleteEverythingOn).toBe(true);
+    refusesEach(Limits, DEFAULT_LIMITS, [{ deleteEverythingOn: "true" }, { deleteEverythingOn: 1 }, { deleteEverythingOn: null }]);
+  });
+
+  it("keeps payments off by default behind a true or false switch", () => {
+    expect(DEFAULT_LIMITS.paymentsOn).toBe(false);
+    expect(limitsWith({ paymentsOn: true }).paymentsOn).toBe(true);
+    expect(limitsFromConfig('{"paymentsOn":true}').paymentsOn).toBe(true);
+    expect(limitsFromConfig('{"paymentsOn":"true"}').paymentsOn).toBe(false);
+    refusesEach(Limits, DEFAULT_LIMITS, [{ paymentsOn: "true" }, { paymentsOn: 1 }, { paymentsOn: null }]);
+  });
+  it("reads the limits from a configured JSON text, and falls back to the defaults when it is missing or not valid", () => {
+    expect(limitsFromConfig('{"deleteEverythingOn":true}')).toEqual(limitsWith({ deleteEverythingOn: true }));
+    expect(limitsFromConfig('{"recheckOn":true,"deleteEverythingOn":true}').recheckOn).toBe(true);
+    for (const raw of [undefined, "", "not json", "[]", "null", "7", '{"deleteEverythingOn":"yes"}', '{"nope":true}']) {
+      expect(limitsFromConfig(raw)).toEqual(DEFAULT_LIMITS);
+    }
   });
 
   it("refuses a zero, negative or fractional fault limit", () => {

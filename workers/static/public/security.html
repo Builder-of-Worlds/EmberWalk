@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security | EmberWalk</title>
+  <meta name="description" content="Where EmberWalk runs, how the site and your walks are protected, what Delete Everything erases and what it keeps.">
+  <link rel="canonical" href="https://emberwalk.app/security">
+  <meta name="theme-color" content="#1a271e">
+  <link rel="icon" href="/brand/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/brand/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="EmberWalk">
+  <meta property="og:url" content="https://emberwalk.app/security">
+  <meta property="og:title" content="Security | EmberWalk">
+  <meta property="og:description" content="Where EmberWalk runs, how the site and your walks are protected, what Delete Everything erases and what it keeps.">
+  <meta property="og:image" content="https://emberwalk.app/brand/share-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The EmberWalk shield and house mark with the words Wildfire Home Check, and the question: When the next wildfire comes, will your home be ready?">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Security | EmberWalk">
+  <meta name="twitter:description" content="Where EmberWalk runs, how the site and your walks are protected, what Delete Everything erases and what it keeps.">
+  <meta name="twitter:image" content="https://emberwalk.app/brand/share-card.png">
+  <meta name="twitter:image:alt" content="The EmberWalk shield and house mark with the words Wildfire Home Check, and the question: When the next wildfire comes, will your home be ready?">
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/pages.css">
+  <script src="/boot.js"></script>
+  <script type="module" src="/site.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="/">EmberWalk</a>
+  </header>
+
+  <main>
+    <section class="block">
+      <div class="column prose card">
+        <h1 class="rise">Security</h1>
+        <h2 class="rise">Where EmberWalk runs</h2>
+        <p class="rise">Cloudflare hosts EmberWalk: the site, the app's servers, the database, the file storage and the email routing.</p>
+        <h2 class="rise">The website</h2>
+        <p class="rise">Every page of emberwalk.app tells your browser to use HTTPS only. It loads scripts only from this site and from Cloudflare Turnstile, which checks that a person is using the sign up form, and it cannot be shown inside another site's frame. The site sets no cookies of its own and loads no analytics.</p>
+        <h2 class="rise">Your walks</h2>
+        <p class="rise">There is no account, name or password. Your walks are tied to a random code kept on your phone.</p>
+        <ul class="rise">
+          <li>Video of a walk is deleted when the walk finishes. A sweep every hour also deletes any original video still there after 24 hours.</li>
+          <li>Sound is cut from the video, sent for transcription and deleted straight after.</li>
+          <li>The proof pictures EmberWalk keeps are blurred where it finds people, faces, license plates, house numbers, street signs and mailboxes. Photos you take to recheck a fix are not blurred.</li>
+          <li>Pictures go to Meta's models to be checked before the blur is applied. The <a href="/privacy">Privacy policy</a> says what each company receives.</li>
+          <li>Your phone's position is read once and only a rule area such as ca is kept. Your coordinates are never sent.</li>
+        </ul>
+        <h2 class="rise">Meta and the paid setting</h2>
+        <p class="rise">EmberWalk's code refuses to send real walk content to Meta unless billing for Meta's service is set to paid.</p>
+        <h2 class="rise">Payments</h2>
+        <p class="rise">Payments are made on a page Stripe hosts. EmberWalk never sees or stores your card number.</p>
+        <h2 class="rise">Delete Everything</h2>
+        <p class="rise">Delete Everything in the app erases the walks stored under your phone's code: the video leftovers, clips, proof pictures, recheck photos, findings, marks, Get It Fixed jobs, messages and crew replies. It is refused while a walk is still being checked.</p>
+        <p class="rise">It does not erase:</p>
+        <ul class="rise">
+          <li>cost records of the model calls, which are kept without the link to your walk</li>
+          <li>model answers saved without a walk</li>
+          <li>the list of crews that asked not to be emailed again</li>
+          <li>the sign up list, which the unsubscribe link in every email removes</li>
+          <li>emails already delivered, and anything Meta or Baseten kept on their side</li>
+        </ul>
+        <p class="rise">The <a href="/privacy">Privacy policy</a> has the full list.</p>
+        <h2 class="rise">Report a problem</h2>
+        <p class="rise">To report a security problem, write to us. The same address is in our <a href="https://emberwalk.app/.well-known/security.txt">security.txt</a>.</p>
+        <p class="rise contact">The Arbiter Bibendi LLC<br><a href="mailto:hello@emberwalk.app">hello@emberwalk.app</a></p>
+        <p class="rise updated">Last updated: Oct. 31st, 2026.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <nav class="footer-links" aria-label="Site"><a href="/pricing">Pricing</a> <a href="/terms">Terms</a> <a href="/privacy">Privacy Policy</a> <a href="/refunds">Refunds</a> <a href="/about">About</a> <a href="/contact">Contact</a> <a href="/security">Security</a> <a href="/accessibility">Accessibility</a> <a href="mailto:hello@emberwalk.app">hello@emberwalk.app</a></nav>
+    <small class="seller">EmberWalk is a product of The Arbiter Bibendi LLC.</small>
+  </footer>
+</body>
+</html>

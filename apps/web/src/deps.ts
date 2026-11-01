@@ -1,12 +1,17 @@
-import { DEFAULT_LIMITS } from "@emberwalk/shared";
+import { DEFAULT_LIMITS, limitsWith } from "@emberwalk/shared";
+import type { Limits } from "@emberwalk/shared";
 import { createContext, useContext } from "react";
 import { uploadApi, walkApi } from "./api.ts";
 import { browserAwake } from "./awake.ts";
+import { eraseApi } from "./erase-api.ts";
+import type { EraseApi } from "./erase-api.ts";
 import type { Awake } from "./awake.ts";
 import type { Fetch, WalkApi } from "./api.ts";
 import { fixedApi } from "./fixed-api.ts";
 import type { FixedApi } from "./fixed-api.ts";
 import { storageFindingMarks } from "./finding-marks.ts";
+import { forgetSent } from "./forget-sent.ts";
+import type { ForgetSent } from "./forget-sent.ts";
 import type { FindingMarks } from "./finding-marks.ts";
 import { keptStills, browserShelf } from "./kept-stills.ts";
 import { apiResults, apiStills, samplesThenApi } from "./live-api.ts";
@@ -29,6 +34,10 @@ import type { PortfolioApi } from "./portfolio-api.ts";
 import { storagePrefs } from "./prefs.ts";
 import type { Prefs } from "./prefs.ts";
 import type { Clock, MediaEnv } from "./recorder.ts";
+import { recheckApi } from "./recheck-api.ts";
+import type { RecheckApi } from "./recheck-api.ts";
+import { browserCopy, browserSave, reportApi } from "./report-api.ts";
+import type { ReportApi } from "./report-api.ts";
 import { keptResults, openResultsStore } from "./results-store.ts";
 import { sampleResults } from "./samples.ts";
 import type { LoadResults } from "./samples.ts";
@@ -47,6 +56,8 @@ export const BUILD = typeof __EMBERWALK_BUILD__ === "string" ? __EMBERWALK_BUILD
 
 export type Deps = {
   media: MediaEnv;
+  erase: EraseApi;
+  forgetSent: ForgetSent;
   takes: () => Promise<TakeStore>;
   clock: Clock;
   maxWalkMs: number;
@@ -69,9 +80,25 @@ export type Deps = {
   phone: PhoneEnv;
   portfolio: PortfolioApi;
   awake: Awake;
+  limits: Limits;
+  rechecks: RecheckApi;
+  report?: ReportApi;
 };
 
+export const reportOn = (raw: string | undefined): boolean => raw === "on" && !JUDGE;
+
 export const MAX_WALK_MS = DEFAULT_LIMITS.maxWalkSeconds * 1000;
+
+export const limitsFrom = (raw: string | undefined): Limits => {
+  if (raw === undefined) return DEFAULT_LIMITS;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return DEFAULT_LIMITS;
+    return limitsWith(parsed as Partial<Limits>);
+  } catch {
+    return DEFAULT_LIMITS;
+  }
+};
 
 export const realClock: Clock = {
   now: () => Date.now(),
@@ -96,8 +123,14 @@ export const browserDeps = (): Deps => {
   const aborts = pendingAborts(() => localStorage, (uploadId) => uploadApi(base, put).abort(uploadId));
   window.addEventListener("online", () => void aborts.retry());
   void aborts.retry();
+  const kept = once(() => openResultsStore(indexedDB));
+  const marks = storageFindingMarks(() => localStorage);
+  const sentWalks = storageSentWalks(() => localStorage);
+  const sync = storageMarkSync(() => localStorage, fixed.mark);
   return {
     media: { mediaDevices: navigator.mediaDevices, MediaRecorder: globalThis.MediaRecorder },
+    erase: eraseApi(base, put, prefs.visitorId),
+    forgetSent: forgetSent({ prefs, takes, sentWalks, results: kept, shelf: browserShelf, marks, sync }),
     takes,
     clock: realClock,
     maxWalkMs: MAX_WALK_MS,
@@ -111,18 +144,21 @@ export const browserDeps = (): Deps => {
     motion: browserMotion(window),
     light: browserLight(document),
     locate: browserLocate(navigator.geolocation),
-    results: keptResults(once(() => openResultsStore(indexedDB)), samplesThenApi(sampleResults, apiResults(read, base)), realClock),
+    results: keptResults(kept, samplesThenApi(sampleResults, apiResults(read, base)), realClock),
     walkStatus: read.status,
     reportFault: read.reportFault,
     build: BUILD,
     stills: keptStills(apiStills(put, prefs.visitorId), browserShelf),
-    marks: storageFindingMarks(() => localStorage),
-    sentWalks: storageSentWalks(() => localStorage),
+    marks,
+    sentWalks,
     fixed,
-    sync: storageMarkSync(() => localStorage, fixed.mark),
+    sync,
     phone: browserPhone(navigator, (url) => window.location.assign(url)),
     portfolio: JUDGE ? noPortfolio : portfolioApi(base, put, prefs.visitorId),
     awake: browserAwake(navigator, document),
+    limits: limitsFrom(import.meta.env.VITE_EMBERWALK_LIMITS as string | undefined),
+    rechecks: recheckApi(base, put, prefs.visitorId),
+    ...(reportOn(import.meta.env.VITE_EMBERWALK_REPORT as string | undefined) ? { report: reportApi(base, put, prefs.visitorId, browserSave(document), browserCopy(navigator)) } : {}),
   };
 };
 

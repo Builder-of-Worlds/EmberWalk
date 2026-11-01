@@ -1,11 +1,13 @@
+import { isCorner, type Part } from "@emberwalk/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Failure } from "../api.ts";
-import { copy } from "../copy.ts";
+import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { draftWordsShown } from "../draft-words.ts";
 import { progressOf } from "../progress.ts";
 import type { Shown } from "../progress.ts";
 import type { Clock } from "../recorder.ts";
-import { resultsFor, ROUTES, sendFor } from "../router.ts";
+import { recordPartFor, resultsFor, ROUTES, sendFor } from "../router.ts";
 import type { Sender } from "../sender.ts";
 import type { Take, TakeStore } from "../take-store.ts";
 import type { Progress, SendResult } from "../uploader.ts";
@@ -56,6 +58,19 @@ const FAILS_AGAIN: ReadonlySet<string> = new Set([
 const resendable = (watched: Watched) => watched.kind !== "failed" || watched.code === null || !FAILS_AGAIN.has(watched.code);
 
 export const OPENS_IN_MS = 1_500;
+
+const PartAsk = ({ opens, part }: { opens: string; part: Part }) => {
+  const corner = isCorner(part);
+  if (corner && !draftWordsShown()) return null;
+  return (
+    <>
+      <p className="hint">{corner ? draft.corners.hint(part) : copy.results.hint.walk_side(part)}</p>
+      <a className="button" href={recordPartFor(opens, part)}>
+        {corner ? draft.corners.panCorner(part) : copy.results.walkSide(part)}
+      </a>
+    </>
+  );
+};
 
 type CheckingProps = {
   walkId: string;
@@ -144,6 +159,7 @@ const Checking = ({ walkId, opens, status, clock, forget, keep, resend }: Checki
     <>
       <h1>{copy.send.title}</h1>
       {said === null ? null : <p role="alert">{said}</p>}
+      {watched.kind === "failed" && watched.part !== null ? <PartAsk opens={opens} part={watched.part} /> : null}
       {kept === true ? (
         <>
           <p>{copy.send.saved}</p>

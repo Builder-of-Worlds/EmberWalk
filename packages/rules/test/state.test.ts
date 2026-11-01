@@ -65,6 +65,16 @@ describe("a state file as data", () => {
     expect(refusalOf(variant((f) => Object.assign(f.rules[3]!.when, { colour: ["red"] }))).message).toMatch(/rules\.3\.when.*colour/);
   });
 
+  it("refuses a may be dead line that is a plain string or has no Spanish, naming the field", () => {
+    const at = CALIFORNIA.rules.findIndex((r) => r.unsure !== null);
+    const asString = refusalOf(variant((f) => Object.assign(f.rules[at]!, { unsure: "It may be dead." })));
+    expect(asString.reason).toBe("invalid_file");
+    expect(asString.message).toMatch(new RegExp(`rules\\.${at}\\.unsure`));
+    const noSpanish = refusalOf(variant((f) => Object.assign(f.rules[at]!, { unsure: { en: "It may be dead." } })));
+    expect(noSpanish.reason).toBe("invalid_file");
+    expect(noSpanish.message).toMatch(new RegExp(`rules\\.${at}\\.unsure\\.es`));
+  });
+
   it("refuses a duplicate rule id, naming the second", () => {
     const refusal = refusalOf(variant((f) => (f.rules[7]!.id = f.rules[2]!.id)));
     expect(refusal.reason).toBe("invalid_file");

@@ -75,7 +75,8 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   expect(await page.evaluate(sideways)).toBe(0);
 
   const walk = JSON.parse(api.seen.find((r) => r.url.pathname === "/api/walks")?.body ?? "{}") as Record<string, unknown>;
-  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "partOf", "synthetic", "visitorId"]);
+  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId"]);
+  expect(walk.startKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   expect(walk).toMatchObject({ jurisdiction: "ca", language: "en", synthetic: false, partOf: null });
   expect(walk.visitorId).toMatch(/^[0-9a-f]{64}$/);
   expect(api.stored.length).toBeGreaterThan(1);

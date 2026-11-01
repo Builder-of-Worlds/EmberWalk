@@ -1,0 +1,114 @@
+{
+  "schema": "emberwalk.route-parts/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-after",
+  "fps": 15,
+  "frame_count": 4724,
+  "duration_s": 314.93333333333334,
+  "standoff_in": 132,
+  "parts": [
+    {
+      "kind": "loop",
+      "loop_in": [
+        0.0,
+        4056.0
+      ],
+      "start_s": 0.0,
+      "end_s": 135.95,
+      "start_frame": 1,
+      "end_frame": 2039
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        0.0,
+        1512.0
+      ],
+      "start_s": 135.95,
+      "end_s": 187.1,
+      "start_frame": 2040,
+      "end_frame": 2806
+    },
+    {
+      "kind": "pan",
+      "side": "left",
+      "bearing_deg": 270,
+      "start_s": 187.1,
+      "end_s": 197.1,
+      "start_frame": 2807,
+      "end_frame": 2956
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        1512.0,
+        2526.0
+      ],
+      "start_s": 197.1,
+      "end_s": 231.65,
+      "start_frame": 2957,
+      "end_frame": 3475
+    },
+    {
+      "kind": "pan",
+      "side": "back",
+      "bearing_deg": 0,
+      "start_s": 231.65,
+      "end_s": 241.65,
+      "start_frame": 3476,
+      "end_frame": 3625
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        2526.0,
+        3390.0
+      ],
+      "start_s": 241.65,
+      "end_s": 271.2,
+      "start_frame": 3626,
+      "end_frame": 4068
+    },
+    {
+      "kind": "pan",
+      "side": "right",
+      "bearing_deg": 90,
+      "start_s": 271.2,
+      "end_s": 281.2,
+      "start_frame": 4069,
+      "end_frame": 4218
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        3390.0,
+        3942.0
+      ],
+      "start_s": 281.2,
+      "end_s": 300.35,
+      "start_frame": 4219,
+      "end_frame": 4505
+    },
+    {
+      "kind": "pan",
+      "side": "front",
+      "bearing_deg": 180,
+      "start_s": 300.35,
+      "end_s": 310.35,
+      "start_frame": 4506,
+      "end_frame": 4655
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        3942.0,
+        4056.0
+      ],
+      "start_s": 310.35,
+      "end_s": 314.9,
+      "start_frame": 4656,
+      "end_frame": 4724
+    }
+  ]
+}

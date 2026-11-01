@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 import { getFixedStandIn } from "./test/getfixed-stand-in.ts";
+import { AUD, TEAM } from "./test/ops-token.ts";
 import { pipelineStandIn } from "./test/pipeline-stand-in.ts";
 
 export default defineConfig(async () => {
@@ -16,6 +17,8 @@ export default defineConfig(async () => {
             TEST_MIGRATIONS: migrations,
             R2_ACCESS_KEY_ID: "test-key-id",
             R2_SECRET_ACCESS_KEY: "test-secret",
+            ACCESS_TEAM_DOMAIN: TEAM,
+            ACCESS_AUD: AUD,
           },
         },
       }),

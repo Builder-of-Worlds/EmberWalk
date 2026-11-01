@@ -212,6 +212,16 @@ describe("marks and the dated record", () => {
   });
 });
 
+describe("marks on a vetoed finding", () => {
+  it("refuses a mark on a vetoed finding as it does one the visitor does not own, and saves none", async () => {
+    const walk = await seedMessage();
+    await env.DB.prepare("UPDATE findings SET veto_reason = ? WHERE id = ?").bind("The brush is green.", walk.brush.id).run();
+    const refused = await send("POST", `/api/findings/${walk.brush.id}/status`, { body: { status: "done", doneOn: "2026-10-28" } });
+    expect(refused).toMatchObject({ status: 404, json: { error: { code: "not_found" } } });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM finding_marks WHERE finding_id = ?").bind(walk.brush.id).first<{ n: number }>()).toEqual({ n: 0 });
+  });
+});
+
 describe("the refusal words", () => {
   const message = async (method: string, path: string, body?: unknown, visitor?: string) =>
     (await send(method, path, { body, ...(visitor === undefined ? {} : { visitor }) })).json.error?.message;

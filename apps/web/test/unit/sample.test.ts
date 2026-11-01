@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { scoreWalk, WalkRecord } from "@emberwalk/rules";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { proofOf, REPO, SAMPLE, sampleResults } from "../../scripts/sample-results.ts";
+import { REPO, SAMPLE, sampleResults } from "../../scripts/sample-results.ts";
 import { App } from "../../src/App.tsx";
 import { copy } from "../../src/copy.ts";
 import { verdictOf } from "../../src/results.ts";
@@ -16,7 +16,10 @@ import { NEVER_LABELLED } from "./settled.ts";
 const SAMPLE_DIR = resolve(REPO, "apps/web/src/samples");
 const committed = JSON.parse(readFileSync(resolve(SAMPLE_DIR, "test-yard.json"), "utf8"));
 const sam = WalkRecord.parse(JSON.parse(readFileSync(resolve(REPO, SAMPLE.sam), "utf8")));
-const RENDER = { synthetic: true, label: "Synthetic sample house", scene: "test-yard", width: 1920, height: 1080 };
+const HERO_DIR = resolve(REPO, "fixtures/synthetic/hero-look");
+const HERO_PHOTOS: string[] = JSON.parse(readFileSync(resolve(HERO_DIR, "look.json"), "utf8"))
+  .stills.filter((s: { chosen?: boolean }) => s.chosen === true)
+  .map((s: { copy: { file: string } }) => s.copy.file);
 
 describe("the test yard sample", () => {
   it("is exactly what the rules engine makes of the recorded SAM answers", () => {
@@ -44,23 +47,28 @@ describe("the test yard sample", () => {
     expect(verdictOf({ ...results, coverage: "checked", notChecked: [] }).kind).toBe("incomplete");
   });
 
-  it("shows each finding on the SAM frame that fits the truth best, marked by SAM's own box", () => {
-    const proof = proofOf(sam.hazards[0]!, RENDER);
-    expect(proof).toEqual({ still: "wood-pile-1.jpg", frame: 1, seconds: 0.5, marker: [0, 0.1426, 0.3776, 0.6148] });
-    const one = { ...sam.hazards[0]!, found: [sam.hazards[0]!.found[3]!] };
-    expect(proofOf(one, RENDER).frame).toBe(3);
-    const twoBoxes = { ...one, found: [{ frame: 3, boxes: [[0, 0, 10, 10] as [number, number, number, number], one.found[0]!.boxes[0]!] }] };
-    expect(proofOf(twoBoxes, RENDER).marker).toEqual(proofOf(one, RENDER).marker);
+  it("outlines every finding inside one of the chosen hero look photos", () => {
+    expect(committed.findings.length).toBeGreaterThan(0);
+    for (const f of committed.findings) {
+      expect(HERO_PHOTOS, f.proof.still).toContain(f.proof.still);
+      expect(existsSync(resolve(HERO_DIR, f.proof.still)), f.proof.still).toBe(true);
+      const [left, top, right, bottom] = f.proof.marker as number[];
+      expect(left, f.id).toBeGreaterThanOrEqual(0);
+      expect(top, f.id).toBeGreaterThanOrEqual(0);
+      expect(right, f.id).toBeLessThanOrEqual(1);
+      expect(bottom, f.id).toBeLessThanOrEqual(1);
+      expect(right! - left!, f.id).toBeGreaterThan(0.05);
+      expect(bottom! - top!, f.id).toBeGreaterThan(0.05);
+    }
   });
 
-  it("refuses a hazard with no frame to show", () => {
-    expect(() => proofOf({ ...sam.hazards[0]!, found: [] }, RENDER)).toThrow("no frame to show");
-  });
-
-  it("bundles a still for every finding and serves it from the app", () => {
-    for (const f of committed.findings) expect(existsSync(resolve(SAMPLE_DIR, f.proof.still)), f.proof.still).toBe(true);
+  it("serves a hero look photo for every finding and no old render", () => {
     expect(SAMPLES.map((s) => s.id)).toEqual([SAMPLE.id]);
-    for (const f of SAMPLES[0]!.findings) expect(f.proof.still).not.toBe("wood-pile-1.jpg");
+    expect(existsSync(resolve(SAMPLE_DIR, "wood-pile-1.jpg"))).toBe(false);
+    for (const f of SAMPLES[0]!.findings) {
+      const name = f.proof.still.split("/").pop()!.split("?")[0]!;
+      expect(HERO_PHOTOS, f.proof.still).toContain(name);
+    }
   });
 });
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  cacheMarkKey,
+  cacheMarksPrefix,
+  DELETE_EVERYTHING_CODES,
+  DeleteEverythingRequest,
+  DeleteEverythingResponse,
+  ERROR_CODES,
   ErrorBody,
+  FileKey,
   FaultReportRequest,
   FaultReportResponse,
   HealthResponse,
@@ -13,8 +20,14 @@ import {
   PreviewRequest,
   PreviewResponse,
   previewPath,
+  RECHECK_ROUTE_CODES,
+  RecheckErrorBody,
   RecheckLinkRequest,
   RecheckLinkResponse,
+  recheckAnswerKey,
+  recheckPhotoKey,
+  RecheckRequest,
+  RecheckResponse,
   ReportRequest,
   ReportResponse,
   ShareRequest,
@@ -25,6 +38,7 @@ import {
   stillPath,
   TapResponse,
   VISITOR_HEADER,
+  WalkFailure,
   WalkResultsResponse,
   WalkStatusResponse,
 } from "../src/index.ts";
@@ -100,6 +114,10 @@ describe("api contracts", () => {
     roundTrips(WalkStatusResponse, { walkId: id(1), state: { name: "processing", step: "prepare" }, failure: null });
     refusesMissingAndExtra(WalkStatusResponse, status);
     refusesEach(WalkStatusResponse, status, [{ updatedAt: AT }, { failure: { code: "x" } }, { failure: { ...failure, message: "" } }]);
+
+    for (const part of PARTS) roundTrips(WalkStatusResponse, { ...status, failure: { ...failure, part } });
+    refusesEach(WalkStatusResponse, status, [{ failure: { ...failure, part: "roof" } }, { failure: { ...failure, part: null } }, { failure: { ...failure, side: "front" } }]);
+    expect(WalkFailure.parse(failure)).not.toHaveProperty("part");
 
     const result = {
       id: id(10),
@@ -259,6 +277,17 @@ describe("api contracts", () => {
     roundTrips(RecheckLinkResponse, link);
     refusesMissingAndExtra(RecheckLinkResponse, link);
 
+    roundTrips(RecheckRequest, { findingId: id(10) });
+    refusesMissingAndExtra(RecheckRequest, { findingId: id(10) });
+    refuses(RecheckRequest, { findingId: "a" });
+    const answered = { recheck: { id: id(20), findingId: id(10), photo: recheckPhotoKey(id(1), id(10), id(20)), result: "cleared", createdAt: AT } };
+    roundTrips(RecheckResponse, answered);
+    refusesMissingAndExtra(RecheckResponse, answered);
+    refuses(RecheckResponse, { recheck: { ...answered.recheck, result: "gone" } });
+    expect(recheckPhotoKey(id(1), id(10), id(20))).toBe(`rechecks/${id(1)}/${id(10)}/${id(20)}`);
+    expect(recheckAnswerKey(id(1), id(10), id(20))).toBe(`rechecks/${id(1)}/${id(10)}/${id(20)}.json`);
+    expect(FileKey.safeParse(recheckAnswerKey(id(1), id(10), id(20))).success).toBe(true);
+
     roundTrips(ReportRequest, { walkId: id(1), language: "es" });
     refusesMissingAndExtra(ReportRequest, { walkId: id(1), language: "es" });
     const report = { reportId: id(22), url: "https://app.emberwalk.app/r/a.pdf", expiresAt: AT };
@@ -316,5 +345,44 @@ describe("api contracts", () => {
       roundTrips(ErrorBody, { error: { code, message: "Plain words." } });
     }
     refuses(ErrorBody, { error: { code: "not_mp3", message: "Plain words." } });
+  });
+
+  it("asks to delete everything of one visitor and answers how many walks went", () => {
+    roundTrips(DeleteEverythingRequest, { visitorId: FP });
+    refusesMissingAndExtra(DeleteEverythingRequest, { visitorId: FP });
+    refusesEach(DeleteEverythingRequest, { visitorId: FP }, [{ visitorId: FP.slice(1) }, { visitorId: FP.toUpperCase() }, { visitorId: null }, { walkId: id(1) }]);
+    for (const [walks, left] of [[0, 0], [1, 0], [40, 12]]) roundTrips(DeleteEverythingResponse, { walks, left });
+    refusesMissingAndExtra(DeleteEverythingResponse, { walks: 2, left: 0 });
+    refusesEach(DeleteEverythingResponse, { walks: 2, left: 0 }, [
+      { walks: -1 },
+      { walks: 1.5 },
+      { walks: "2" },
+      { walks: null },
+      { left: -1 },
+      { left: 0.5 },
+      { left: "0" },
+    ]);
+    for (const code of DELETE_EVERYTHING_CODES) expect(ERROR_CODES).toContain(code);
+    expect(DELETE_EVERYTHING_CODES).toContain("conflict");
+  });
+
+  it("keeps each walk's cache marks under one folder per walk, apart from the answers", () => {
+    expect(cacheMarkKey(id(1), FP)).toBe(`${cacheMarksPrefix(id(1))}${FP}`);
+    expect(cacheMarksPrefix(id(1))).toBe(`cache/by-walk/${id(1)}/`);
+    expect(cacheMarksPrefix(id(1)).startsWith(cacheMarksPrefix(id(2)))).toBe(false);
+    expect(cacheMarkKey(id(1), FP).endsWith(".json")).toBe(false);
+  });
+
+  it("names every code the recheck route answers with", () => {
+    expect([...RECHECK_ROUTE_CODES].sort()).toEqual(
+      ["invalid_request", "method_not_allowed", "no_photo", "not_done", "not_found", "server_error", "too_large", "too_many_rechecks"].sort(),
+    );
+    for (const code of RECHECK_ROUTE_CODES) roundTrips(RecheckErrorBody, { error: { code, message: "Plain words." } });
+    refusesEach(RecheckErrorBody, { error: { code: "not_done", message: "Plain words." } }, [
+      { error: { code: "conflict", message: "Plain words." } },
+      { error: { code: "not_done", message: "" } },
+      { error: {} },
+    ]);
+    refusesMissingAndExtra(RecheckErrorBody, { error: { code: "not_done", message: "Plain words." } });
   });
 });

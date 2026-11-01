@@ -20,7 +20,7 @@
       "class_name": "MediaContainer",
       "image": "../../containers/media/Dockerfile",
       "image_build_context": "../../containers/media",
-      // "instance_type" is not chosen yet: add it here; scripts/deploy.sh refuses to deploy until it is set.
+      "instance_type": "basic",
       "max_instances": 3
     }
   ],
@@ -34,6 +34,6 @@
     "META_BILLING": "free_credits",
     "VOICE_NOTES": "on",
     "SECOND_CHECK_REAL_WALKS": "off",
-    "SYNTHETIC_RENDERS": "abe7d134979368919853a540178d4c47995b2f013fa19172f06ebb70c3534419:22576900,0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0:25809527,b1b45c253af2648bc597b82b5767c6996fc2945495f0b8c448113a3e008225b8:2434671"
+    "SYNTHETIC_RENDERS": "abe7d134979368919853a540178d4c47995b2f013fa19172f06ebb70c3534419:22576900,0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0:25809527,6fef74b3d8918d6c6114520b90c777646a1c8b64aa95729659d1cc6f219928b9:4312727,66f453712b91b22efb348724d193dede1eecfd95b85aeaf81092f3d09ec01549:343374474,fcd8492f1ef53971c11d8bb1870fe940b76af5df2130b2d95817a52de10fa7bd:242290505,1b9b068d6c4b6bb55ea1207d47311e4ceca510a3a1cf536542424644af1bb329:130811356,cdd4d8775a96836286aefd1da5cf0bf1ea340e881880f7e82009ff4313105de5:132569580,a8541c7ed57cc158604dbf013a3a20be6f444630f358084c6f679cbb9188ff39:198975788,229847a76080b77a689cb18bd9973395a4c45e8a74e9f41bae18aeb3676ef5fa:202263061"
   }
 }

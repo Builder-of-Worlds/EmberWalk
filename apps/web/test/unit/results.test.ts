@@ -1,4 +1,4 @@
-import { GAP_KINDS, HINTS_FOR, SIDES } from "@emberwalk/shared";
+import { GAP_KINDS, HINTS_FOR, PARTS, SIDES } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import { copy, longDate } from "../../src/copy.ts";
 import { bandsOf, blocksGreen, dayOf, FIX_FIRST_FEET, fixFirstOf, fixOrder, overAYearOld, partsToWalk, verdictOf, withoutRemoved } from "../../src/results.ts";
@@ -37,6 +37,17 @@ describe("verdictOf", () => {
     expect(verdictOf(walk([finding("a")], [back, side, right]), () => true, true)).toEqual({ kind: "incomplete", gaps: [side, back, right] });
     expect(partsToWalk([back, side, right, back])).toEqual(["left", "front_right", "back_left"]);
     expect(verdictOf(walk([], []), undefined, true)).toEqual({ kind: "ready" });
+  });
+
+  it("keeps green blocked while a part the check could not finish is open, side or corner, until its recheck clears it", () => {
+    for (const side of PARTS) {
+      const open: Gap = { side, kind: "not_checked", hint: "again" };
+      for (const corners of [false, true]) {
+        expect(verdictOf(walk([], [open]), undefined, corners).kind, `${side} ${corners}`).not.toBe("ready");
+        expect(verdictOf(walk([finding("a")], [open]), () => true, corners).kind, `${side} ${corners} cleared`).not.toBe("ready");
+      }
+    }
+    expect(verdictOf(walk([finding("a")], []), () => true)).toEqual({ kind: "ready" });
   });
 
   it("is ready only with no gap and nothing blocking", () => {

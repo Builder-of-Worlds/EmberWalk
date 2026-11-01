@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { MetaRefused } from "../src/errors.ts";
 import { REASONING_ROOM } from "../src/spark.ts";
 import type { HttpRequest } from "../src/transport.ts";
 import { pickPromptFrames, runBoxProbe } from "./live/box-probe.ts";
-import { frameJpeg, type Hazard, iou, type Rect, truth, YARD_ONE, YARD_TWO } from "./live/env.ts";
+import { frameJpeg, type Hazard, HERO_BEFORE, iou, type Rect, REPO, sampleCut, sampleWalk, truth, YARD_ONE, YARD_TWO } from "./live/env.ts";
 import { ProbeStopLine } from "./live/probe.ts";
 import { gridToPixels, INSTRUCTIONS, readSparkBox, sparkBoxCall, stripFence } from "./live/spark-box.ts";
 import { matchTight, tightRect, tightWindow, truthFrame } from "./live/tight.ts";
@@ -369,6 +369,93 @@ describe("the point and track probe", () => {
     const { result } = run(goodAnswer(), 1, { hazards: [brush], picture: (f) => (asked.push(f), new Uint8Array([0xff, 0xd8, f])) });
     await result;
     expect(asked).toEqual([20, 24, 28]);
+  });
+});
+
+describe("the sample walk is a cut of the hero house walk", () => {
+  const cut = sampleCut();
+  const heroHazards = truth(HERO_BEFORE).hazards;
+  const left = heroHazards.find((h) => h.id === "dry-brush-left")!;
+  const garage = heroHazards.find((h) => h.id === "dry-plants-garage-side")!;
+  const HERO_CLIP = { width: 1280, height: 720 };
+
+  it("takes the walk's speed and first frame from the render.json beside the video", () => {
+    expect(cut).toEqual({ fps: 15, first: 186 });
+  });
+
+  it("numbers a 2 a second clip frame by the hero walk frame shown at that moment", () => {
+    expect(truthFrame(0, FPS, cut)).toBe(186);
+    expect(truthFrame(2, FPS, cut)).toBe(201);
+    expect(truthFrame(39, FPS, cut)).toBe(186 + 293);
+    expect(truthFrame(2, FPS)).toBe(31);
+  });
+
+  it("windows each dry brush hazard on the clip frames where the hero mask shows it", () => {
+    expect(tightWindow(left, FRAMES, FPS, cut)).toEqual(range(28, 39));
+    expect(tightWindow(garage, FRAMES, FPS, cut)).toEqual(range(1, 11));
+  });
+
+  it("gives the hero mask box for a clip frame and none when the hazard is out of view", () => {
+    expect(tightRect(left, 28, FPS, cut)).toEqual({ left: 0, top: 238, right: 64, bottom: 348 });
+    expect(tightRect(left, 27, FPS, cut)).toBeNull();
+    expect(tightRect(garage, 12, FPS, cut)).toBeNull();
+  });
+
+  it("scores found boxes against the hero boxes of the same moment", () => {
+    const onTruth = tightWindow(left, FRAMES, FPS, cut).map((frame) => ({ frame, objects: [{ box: tightRect(left, frame, FPS, cut)! }] }));
+    const m = matchTight(left, onTruth, FRAMES, FPS, cut);
+    expect(m.hits).toEqual(range(28, 39));
+    expect(m.elsewhere).toEqual([]);
+    expect(matchTight(left, [{ frame: 5, objects: [{ box: { left: 0, top: 238, right: 64, bottom: 348 } }] }], FRAMES, FPS, cut).elsewhere).toEqual([5]);
+  });
+
+  it("picks the Muse Spark frames inside the cut's window", () => {
+    expect(pickPromptFrames(left, FRAMES, FPS, 3, cut)).toEqual([31, 34, 37]);
+    expect(pickPromptFrames(garage, FRAMES, FPS, 3, cut)).toEqual([3, 6, 9]);
+  });
+
+  it("points and tracks against the hero boxes, on the frames of the cut", async () => {
+    const record = (r: Rect) => `1<|box;x1=${Math.round(r.left)};y1=${Math.round(r.top)};x2=${Math.round(r.right) - 1};y2=${Math.round(r.bottom) - 1};w=1280;h=720|><|mask;x=0;y=0;data=1,1,~!|>`;
+    const sam = () =>
+      ok({
+        status: "completed",
+        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: tightWindow(left, FRAMES, FPS, cut).map((f) => `<${f}f>${record(tightRect(left, f, FPS, cut)!)}`).join("\n") }] }],
+        usage: { video_frames_processed: 50 },
+      });
+    const s = setup({ answer: (req) => (sent(req).model === "muse-spark-1.3" ? ok(sparkBody('{"found": true, "box": [100, 300, 500, 700]}')) : sam()) });
+    const rows = await runBoxProbe({
+      client: s.client,
+      ledger: s.ledger,
+      video: { fileId: "file-1" },
+      frames: FRAMES,
+      fps: FPS,
+      clip: HERO_CLIP,
+      cut,
+      stopLineUsd: 1,
+      hazards: [left],
+      picture: (f) => new Uint8Array([0xff, 0xd8, f]),
+      now: () => NOW,
+    });
+    expect(rows.map((r) => r.frame)).toEqual([31, 34, 37]);
+    expect(rows.every((r) => r.pointed && r.found && r.window === 12 && r.hits === 12 && r.elsewhere === 0)).toBe(true);
+    expect(rows[0]!.sparkIou).toBeCloseTo(iou(rows[0]!.pixels!, tightRect(left, 31, FPS, cut)!), 12);
+  });
+});
+
+describe("the sample walk file", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ew-sample-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("is the committed import walk, checked against the sha256 in render.json", () => {
+    const file = sampleWalk();
+    expect(path.basename(file)).toBe("walk.mp4");
+    expect(path.relative(REPO, file)).toBe(path.join("fixtures", "synthetic", "test-yard-2", "import", "walk.mp4"));
+  });
+
+  it("refuses a walk whose bytes are not the ones render.json names", () => {
+    writeFileSync(path.join(dir, "walk.mp4"), "not the walk");
+    writeFileSync(path.join(dir, "render.json"), JSON.stringify({ synthetic: true, fps: 15, sha256: "0".repeat(64), made_from: { first_frame: 1 } }));
+    expect(() => sampleWalk(dir)).toThrow(/not the synthetic render named in render.json/);
   });
 });
 

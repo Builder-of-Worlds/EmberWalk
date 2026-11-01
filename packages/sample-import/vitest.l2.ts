@@ -7,7 +7,7 @@ import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
 
 const FILES = new Set(["render.json", "motion.json", "walk.mp4", "truth.json"]);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_TRUTH = path.join(HERE, "../../fixtures/synthetic/test-yard-2/truth.json");
+const DEFAULT_TRUTH = path.join(HERE, "../../fixtures/synthetic/hero-before/truth.json");
 
 export const heroPath = (variable: string, fallback: string): string => process.env[variable] || fallback;
 

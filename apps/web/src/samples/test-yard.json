@@ -48,14 +48,14 @@
       ],
       "confidence": 1,
       "proof": {
-        "still": "wood-pile-1.jpg",
-        "frame": 1,
-        "seconds": 0.5,
+        "still": "synthetic-hero-west.jpg",
+        "frame": 0,
+        "seconds": 0,
         "marker": [
-          0,
-          0.1426,
-          0.3776,
-          0.6148
+          0.094,
+          0.54,
+          0.2875,
+          0.714
         ]
       }
     }

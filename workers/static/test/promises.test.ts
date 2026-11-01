@@ -1,6 +1,8 @@
-import { sendApproved, SendRefused, withWork, WORK_HEADING } from "@emberwalk/agent";
+import { env } from "cloudflare:workers";
+import { CALFIRE_LINKS, inspectionRequest, pickCrews, sendApproved, SendRefused, withWork, WORK_HEADING } from "@emberwalk/agent";
+import { createJob, findingsForWalk, historyFor, jobCrews, markFinding, saveFindings } from "@emberwalk/db";
 import { coverageOf, evaluate, rank, type CoverageInput, type Observation } from "@emberwalk/rules";
-import { Finding, type MotionSample, type OutgoingMessage } from "@emberwalk/shared";
+import { type Crew, DEFAULT_LIMITS, Finding, type MotionSample, type OutgoingMessage, type Trade } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 
 const WALK = "5b0f7a52-3d52-4a47-9a0a-0a6a54f4d6a1";
@@ -38,7 +40,7 @@ const coverageFor = (legs: number): CoverageInput => {
   return { loop, wallFrames, pans: legs, light: { front: 120, right: 120, back: 120, left: 120 }, look: { same: true, confidence: 0.9 }, notChecked: [] };
 };
 
-const finding = (id: string, rank: number, concept: Finding["concept"], instruction: string): Finding =>
+const finding = (id: string, rank: number, concept: Finding["concept"], instruction: string, over: Partial<Finding> = {}): Finding =>
   Finding.parse({
     id,
     walkId: WALK,
@@ -59,7 +61,40 @@ const finding = (id: string, rank: number, concept: Finding["concept"], instruct
     veto: null,
     source: "found",
     status: "needs_fixing",
+    ...over,
   });
+
+const uuid = (prefix: string, n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+const seedWalk = async (n: number, createdAt: string, findings: [Finding["concept"], string, Finding["status"]][]): Promise<{ walkId: string; visitorId: string; findings: Finding[] }> => {
+  const walkId = uuid("5b000000", n);
+  const clipId = uuid("0c000000", n);
+  const visitorId = String(n).repeat(64).slice(0, 64);
+  await env.DB.prepare(
+    "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic, created_at) VALUES (?, ?, 'done', 'en', 'us_ca', 'rear', 1920, 1080, 1, ?)",
+  )
+    .bind(walkId, visitorId, createdAt)
+    .run();
+  await env.DB.prepare("INSERT INTO clips (id, walk_id, kind, file, fps, frame_count, width, height) VALUES (?, ?, 'loop', ?, 2, 40, 1920, 1080)")
+    .bind(clipId, walkId, `clips/${walkId}/loop.mp4`)
+    .run();
+  const saved = findings.map(([concept, instruction, status], i) =>
+    finding(uuid(`f${n}000000`, i + 1), i + 1, concept, instruction, { walkId, trackIds: [clipId], proofFrame: { clipId, frame: 12, still: `stills/${walkId}/${i}.jpg` }, status }),
+  );
+  await saveFindings(env.DB, saved);
+  return { walkId, visitorId, findings: saved };
+};
+
+const crewOf = (n: number, trade: Trade): Crew => ({
+  id: uuid("cc000000", n),
+  name: `Sample Crew ${n}`,
+  trade,
+  zip: "95370",
+  email: `crew-${n}@example.com`,
+  phone: null,
+  licenseNumber: null,
+  sample: true,
+});
 
 const unapproved = {
   id: MESSAGE,
@@ -109,5 +144,65 @@ describe("what the landing page promises, on a synthetic sample house", () => {
     const deps = { db: oneRow(unapproved), outbox: { send: async (m: OutgoingMessage) => void sent.push(m) }, now: () => new Date("2026-10-28T12:05:00.000Z") };
     await expect(sendApproved(deps, MESSAGE)).rejects.toBeInstanceOf(SendRefused);
     expect(sent).toEqual([]);
+  });
+
+  it("marks each item Required Now or Recommended, starting with the zone closest to the home", () => {
+    const ranked = rank(evaluate([seen("dry-brush-1", "dry_brush", 20), seen("gas-can-1", "gas_can", 2), seen("wood-pile-1", "wood_pile", 3)], "ca"));
+    expect(ranked.map((f) => [f.observationId, f.band, f.label])).toEqual([
+      ["wood-pile-1", "zone_0", "required_now"],
+      ["gas-can-1", "zone_0", "recommended"],
+      ["dry-brush-1", "zone_1", "required_now"],
+    ]);
+  });
+
+  it("lets one walk run long enough for a slow loop of a few minutes", () => {
+    expect(DEFAULT_LIMITS.maxWalkSeconds).toBeGreaterThanOrEqual(3 * 60);
+  });
+
+  it("keeps the date of every walk and every fix marked planned or done", async () => {
+    const { walkId, visitorId, findings } = await seedWalk(1, "2026-10-20T17:00:00.000Z", [["wood_pile", "Move the wood pile more than 30 feet from the house.", "needs_fixing"]]);
+    const findingId = findings[0]!.id;
+    await markFinding(env.DB, { id: uuid("ab000000", 1), findingId, status: "fix_planned", note: "Saturday", doneOn: null, markedAt: "2026-10-21T09:00:00.000Z" });
+    await markFinding(env.DB, { id: uuid("ab000000", 2), findingId, status: "done", note: "", doneOn: "2026-10-22", markedAt: "2026-10-22T18:00:00.000Z" });
+    const history = await historyFor(env.DB, visitorId);
+    expect(history.map((w) => [w.walkId, w.walkedOn])).toEqual([[walkId, "2026-10-20"]]);
+    expect(history[0]!.marks.map((m) => [m.findingId, m.status, m.doneOn])).toEqual([
+      [findingId, "fix_planned", null],
+      [findingId, "done", "2026-10-22"],
+    ]);
+    expect((await findingsForWalk(env.DB, walkId)).map((f) => f.status)).toEqual(["done"]);
+  });
+
+  it("drafts the inspection request with every fix listed and the CAL FIRE pages that find the local fire agency", async () => {
+    const fixes: [Finding["concept"], string, Finding["status"]][] = [
+      ["wood_pile", "Move the wood pile more than 30 feet from the house.", "done"],
+      ["dry_brush", "Remove dry brush within 30 feet of the house.", "done"],
+    ];
+    const { walkId, findings } = await seedWalk(2, "2026-10-20T17:00:00.000Z", fixes);
+    const request = await inspectionRequest({ enabled: true, db: env.DB }, walkId);
+    expect(request.findingIds).toEqual(findings.map((f) => f.id));
+    for (const [, instruction] of fixes) expect(request.body).toContain(instruction);
+    expect(request.links).toEqual(CALFIRE_LINKS);
+    expect(request.links.some((link) => /local public contacts/i.test(link.label))).toBe(true);
+    for (const link of request.links) expect(request.body).toContain(link.url);
+  });
+
+  it("finds the crews for each job itself, so there is no calling around", async () => {
+    const { walkId, findings } = await seedWalk(3, "2026-10-20T17:00:00.000Z", [["dry_brush", "Remove dry brush within 30 feet of the house.", "needs_fixing"]]);
+    const jobId = uuid("7a000000", 3);
+    const at = "2026-10-28T12:00:00.000Z";
+    await createJob(env.DB, { id: jobId, walkId, trade: "brush_clearing", findingIds: findings.map((f) => f.id), zip: "95370", status: "planning", createdAt: at, updatedAt: at });
+    const asked: [Trade, string][] = [];
+    const listed = [crewOf(1, "brush_clearing"), crewOf(2, "tree_service"), crewOf(3, "brush_clearing")];
+    const directory = {
+      near: async (trade: Trade, zip: string, n: number) => {
+        asked.push([trade, zip]);
+        return listed.filter((c) => c.trade === trade).slice(0, n);
+      },
+    };
+    const crews = await pickCrews({ enabled: true, db: env.DB, directory, now: () => new Date(at) }, jobId);
+    expect(asked).toEqual([["brush_clearing", "95370"]]);
+    expect(crews.map((c) => c.id)).toEqual([listed[0]!.id, listed[2]!.id]);
+    expect((await jobCrews(env.DB, jobId)).map((c) => c.id).sort()).toEqual(crews.map((c) => c.id).sort());
   });
 });

@@ -6,7 +6,7 @@ import { resultsFor, ROUTES } from "../../src/router.ts";
 import { LIVE_WALK, liveBodyAt } from "../unit/result-fakes.ts";
 import { offCentre } from "./geometry.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const offset = (locator: Locator) =>
   locator.evaluate((el) => {

@@ -26,6 +26,9 @@ class FixedDraw:
     def random(self):
         return self.f
 
+    def getstate(self):
+        return (3, (self.f,), None)
+
 
 def recording(name, keep, first=1, count=3):
     real = getattr(blendscene, name)

@@ -31,6 +31,7 @@ export type Harness = {
   probe: { bytes: number; durationSeconds: number; isMp4: boolean } | { refuse: Failure } | { throws: string };
   clip: { frames: number; fps: number; width: number; height: number } | { refuse: Failure } | { throws: string };
   stills: { width: number; height: number } | { refuse: Failure } | { throws: string };
+  originalStills: ({ refuse: Failure } | { throws: string })[];
   probeFailures: number;
   hideDetections: boolean;
   failDeletes: number;
@@ -59,6 +60,7 @@ export const freshHarness = (): Harness => ({
   probe: { bytes: 4_000_000, durationSeconds: 120, isMp4: true },
   clip: { frames: 60, fps: 2, width: FRAME_WIDTH, height: FRAME_HEIGHT },
   stills: { width: FRAME_WIDTH, height: FRAME_HEIGHT },
+  originalStills: [],
   probeFailures: 0,
   hideDetections: false,
   failDeletes: 0,
@@ -204,9 +206,11 @@ export const fakeMedia = (env: Pick<Env, "MEDIA" | "R2_BUCKET_NAME">, h: Harness
     },
     async stills(request) {
       h.stilled.push(request);
-      if ("throws" in h.stills) throw new Error(h.stills.throws);
-      if ("refuse" in h.stills) return refuse(h.stills.refuse.code, h.stills.refuse.message);
-      const { width, height } = h.stills;
+      const scripted = request.input.includes("/originals/") ? h.originalStills.shift() : undefined;
+      const reply = scripted ?? h.stills;
+      if ("throws" in reply) throw new Error(reply.throws);
+      if ("refuse" in reply) return refuse(reply.refuse.code, reply.refuse.message);
+      const { width, height } = reply;
       const made = [];
       for (const still of request.stills) {
         const key = keyOf(still.output);

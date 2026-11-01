@@ -2,19 +2,26 @@ import { isCorner, type ViewPreference } from "@emberwalk/shared";
 import { useEffect, useState } from "react";
 import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
-import { draftWordsShown } from "../draft-words.ts";
+import { draftWordsShown, reportWords } from "../draft-words.ts";
 import { isRechecked } from "../finding-marks.ts";
 import type { FindingStatus } from "../finding-marks.ts";
 import { feetSaid } from "../distance.ts";
 import { bandsOf, dayOf, overAYearOld, partsToWalk, verdictOf, withoutRemoved } from "../results.ts";
 import type { CornerGap, ResultFinding, ShownGap, Verdict, WalkResults } from "../results.ts";
-import { findingFor, fixFor, recordPartFor, ROUTES } from "../router.ts";
+import { findingFor, fixFor, recheckFor, recordPartFor, reportFor, ROUTES } from "../router.ts";
+import { isSample } from "../samples.ts";
 import { useView, ViewSwitch } from "./Detail.tsx";
 import { HouseMap, numbering } from "./HouseMap.tsx";
 import { Photo } from "./Photo.tsx";
 import { StatusLine } from "./Status.tsx";
 
-type Shown = { view: ViewPreference; resultsId: string; statusOf: (findingId: string) => FindingStatus; numbers: ReadonlyMap<string, number> };
+type Shown = {
+  view: ViewPreference;
+  resultsId: string;
+  statusOf: (findingId: string) => FindingStatus;
+  numbers: ReadonlyMap<string, number>;
+  recheckOf: ((findingId: string) => string) | null;
+};
 
 const Row = ({ finding, shown, listed }: { finding: ResultFinding; shown: Shown; listed: boolean }) => (
   <li className="finding" data-finding={finding.id}>
@@ -31,7 +38,7 @@ const Row = ({ finding, shown, listed }: { finding: ResultFinding; shown: Shown;
     <p className={`label ${finding.label}`} data-part="label">
       {copy.results.label[finding.label]}
     </p>
-    <StatusLine status={shown.statusOf(finding.id)} />
+    <StatusLine status={shown.statusOf(finding.id)} recheck={shown.recheckOf?.(finding.id)} />
     {shown.view === "detailed" ? (
       <ul className="citations" data-part="citations">
         {finding.sources.map((s) => (
@@ -159,7 +166,9 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
   const listed = withoutRemoved(results, deps.marks.removed(results.id));
   const statusOf = (findingId: string) => deps.marks.statusOf(results.id, findingId);
   const verdict = verdictOf(listed, (f) => isRechecked(statusOf(f.id)), draftWordsShown());
-  const shown: Shown = { view, resultsId: results.id, statusOf, numbers: new Map() };
+  const rechecks = deps.limits.recheckOn && draftWordsShown() && !isSample(results.id);
+  const recheckOf = rechecks ? (findingId: string) => recheckFor(results.id, findingId) : null;
+  const shown: Shown = { view, resultsId: results.id, statusOf, numbers: new Map(), recheckOf };
   const notChecked = results.notChecked ?? [];
 
   return (
@@ -181,6 +190,11 @@ export const Results = ({ resultsId }: { resultsId: string | null }) => {
         </a>
       ) : null}
       <Body verdict={verdict} results={listed} shown={shown} />
+      {deps.report !== undefined && draftWordsShown() && !isSample(results.id) ? (
+        <a className="button" data-part="report" href={reportFor(results.id)}>
+          {reportWords.entry}
+        </a>
+      ) : null}
     </main>
   );
 };

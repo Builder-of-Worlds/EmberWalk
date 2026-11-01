@@ -1,0 +1,157 @@
+{
+  "schema": "emberwalk.recheck/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "before": "mobile-before",
+  "scene": "mobile-after",
+  "stills": [
+    {
+      "hazard_id": "dry-grass-skirting",
+      "before_frame": 1414,
+      "pose": {
+        "pos_in": [
+          599.25,
+          -131.51,
+          53.72
+        ],
+        "heading_deg": 358.796,
+        "tilt_deg": 12.559,
+        "roll_deg": -0.272
+      },
+      "file": "synthetic-recheck-dry-grass-skirting.png",
+      "sha256": "8ad501da6911af42b5ef3b315797342f38597ffffeebe4c06d0d380f2aa3812b",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "vent-debris-front",
+      "before_frame": 3564,
+      "pose": {
+        "pos_in": [
+          457.25,
+          -131.51,
+          53.72
+        ],
+        "heading_deg": 358.35,
+        "tilt_deg": 10.799,
+        "roll_deg": 0.345
+      },
+      "file": "synthetic-recheck-vent-debris-front.png",
+      "sha256": "86482b8748c103c74dcff1a5925e3e63d07ae0b0e7c6f19e85bbc4f842af2a04",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "propane-tank-right",
+      "before_frame": 3206,
+      "pose": {
+        "pos_in": [
+          852.0,
+          168.0,
+          54.0
+        ],
+        "heading_deg": 260.56,
+        "tilt_deg": 12.156,
+        "roll_deg": -0.683
+      },
+      "file": "synthetic-recheck-propane-tank-right.png",
+      "sha256": "1c391c4c59a054575cc476c0ac9dc1ca1d287849f600b818f1b86cfcfad97232",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "wood-pile-back",
+      "before_frame": 2511,
+      "pose": {
+        "pos_in": [
+          360.0,
+          468.0,
+          54.0
+        ],
+        "heading_deg": 199.836,
+        "tilt_deg": 10.415,
+        "roll_deg": 0.7
+      },
+      "file": "synthetic-recheck-wood-pile-back.png",
+      "sha256": "efb2701db9f59f450ae3b9b05908c25c80bfd6e113afc93422758318dd13d737",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "branch-over-roof-back",
+      "before_frame": 2250,
+      "pose": {
+        "pos_in": [
+          -131.82,
+          463.75,
+          53.49
+        ],
+        "heading_deg": 126.75,
+        "tilt_deg": 11.691,
+        "roll_deg": 0.653
+      },
+      "file": "synthetic-recheck-branch-over-roof-back.png",
+      "sha256": "435e977ed4d131f82553c8b30a115a122a3d5ccb6a8308a6aa378945a1e52c46",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "dry-brush-right",
+      "before_frame": 3072,
+      "pose": {
+        "pos_in": [
+          852.0,
+          168.0,
+          54.0
+        ],
+        "heading_deg": 311.712,
+        "tilt_deg": 8.996,
+        "roll_deg": 0.68
+      },
+      "file": "synthetic-recheck-dry-brush-right.png",
+      "sha256": "d15877b1e2672fb1592ddbdad802b2195022a237479b3d64ee46adfb5593cd9c",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "shed-back",
+      "before_frame": 2553,
+      "pose": {
+        "pos_in": [
+          360.0,
+          468.0,
+          54.0
+        ],
+        "heading_deg": 326.326,
+        "tilt_deg": 2.188,
+        "roll_deg": 0.505
+      },
+      "file": "synthetic-recheck-shed-back.png",
+      "sha256": "d17b4ee99c3bdc911b236a52aa8af23c02e3ab75f4c576e4a8879c07590dc993",
+      "area_px": 63548,
+      "box_px": [
+        468,
+        219,
+        793,
+        468
+      ]
+    },
+    {
+      "hazard_id": "tall-grass-back",
+      "before_frame": 2567,
+      "pose": {
+        "pos_in": [
+          360.0,
+          468.0,
+          54.0
+        ],
+        "heading_deg": 343.432,
+        "tilt_deg": 3.575,
+        "roll_deg": -0.7
+      },
+      "file": "synthetic-recheck-tall-grass-back.png",
+      "sha256": "b3dede71d9efd130f94f510de526294fffc12a6333f506c7bbb340bf5e84c4b5",
+      "area_px": 8413,
+      "box_px": [
+        567,
+        376,
+        1280,
+        450
+      ]
+    }
+  ]
+}

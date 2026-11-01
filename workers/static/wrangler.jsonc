@@ -9,7 +9,8 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": true,
+    "not_found_handling": "404-page"
   },
   "d1_databases": [
     {
@@ -20,6 +21,7 @@
     }
   ],
   "vars": {
-    "TURNSTILE_SITE_KEY": "0x4AAAAAAFnemk3q3LrVawvK"
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFnemk3q3LrVawvK",
+    "LAUNCH_DATE_SHOWN": "off"
   }
 }

@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Concept } from "@emberwalk/shared";
-import { evaluate, iou, rank, RULES, scoreWalk, WalkRecord } from "@emberwalk/rules";
-import type { HazardRecord, Observation, Rect } from "@emberwalk/rules";
-import type { Marker, Proof, ResultFinding, Side, Source, WalkResults } from "../src/results.ts";
+import { evaluate, rank, RULES, scoreWalk, WalkRecord } from "@emberwalk/rules";
+import type { Observation } from "@emberwalk/rules";
+import type { Proof, ResultFinding, Side, Source, WalkResults } from "../src/results.ts";
 import { SIDES } from "../src/results.ts";
 
 export const SAMPLE = {
@@ -14,7 +14,6 @@ export const SAMPLE = {
   truth: "fixtures/synthetic/test-yard/truth.json",
   render: "fixtures/synthetic/test-yard/render.json",
   sam: "packages/rules/test/fixtures/test-yard-sam-017.json",
-  samFps: 2,
 } as const;
 
 type TruthHazard = { id: string; concept: string; distance_ft: number; contact: boolean };
@@ -25,20 +24,14 @@ export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
 
 const read = <T>(path: string): T => JSON.parse(readFileSync(resolve(REPO, path), "utf8")) as T;
 
-const fraction = (value: number, of: number) => Math.round((value / of) * 10_000) / 10_000;
+const PHOTOS: Record<string, Proof> = {
+  "wood-pile-1": { still: "synthetic-hero-west.jpg", frame: 0, seconds: 0, marker: [0.094, 0.54, 0.2875, 0.714] },
+};
 
-export const proofOf = (hazard: HazardRecord, render: Render): Proof => {
-  const best = hazard.found
-    .map(({ frame, boxes }) => {
-      const truth = hazard.truth[String(frame)];
-      const box = [...boxes].sort((a, b) => (truth ? iou(b, truth) - iou(a, truth) : 0))[0]!;
-      return { frame, box, fit: truth ? iou(box, truth) : 0 };
-    })
-    .sort((a, b) => b.fit - a.fit || a.frame - b.frame)[0];
-  if (best === undefined) throw new Error(`${hazard.id} has no frame to show`);
-  const [l, t, r, b] = best.box as Rect;
-  const marker: Marker = [fraction(l, render.width), fraction(t, render.height), fraction(r, render.width), fraction(b, render.height)];
-  return { still: `${hazard.id}.jpg`, frame: best.frame, seconds: best.frame / SAMPLE.samFps, marker };
+const proofOf = (hazardId: string): Proof => {
+  const proof = PHOTOS[hazardId];
+  if (proof === undefined) throw new Error(`no hero look photo for ${hazardId}`);
+  return proof;
 };
 
 const sourcesOf = (ruleIds: string[]): Source[] => {
@@ -76,7 +69,6 @@ export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> =>
     };
   });
   const findings: ResultFinding[] = rank(evaluate(observations, SAMPLE.jurisdiction)).map((f) => {
-    const record = sam.hazards.find((h) => h.id === f.observationId)!;
     const seen = observations.find((o) => o.id === f.observationId)!;
     return {
       id: f.observationId,
@@ -87,7 +79,7 @@ export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> =>
       instruction: f.instruction,
       sources: sourcesOf(f.ruleIds),
       confidence: f.confidence,
-      proof: proofOf(record, render),
+      proof: proofOf(f.observationId),
     };
   });
   const gaps = SIDES.filter((side) => side !== truth.side).map((side) => ({ side, kind: "missing" as const, hint: "walk_side" as const }));

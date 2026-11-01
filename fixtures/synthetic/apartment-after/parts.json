@@ -1,0 +1,150 @@
+{
+  "schema": "emberwalk.route-parts/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "apartment-after",
+  "fps": 15,
+  "frame_count": 4833,
+  "duration_s": 322.2,
+  "standoff_in": 132,
+  "parts": [
+    {
+      "kind": "loop",
+      "loop_in": [
+        0.0,
+        4176.0
+      ],
+      "start_s": 0.0,
+      "end_s": 123.573529,
+      "start_frame": 1,
+      "end_frame": 1854
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        0.0,
+        60.0
+      ],
+      "start_s": 123.573529,
+      "end_s": 126.088235,
+      "start_frame": 1855,
+      "end_frame": 1891
+    },
+    {
+      "kind": "pan",
+      "side": "front",
+      "bearing_deg": 180,
+      "start_s": 126.088235,
+      "end_s": 136.088235,
+      "start_frame": 1892,
+      "end_frame": 2041
+    },
+    {
+      "kind": "sweep",
+      "side": "front",
+      "bearing_deg": 180,
+      "start_s": 136.088235,
+      "end_s": 144.088235,
+      "start_frame": 2042,
+      "end_frame": 2161
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        60.0,
+        1104.0
+      ],
+      "start_s": 144.088235,
+      "end_s": 175.544118,
+      "start_frame": 2162,
+      "end_frame": 2633
+    },
+    {
+      "kind": "pan",
+      "side": "left",
+      "bearing_deg": 270,
+      "start_s": 175.544118,
+      "end_s": 185.544118,
+      "start_frame": 2634,
+      "end_frame": 2783
+    },
+    {
+      "kind": "sweep",
+      "side": "left",
+      "bearing_deg": 270,
+      "start_s": 185.544118,
+      "end_s": 193.544118,
+      "start_frame": 2784,
+      "end_frame": 2903
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        1104.0,
+        2664.0
+      ],
+      "start_s": 193.544118,
+      "end_s": 240.176471,
+      "start_frame": 2904,
+      "end_frame": 3603
+    },
+    {
+      "kind": "pan",
+      "side": "back",
+      "bearing_deg": 0,
+      "start_s": 240.176471,
+      "end_s": 250.176471,
+      "start_frame": 3604,
+      "end_frame": 3753
+    },
+    {
+      "kind": "sweep",
+      "side": "back",
+      "bearing_deg": 0,
+      "start_s": 250.176471,
+      "end_s": 258.176471,
+      "start_frame": 3754,
+      "end_frame": 3873
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        2664.0,
+        3288.0
+      ],
+      "start_s": 258.176471,
+      "end_s": 277.279412,
+      "start_frame": 3874,
+      "end_frame": 4159
+    },
+    {
+      "kind": "pan",
+      "side": "right",
+      "bearing_deg": 90,
+      "start_s": 277.279412,
+      "end_s": 287.279412,
+      "start_frame": 4160,
+      "end_frame": 4309
+    },
+    {
+      "kind": "sweep",
+      "side": "right",
+      "bearing_deg": 90,
+      "start_s": 287.279412,
+      "end_s": 295.279412,
+      "start_frame": 4310,
+      "end_frame": 4429
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        3288.0,
+        4176.0
+      ],
+      "start_s": 295.279412,
+      "end_s": 322.147059,
+      "start_frame": 4430,
+      "end_frame": 4833
+    }
+  ]
+}

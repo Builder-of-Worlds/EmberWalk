@@ -77,6 +77,17 @@ describe("explain, normal", () => {
     expect(brush).toMatchObject({ verdict: "veto", vetoBy: "rules", reason: "The brush is green.", plantState: "alive", wording: "template" });
   });
 
+  it.each(["en", "es"] as const)("gives a finding the rules veto no instruction, in %s, so the ruled out one is never repeated", async (language) => {
+    const answer = { ...withAnswer(BRUSH, { plantState: "alive", reason: "The brush is green.", language }) };
+    const { client } = standIn([answer]);
+    const asked = input({ language });
+    const original = byId(asked.findings, BRUSH).instruction;
+    const out = await explain(client, asked);
+    const brush = byId(out.results, BRUSH);
+    expect(brush).toMatchObject({ vetoBy: "rules", instruction: null, ruleIds: [], label: "recommended" });
+    expect(out.results.map((r) => r.instruction)).not.toContain(original);
+  });
+
   it("reruns the rules with the model's spacing, so a tree judged too close gets the spacing rule", async () => {
     const tree = findings([observation(4, "tree", 15, { plantState: "unsure" })]);
     const answer = {
@@ -106,8 +117,8 @@ describe("explain, normal", () => {
     const brush = byId((await explain(client, input())).results, BRUSH);
     expect(requests).toHaveLength(1);
     expect(brush.wording).toBe("model");
-    expect(brush.instruction.split(" ")).toHaveLength(MAX_INSTRUCTION_WORDS);
-    expect(long.startsWith(brush.instruction)).toBe(true);
+    expect(brush.instruction!.split(" ")).toHaveLength(MAX_INSTRUCTION_WORDS);
+    expect(long.startsWith(brush.instruction!)).toBe(true);
   });
 
   it("writes one ledger line per priced unit of every request, all for the explain step of the walk", async () => {
@@ -336,5 +347,108 @@ describe("explain, refused", () => {
       /the observation it came from/,
     );
     expect(requests).toHaveLength(0);
+  });
+});
+
+describe("explain, a plant that may be dead, in Spanish", () => {
+  const MAYBE = /\b(?:podría|podrían) estar muert[ao]s?\b/;
+  const PLANTS = ["dry_brush", "tree_branch_over_roof", "shrub", "tree", "dry_grass"] as const;
+  const STATES = ["unsure", "dead", "alive"] as const;
+  const grid = () => {
+    let n = 0;
+    return PLANTS.flatMap((concept) =>
+      [2.5, 17, 65].flatMap((feet) =>
+        (["no", "yes"] as const).flatMap((contact) =>
+          STATES.map((plantState) => observation(++n, concept, feet, { distanceFeet: { low: feet, high: feet }, contact, plantState })),
+        ),
+      ),
+    );
+  };
+
+  const spanishWalk = async (list: ReturnType<typeof findings>) => {
+    const results = [];
+    for (let at = 0; at < list.length; at += 40) {
+      const { client, requests } = standIn([KEEP]);
+      results.push(...(await explain(client, input({ language: "es", content: "real", findings: list.slice(at, at + 40) }))).results);
+      expect(requests).toHaveLength(0);
+    }
+    return { results };
+  };
+
+  it("tells a plant judged unsure it may be dead, never that it is; a dead one is told it is; an alive one gets no dead wording", async () => {
+    const out = await spanishWalk(findings(grid()));
+    let maybe = 0;
+    let dead = 0;
+    for (const r0 of out.results) {
+      const r = { ...r0, instruction: r0.instruction ?? "" };
+      if (r.plantState === "unsure") {
+        expect(r.instruction.replace(MAYBE, ""), r.findingId).not.toMatch(/muert/i);
+        if (MAYBE.test(r.instruction)) maybe++;
+      }
+      if (r.plantState === "dead" && /muert/i.test(r.instruction)) dead++;
+      if (r.plantState === "alive") expect(r.instruction, r.findingId).not.toMatch(/muert/i);
+    }
+    expect(maybe).toBeGreaterThan(8);
+    expect(dead).toBeGreaterThan(8);
+    expect(out.results.some((r) => r.plantState === "alive")).toBe(true);
+  });
+
+  it("gives each unsure row's own Spanish line to a plant judged unsure", async () => {
+    const list = findings(grid());
+    const out = await spanishWalk(list);
+    let checked = 0;
+    for (const f of list) {
+      const row = RULES.find((r) => r.id === f.ruleIds[0])!;
+      if (f.observation.plantState !== "unsure" || row.unsure === null) continue;
+      checked++;
+      expect(out.results.find((r) => r.findingId === f.findingId)!.instruction, f.findingId).toBe(row.unsure.es);
+    }
+    expect(checked).toBeGreaterThan(8);
+  });
+
+  it("gives the may be dead line when the model's veto sends a plant judged unsure back to the table's wording", async () => {
+    const [grass] = findings([observation(4, "dry_grass", 10, { plantState: "unsure" })]);
+    const shown = withProofFrame([grass!], id(100), SENT);
+    const answer = {
+      findings: [
+        {
+          findingId: id(100),
+          verdict: "veto",
+          reason: "El pasto es verde.",
+          plantState: "unsure",
+          spacing: null,
+          bandCheck: "same",
+          instruction: "Corte el pasto.",
+          ruleIds: grass!.ruleIds,
+          language: "es",
+        },
+      ],
+    };
+    const { client } = standIn([answer]);
+    const out = await explain(client, input({ language: "es", findings: shown }));
+    const row = RULES.find((r) => r.id === grass!.ruleIds[0])!;
+    expect(out.results[0]).toMatchObject({ vetoBy: "model", wording: "template", instruction: row.unsure!.es });
+  });
+
+  it("keeps the distance of a Spanish sentence for a plant judged unsure, as it does for a dead one", async () => {
+    const [tree] = findings([observation(5, "tree", 15, { plantState: "unsure" })]);
+    const answer = (instruction: string) => ({
+      findings: [
+        {
+          findingId: id(100),
+          verdict: "keep",
+          reason: "El árbol está pelado.",
+          plantState: "unsure",
+          spacing: null,
+          bandCheck: "same",
+          instruction,
+          ruleIds: tree!.ruleIds,
+          language: "es",
+        },
+      ],
+    });
+    const wrong = standIn([answer("El árbol podría estar muerto; quítelo a 12 pies de la casa.")]);
+    const out = await explain(wrong.client, input({ language: "es", findings: [tree!] }));
+    expect(out.results[0]).toMatchObject({ wording: "template", problems: [expect.stringContaining("12 feet")] });
   });
 });

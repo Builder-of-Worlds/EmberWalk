@@ -8,10 +8,11 @@ from ewscene import herocheck, house
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(prog="check_hero.py", description="Check the hero-before and hero-after truth, motion, parts and render files. Exit 0 clean, 1 a problem, 2 a missing file.")
+    parser = argparse.ArgumentParser(prog="check_hero.py", description="Check a house's before and after truth, motion, parts and render files. Exit 0 clean, 1 a problem, 2 a missing file.")
     parser.add_argument("--fixtures", default=os.path.join(house.REPO,"fixtures", "synthetic"))
+    parser.add_argument("--house", default="hero", choices=herocheck.HOUSES)
     args = parser.parse_args(argv)
-    missing, problems, clean = herocheck.check(os.path.abspath(args.fixtures))
+    missing, problems, clean = herocheck.check(os.path.abspath(args.fixtures), args.house)
     for key in missing:
         print("EW_MISSING %s" % key, file=sys.stderr)
     for where, text in problems:

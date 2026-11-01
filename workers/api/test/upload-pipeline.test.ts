@@ -19,6 +19,7 @@ const recording = (answer: () => Promise<{ started: boolean; reason?: string }>)
     calls.push(`${walkId} while ${await walkState(walkId)}`);
     return answer();
   },
+  recheck: async () => ({ failed: "not asked in these tests" }),
 });
 
 const complete = async (uploadId: string, parts: Parts, over: Partial<Env>) => {

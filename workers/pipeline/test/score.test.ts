@@ -1,11 +1,14 @@
 import { addTag, type ConceptRun, findingsForWalk, saveClip, saveFindings, storeDetections } from "@emberwalk/db";
+import { decodeSam, type Mask } from "@emberwalk/meta";
 import type { Concept, Finding, Track } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { proofStillKey, scoreWalk } from "../src/score.ts";
-import { clipKey } from "../src/storage.ts";
+import { type Raster } from "../src/mask-bands.ts";
+import { clipKey, maskKey } from "../src/storage.ts";
 import { freshWalkId, resetAll } from "./fixtures.ts";
 import { harness, idFor, testDeps } from "./harness.ts";
+import { BRUSH, recorded, textOf } from "./recorded.ts";
 
 const deps = () => testDeps(env, harness);
 
@@ -21,7 +24,12 @@ const LOOP: [Concept, Box][] = [
 const clipId = (walk: number) => idFor(5000 + walk);
 const trackId = (walk: number, n: number) => idFor(6000 + walk * 10 + n);
 
-const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = LOOP) => {
+const cellsRaster: Raster = (mask) => Uint8Array.from(mask.payload, Number);
+const cells = (height: number, width: number, payload: string): Mask => ({ encoding: "one_bit", height, width, payload });
+const inFrames = (mask: Mask) => JSON.stringify({ 0: mask, 1: mask, 2: mask });
+const WALL_MASK = inFrames(cells(1, 32, "1".repeat(32)));
+
+const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = LOOP, masks: Record<number, string> = {}) => {
   const walkId = freshWalkId();
   const n = Number(walkId.slice(-4));
   await env.DB.prepare(
@@ -38,8 +46,9 @@ const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = 
     clipId: id,
     concept,
     samObjectId: i,
-    frames: [0, 1, 2].map((frame) => ({ frame, box, mask: null, confidence: 0.9 })),
+    frames: [0, 1, 2].map((frame) => ({ frame, box, mask: masks[i] === undefined ? null : maskKey(walkId, id, trackId(n, i)), confidence: 0.9 })),
   }));
+  for (const [i, body] of Object.entries(masks)) await env.MEDIA.put(maskKey(walkId, id, trackId(n, Number(i))), body);
   const runs: ConceptRun[] = [...new Set(tracks.map((t) => t.concept))].map((concept) => ({ concept, outcome: "found", reason: null, framesBilled: 10 }));
   await storeDetections(env.DB, { clipId: id, runs: runs.length > 0 ? runs : [{ concept: "wood_pile", outcome: "none", reason: null, framesBilled: 10 }], tracks });
   return { walkId, clipId: id, n };
@@ -130,6 +139,43 @@ describe("scoreWalk", () => {
       ["wooden_fence", "found", 3],
       ["dry_brush", "found", 4],
     ]);
+  });
+
+  const contactOfPile = async (walkId: string, raster?: Raster) => {
+    const scored = await scoreWalk(deps(), walkId, raster);
+    if (!scored.ok) throw new Error(scored.failure.message);
+    expect(await findingsForWalk(env.DB, walkId)).toEqual(scored.value.findings);
+    return scored.value.findings.find((f) => f.concept === "wood_pile")?.contact;
+  };
+
+  it("judges a wood pile whose box meets the wall but whose mask stays well above the wall's mask as not touching it", async () => {
+    const { walkId } = await seedScoredWalk("ca", LOOP.slice(0, 2), { 0: WALL_MASK, 1: inFrames(cells(2, 4, "11110000")) });
+    expect(await contactOfPile(walkId, cellsRaster)).toBe("no");
+  });
+
+  it("judges a wood pile whose box runs past the wall's base as touching the wall when its mask meets the wall's mask", async () => {
+    const past: [Concept, Box][] = [LOOP[0]!, ["wood_pile", [0.2, 0.5, 0.4, 0.7]]];
+    const { walkId } = await seedScoredWalk("ca", past, { 0: WALL_MASK, 1: inFrames(cells(4, 4, "1111111100000000")) });
+    expect(await contactOfPile(walkId, cellsRaster)).toBe("yes");
+  });
+
+  it("judges a wood pile from boxes when it has no mask, or none the decoder can read", async () => {
+    const unmasked = await seedScoredWalk("ca", LOOP.slice(0, 2), { 0: WALL_MASK });
+    expect(await contactOfPile(unmasked.walkId, cellsRaster)).toBe("yes");
+    const recordedMask = decodeSam(textOf(recorded(BRUSH[0].samFingerprint)))[0]!.objects[0]!.mask;
+    const stored = await seedScoredWalk("ca", LOOP.slice(0, 2), { 0: inFrames(recordedMask), 1: inFrames(recordedMask) });
+    expect(await contactOfPile(stored.walkId)).toBe("yes");
+  });
+
+  it("reads no mask file from the bucket while no decoder can use one, and judges the pile from boxes", async () => {
+    const { walkId } = await seedScoredWalk("ca", LOOP.slice(0, 2), { 0: WALL_MASK, 1: inFrames(cells(2, 4, "11110000")) });
+    const reads: string[] = [];
+    const base = deps();
+    const bucket = { ...base.bucket, get: (key: string) => { reads.push(key); return env.MEDIA.get(key); } } as unknown as R2Bucket;
+    const scored = await scoreWalk({ ...base, bucket }, walkId);
+    if (!scored.ok) throw new Error(scored.failure.message);
+    expect(scored.value.findings.find((f) => f.concept === "wood_pile")?.contact).toBe("yes");
+    expect(reads.filter((key) => key.includes("/masks/"))).toEqual([]);
   });
 
   it("refuses a walk whose rules are not loaded, and saves nothing", async () => {

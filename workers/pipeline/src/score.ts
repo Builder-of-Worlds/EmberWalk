@@ -2,6 +2,7 @@ import { clipsForWalk, detectionsForClip, findingsForWalk, getWalk, replaceFindi
 import { CaJurisdiction, type Dropped, evaluate, observe, rank } from "@emberwalk/rules";
 import type { Finding, Track } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
+import { masksFor, type Raster, rasterOf } from "./mask-bands.ts";
 import { type Outcome, pass, refuse } from "./outcome.ts";
 import { clipStart } from "./prepare.ts";
 
@@ -18,7 +19,7 @@ const freeRanks = (held: Set<number>) => {
   };
 };
 
-export const scoreWalk = async (deps: Deps, walkId: string): Promise<Outcome<Scored>> => {
+export const scoreWalk = async (deps: Deps, walkId: string, raster: Raster = rasterOf): Promise<Outcome<Scored>> => {
   const walk = await getWalk(deps.db, walkId);
   if (walk === null) return refuse("walk_not_found", "This walk could not be found.");
   const jurisdiction = CaJurisdiction.safeParse(walk.jurisdiction);
@@ -32,7 +33,8 @@ export const scoreWalk = async (deps: Deps, walkId: string): Promise<Outcome<Sco
     tracks.push(...detections.tracks);
   }
   const startByClip = Object.fromEntries(clips.map((c) => [c.id, clipStart(tags, c.kind)]));
-  const observed = observe({ clips, tracks, tags, startByClip });
+  const masks = await masksFor(deps.bucket, tracks, raster);
+  const observed = observe({ clips, tracks, tags, startByClip, masks });
   const kept = new Map(observed.kept.map((k) => [k.observation.id, k]));
 
   const held = new Set((await findingsForWalk(deps.db, walkId)).filter((f) => f.source === "tapped").map((f) => f.rank));

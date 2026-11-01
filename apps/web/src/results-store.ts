@@ -13,12 +13,14 @@ export type ResultsStore = {
   keep(results: WalkResults, atMs: number): Promise<void>;
   get(id: string): Promise<WalkResults | null>;
   ids(): Promise<string[]>;
+  clear(): Promise<void>;
 };
 
 const NOTHING: ResultsStore = {
   keep: async () => undefined,
   get: async () => null,
   ids: async () => [],
+  clear: async () => undefined,
 };
 
 const done = <T>(request: IDBRequest<T>): Promise<T> =>
@@ -74,6 +76,11 @@ export const openResultsStore = async (idb: IDBFactory, name = "emberwalk-result
         const all = (await done(db.transaction(RESULTS).objectStore(RESULTS).getAll())) as Kept[];
         return all.sort((a, b) => b.atMs - a.atMs).map((kept) => kept.id);
       }),
+    clear: async () => {
+      const tx = db.transaction(RESULTS, "readwrite");
+      tx.objectStore(RESULTS).clear();
+      await committed(tx);
+    },
   };
 };
 

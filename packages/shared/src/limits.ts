@@ -6,6 +6,7 @@ const count = z.int().positive();
 export const Limits = z
   .strictObject({
     dailySpendUsd: z.number().positive(),
+    deleteEverythingOn: z.boolean(),
     liveWalksPerVisitorPerDay: count,
     maxFps: z.number().positive(),
     defaultFps: z.number().positive(),
@@ -20,6 +21,10 @@ export const Limits = z
     faultCountMost: count,
     faultKeepDays: count,
     faultRowsADay: count,
+    recheckOn: z.boolean(),
+    recheckPhotoBytes: count,
+    rechecksPerFinding: count,
+    paymentsOn: z.boolean(),
   })
   .refine((l) => l.defaultFps <= l.maxFps, { message: "defaultFps must not pass maxFps", path: ["defaultFps"] })
   .refine((l) => l.uploadMinPartBytes <= l.uploadPartBytes, {
@@ -35,6 +40,7 @@ export type Limits = z.infer<typeof Limits>;
 
 export const DEFAULT_LIMITS: Limits = Limits.parse({
   dailySpendUsd: 20,
+  deleteEverythingOn: false,
   liveWalksPerVisitorPerDay: 3,
   maxFps: 4,
   defaultFps: 2,
@@ -49,6 +55,10 @@ export const DEFAULT_LIMITS: Limits = Limits.parse({
   faultCountMost: 1000,
   faultKeepDays: 30,
   faultRowsADay: 500,
+  recheckOn: false,
+  recheckPhotoBytes: 20 * MiB,
+  rechecksPerFinding: 5,
+  paymentsOn: false,
 });
 
 export const maxWalkBytes = (l: Limits): number => Math.ceil((l.maxWalkSeconds * l.maxVideoBitsPerSecond) / 8);
@@ -56,3 +66,14 @@ export const maxWalkBytes = (l: Limits): number => Math.ceil((l.maxWalkSeconds *
 export const uploadMaxParts = (l: Limits): number => Math.ceil(maxWalkBytes(l) / l.uploadPartBytes);
 
 export const limitsWith = (overrides: Partial<Limits>): Limits => Limits.parse({ ...DEFAULT_LIMITS, ...overrides });
+
+export const limitsFromConfig = (raw: string | undefined): Limits => {
+  if (raw === undefined || raw === "") return DEFAULT_LIMITS;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return DEFAULT_LIMITS;
+    return limitsWith(parsed as Partial<Limits>);
+  } catch {
+    return DEFAULT_LIMITS;
+  }
+};

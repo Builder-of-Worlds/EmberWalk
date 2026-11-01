@@ -18,7 +18,7 @@ export type When = {
   within?: number | undefined;
 };
 
-export type RuleRow = Rule & { key: string; code: string; section: string; statute: string | null; when: When; unsure: string | null };
+export type RuleRow = Rule & { key: string; code: string; section: string; statute: string | null; when: When; unsure: Rule["plain"] | null };
 
 export const JURISDICTIONS = { ca: ["sra", "vhfhsz"], ca_sra: ["sra"], ca_vhfhsz: ["vhfhsz"] } as const satisfies Record<string, Statute[]>;
 export const CaJurisdiction = z.enum(Object.keys(JURISDICTIONS) as [keyof typeof JURISDICTIONS]);
@@ -164,7 +164,7 @@ export const CITES = {
 const ZONE = { 0: "zone_0", 1: "zone_1", 2: "zone_2" } as const satisfies Record<number, Band>;
 type ZoneNumber = keyof typeof ZONE;
 type Words = { en: string; es: string };
-type Spec = { key: string; concept: Concept; zones: ZoneNumber[]; cites: Cite[]; when?: When; condition: string; plain: Words; unsure?: string };
+type Spec = { key: string; concept: Concept; zones: ZoneNumber[]; cites: Cite[]; when?: When; condition: string; plain: Words; unsure?: Words };
 
 const DEAD: PlantState[] = ["dead", "unsure"];
 const NOT_ALIVE: (PlantState | null)[] = [...DEAD, null];
@@ -178,7 +178,7 @@ const CHIMNEY: Words = {
   es: "Recorte toda rama que llegue a menos de 10 pies de la chimenea, con una sierra de pértiga desde el suelo.",
 };
 
-const zone0 = (concept: Concept, cite: Cite, plain: Words = KEEP_CLEAR, unsure?: string, when?: When): Spec => ({
+const zone0 = (concept: Concept, cite: Cite, plain: Words = KEEP_CLEAR, unsure?: Words, when?: When): Spec => ({
   key: `${concept.replaceAll("_", "-")}-zone-0`,
   concept,
   zones: [0],
@@ -219,7 +219,10 @@ const SPECS: Spec[] = [
       en: "Snip the dead wood out of the plants against the wall, so only green growth touches the house.",
       es: "Recorte la madera muerta de las plantas pegadas a la pared, para que solo lo verde toque la casa.",
     },
-    unsure: "Bend a twig on the brush against the house; if it snaps dry, it could be dead, so cut it back to green growth.",
+    unsure: {
+      en: "Bend a twig on the brush against the house; if it snaps dry, it could be dead, so cut it back to green growth.",
+      es: "Doble una ramita de la maleza pegada a la casa; si se quiebra seca, podría estar muerta, así que córtela hasta lo verde.",
+    },
   },
   {
     key: "dry-brush-far",
@@ -232,7 +235,10 @@ const SPECS: Spec[] = [
       en: "A rented brush cutter clears a big patch of dead brush; rake it up and haul it away.",
       es: "Una desbrozadora alquilada despeja un área grande de maleza muerta; rastríllela y llévesela.",
     },
-    unsure: "Some brush out here might be dead: where stems crack and leaves are brown, cut it and haul it off.",
+    unsure: {
+      en: "Some brush out here might be dead: where stems crack and leaves are brown, cut it and haul it off.",
+      es: "Parte de la maleza de esta zona podría estar muerta; donde los tallos se quiebran y las hojas están marrones, córtela y llévesela.",
+    },
   },
   zone0(
     "dry_brush",
@@ -241,7 +247,10 @@ const SPECS: Spec[] = [
       en: "Pull the dead plants from the strip along the wall and spread gravel or stone in their place.",
       es: "Arranque las plantas muertas de la franja junto a la pared y ponga grava o piedra en su lugar.",
     },
-    "Check the plants in the strip by the wall: brown, brittle stems may be dead; pull those and lay gravel in their place.",
+    {
+      en: "Check the plants in the strip by the wall: brown, brittle stems may be dead; pull those and lay gravel in their place.",
+      es: "Observe las plantas al lado de la pared: los tallos marrones y quebradizos podrían estar muertos; arránquelos y cubra el lugar con grava.",
+    },
     { plant: NOT_ALIVE },
   ),
   {
@@ -327,7 +336,10 @@ const SPECS: Spec[] = [
       en: "Saw off the dead branch hanging over the house; for a high branch, call a tree service.",
       es: "Quite la rama muerta que cuelga sobre la casa; para una rama alta, contrate a un podador.",
     },
-    unsure: "That branch over the roof might be dead if it holds no leaves or its bark peels; a tree service can take it off.",
+    unsure: {
+      en: "That branch over the roof might be dead if it holds no leaves or its bark peels; a tree service can take it off.",
+      es: "Esa rama sobre el techo podría estar muerta si no tiene hojas o se le despega la corteza; un servicio de árboles puede quitarla.",
+    },
   },
   {
     key: "branch-chimney",
@@ -379,7 +391,10 @@ const SPECS: Spec[] = [
       en: "Have the dead tree taken down and hauled away by a tree service.",
       es: "Pida a un servicio de árboles que tumbe y se lleve el árbol muerto.",
     },
-    unsure: "Look for buds or leaves on this tree; bare in spring or summer, it could be dead, and an arborist can check and remove it.",
+    unsure: {
+      en: "Look for buds or leaves on this tree; bare in spring or summer, it could be dead, and an arborist can check and remove it.",
+      es: "Busque brotes u hojas en este árbol; si sigue pelado en primavera o verano, podría estar muerto, y un arborista puede revisarlo y quitarlo.",
+    },
   },
   {
     key: "tree-chimney",
@@ -425,7 +440,10 @@ const SPECS: Spec[] = [
       en: "Take down the dead tree and haul the wood away, or hire a crew for a big one.",
       es: "Tumbe el árbol muerto y llévese la madera, o contrate una cuadrilla si es grande.",
     },
-    unsure: "Scratch the bark of a twig on this tree: green beneath means alive; brown and dry means it may be dead and should come down.",
+    unsure: {
+      en: "Scratch the bark of a twig on this tree: green beneath means alive; brown and dry means it may be dead and should come down.",
+      es: "Raspe la corteza de una ramita de este árbol: verde por dentro significa vivo; marrón y seca, el árbol podría estar muerto y convendría tumbarlo.",
+    },
   },
   zone0("tree", CITES.zone0),
   {
@@ -439,7 +457,10 @@ const SPECS: Spec[] = [
       en: "Dig out the dead shrub, roots and all, and put it out with the green waste.",
       es: "Saque el arbusto muerto con todo y raíces, y póngalo con los desechos verdes.",
     },
-    unsure: "Snap a stem on this shrub; one that breaks clean and dry may be dead, and the shrub can be dug out with its roots.",
+    unsure: {
+      en: "Snap a stem on this shrub; one that breaks clean and dry may be dead, and the shrub can be dug out with its roots.",
+      es: "Quiebre un tallo de este arbusto; si se parte limpio y seco, podría estar muerto, y se puede sacar con todo y raíces.",
+    },
   },
   {
     key: "shrub-window",
@@ -476,7 +497,10 @@ const SPECS: Spec[] = [
       en: "Uproot the dead shrub with a shovel and haul it away.",
       es: "Arranque el arbusto muerto con una pala y llévelo.",
     },
-    unsure: "If this shrub stays bare or brown through spring, it might be dead; a shovel will get it out by the roots.",
+    unsure: {
+      en: "If this shrub stays bare or brown through spring, it might be dead; a shovel will get it out by the roots.",
+      es: "Si este arbusto sigue pelado o marrón durante la primavera, podría estar muerto; con una pala se saca de raíz.",
+    },
   },
   zone0("shrub", CITES.zone0),
   {
@@ -490,7 +514,10 @@ const SPECS: Spec[] = [
       en: "Mow the dead grass short and rake up the clippings.",
       es: "Corte bajo el pasto seco y rastrille los recortes.",
     },
-    unsure: "Grass that stays brown after watering may be dead; mow it short and rake it up.",
+    unsure: {
+      en: "Grass that stays brown after watering may be dead; mow it short and rake it up.",
+      es: "El pasto que sigue marrón después de regarlo podría estar muerto; córtelo bajo y rastríllelo.",
+    },
   },
   {
     key: "dry-grass-far",
@@ -511,7 +538,10 @@ const SPECS: Spec[] = [
       en: "Replace the dead grass along the wall with gravel or stone, which stays clear year round.",
       es: "Cambie el pasto seco junto a la pared por grava o piedra, que se mantiene limpia todo el año.",
     },
-    "Tug a tuft of grass by the wall; if it lifts out dry and loose, it may be dead; gravel can replace it.",
+    {
+      en: "Tug a tuft of grass by the wall; if it lifts out dry and loose, it may be dead; gravel can replace it.",
+      es: "Jale un mechón de pasto junto a la pared; si sale seco y suelto, podría estar muerto, y la grava puede reemplazarlo.",
+    },
     { plant: NOT_ALIVE },
   ),
   {

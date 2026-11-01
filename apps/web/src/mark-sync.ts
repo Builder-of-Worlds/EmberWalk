@@ -7,6 +7,7 @@ export type MarkSync = {
   flush(): Promise<void>;
   waiting(): number;
   refused(findingId: string): boolean;
+  forget(): void;
 };
 
 type Entry = [findingId: string, mark: MarkRequest];
@@ -94,5 +95,10 @@ export const storageMarkSync = (storage: () => Storage, post: FixedApi["mark"]):
     flush,
     waiting: () => held().length,
     refused: (findingId) => refusedIds.has(findingId),
+    forget: () => {
+      pending = [];
+      refusedIds.clear();
+      save();
+    },
   };
 };

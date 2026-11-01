@@ -10,7 +10,7 @@ import { PRIVACY_PHRASES } from "../../../../workers/pipeline/src/privacy.ts";
 import { costRows, resetAll, spentNano } from "../../../../workers/pipeline/test/fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, type Sighting, harness } from "../../../../workers/pipeline/test/harness.ts";
 import { importWalk, type Fetch } from "../../src/index.ts";
-import { hostRender } from "./files.ts";
+import { type Cut, hostRender, truthFrameAt } from "./files.ts";
 import { getFixedStandIn } from "./get-fixed-stand-in.ts";
 
 const ORIGIN = "https://api.test";
@@ -21,7 +21,7 @@ const STAND_IN_CONCEPTS = ["wood_pile"];
 const COVERAGE_LOOK_CALLS = 1;
 const MODEL_CALLS = rowsForClip("loop").length - POINT_CONCEPTS.length + POINT_CONCEPTS.length * POINT_LOOKS + PRIVACY_PHRASES.length + COVERAGE_LOOK_CALLS;
 
-type RenderFile = { size_bytes: number; duration_s: number; width: number; height: number };
+type RenderFile = Cut & { size_bytes: number; duration_s: number; width: number; height: number };
 type TruthHazard = { concept: string; frame_boxes: { frame: number; box_px: [number, number, number, number] }[] };
 
 const render = hostRender(env.RENDER_FILES);
@@ -33,7 +33,7 @@ const apiEnv = () => ({
   R2_BUCKET_NAME: env.R2_BUCKET_NAME,
   ...(env.R2_ACCESS_KEY_ID === undefined ? {} : { R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID }),
   ...(env.R2_SECRET_ACCESS_KEY === undefined ? {} : { R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY }),
-  PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }) },
+  PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }), recheck: async () => ({ failed: "test_stand_in" }) },
   GET_FIXED: getFixedStandIn,
 });
 
@@ -51,23 +51,21 @@ const apiFetch: Fetch = async (request) => {
   });
 };
 
-const truthFrame = (clipFrame: number): number => Math.round((clipFrame / SAM_CLIP_FPS) * 30) + 1;
-
 const standInSightings = (hazard: TruthHazard, clipFrames: number): Sighting[] => {
   const boxes = new Map(hazard.frame_boxes.map((f) => [f.frame, f.box_px]));
   const found: Sighting[] = [];
   for (let frame = 0; frame < clipFrames; frame += 1) {
-    const px = boxes.get(truthFrame(frame));
+    const px = boxes.get(truthFrameAt(measured, frame, SAM_CLIP_FPS));
     if (px === undefined) continue;
     const [x1, y1, x2, y2] = px;
     found.push({
       frame,
       id: 0,
       box: [
-        Math.floor((x1 * FRAME_WIDTH) / 1920),
-        Math.floor((y1 * FRAME_HEIGHT) / 1080),
-        Math.min(FRAME_WIDTH - 1, Math.ceil((x2 * FRAME_WIDTH) / 1920)),
-        Math.min(FRAME_HEIGHT - 1, Math.ceil((y2 * FRAME_HEIGHT) / 1080)),
+        Math.floor((x1 * FRAME_WIDTH) / measured.width),
+        Math.floor((y1 * FRAME_HEIGHT) / measured.height),
+        Math.min(FRAME_WIDTH - 1, Math.ceil((x2 * FRAME_WIDTH) / measured.width)),
+        Math.min(FRAME_HEIGHT - 1, Math.ceil((y2 * FRAME_HEIGHT) / measured.height)),
       ],
       confidence: 0.9,
     });
@@ -79,15 +77,19 @@ let measured: RenderFile;
 let hazards: TruthHazard[];
 let clipFrames: number;
 
+const mostSeen = (concept: string): Sighting[] =>
+  hazards
+    .filter((h) => h.concept.replaceAll(" ", "_") === concept)
+    .map((h) => standInSightings(h, clipFrames))
+    .reduce((most, found) => (found.length > most.length ? found : most), []);
+
 const loadStandIns = async (): Promise<void> => {
   measured = (await render.json("render.json")) as RenderFile;
   hazards = ((await (await env.RENDER_FILES.fetch("http://render/truth.json")).json()) as { hazards: TruthHazard[] }).hazards;
   clipFrames = Math.round(measured.duration_s * SAM_CLIP_FPS);
   harness.probe = { bytes: measured.size_bytes, durationSeconds: measured.duration_s, isMp4: true };
   harness.clip = { frames: clipFrames, fps: SAM_CLIP_FPS, width: SAM_CLIP_WIDTH, height: SAM_CLIP_HEIGHT };
-  for (const hazard of hazards) {
-    if (STAND_IN_CONCEPTS.includes(hazard.concept.replaceAll(" ", "_"))) harness.answers[hazard.concept] = [{ found: standInSightings(hazard, clipFrames) }];
-  }
+  for (const concept of STAND_IN_CONCEPTS) harness.answers[concept.replaceAll("_", " ")] = [{ found: mostSeen(concept) }];
 };
 
 const imported = async (): Promise<string> => {
@@ -135,8 +137,7 @@ describe("steps 1 to 3 on an imported synthetic render", () => {
     expect(stored.runs.map((r) => r.concept).sort()).toEqual([...LOOP_CONCEPTS].sort());
     expect(stored.tracks.map((t) => t.concept).sort()).toEqual([...STAND_IN_CONCEPTS].sort());
     for (const track of stored.tracks) {
-      const hazard = hazards.find((h) => h.concept.replaceAll(" ", "_") === track.concept);
-      expect(track.frames.length).toBe(standInSightings(hazard as TruthHazard, clipFrames).length);
+      expect(track.frames.length).toBe(mostSeen(track.concept).length);
       expect(track.frames.length).toBeGreaterThan(0);
     }
     expect(samRequests()).toHaveLength(MODEL_CALLS);

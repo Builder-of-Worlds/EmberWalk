@@ -106,6 +106,8 @@ const onMessage = async (request: Request, env: FixedEnv, visitor: string, messa
 
 const onMark = async (request: Request, env: FixedEnv, visitor: string, findingId: string): Promise<Response> => {
   if (!owns(await ownerOfFinding(env.DB, findingId), visitor)) return fail("not_found");
+  const vetoed = await env.DB.prepare("SELECT veto_reason FROM findings WHERE id = ?").bind(findingId).first<{ veto_reason: string | null }>();
+  if ((vetoed?.veto_reason ?? null) !== null) return fail("not_found");
   if (request.method !== "POST") return fail("method_not_allowed");
   const body = await bodyOf(request, FixedMarkRequest);
   if (body === null) return fail("invalid_request");

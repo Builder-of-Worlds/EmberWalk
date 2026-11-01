@@ -1,5 +1,10 @@
 import type { RenderSource } from "../../src/index.ts";
 
+export type Cut = { fps: number; made_from: { first_frame: number } };
+
+export const truthFrameAt = (cut: Cut, clipFrame: number, clipFps: number): number =>
+  Math.round((clipFrame / clipFps) * cut.fps) + cut.made_from.first_frame;
+
 export const hostRender = (files: Fetcher): RenderSource => {
   const ask = (name: string, query: string): Promise<Response> => files.fetch(`http://render/${name}${query}`);
   return {

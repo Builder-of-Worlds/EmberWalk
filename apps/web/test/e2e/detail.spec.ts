@@ -6,7 +6,7 @@ import { findingFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBody, liveFindingId } from "../unit/result-fakes.ts";
 import { sideways } from "./geometry.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const serve = async (page: Page) => {
   await page.route("**/api/**", async (route) => {

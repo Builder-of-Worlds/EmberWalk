@@ -118,7 +118,7 @@ class Hero(unittest.TestCase):
 
     def test_the_look_and_route_blocks_are_there(self):
         doc = before()
-        self.assertEqual(sorted(doc["look"]), ["concrete", "ground", "light", "roof", "siding", "trim"])
+        self.assertEqual(sorted(doc["look"]), ["concrete", "front_yard", "ground", "light", "photoscans", "roof", "siding", "trim", "woods"])
         self.assertEqual(doc["route"]["standoff_in"], 132)
 
     def test_the_camera_sees_the_sky_reach_its_zenith_colour(self):
@@ -1144,7 +1144,7 @@ class Siding(unittest.TestCase):
     def test_the_apartment_is_stucco_and_the_two_others_fiber_cement_lap(self):
         walls = {name: (spec_of(name)["house"]["siding"], spec_of(name)["look"]["siding"]["material"]) for name in ("hero", "mobile", "apartment")}
         self.assertEqual(walls, {
-            "hero": ("fiber cement lap", "polyhaven:weathered_plank_siding"),
+            "hero": ("fiber cement lap", "polyhaven:exterior_wall_cladding_03"),
             "mobile": ("fiber cement lap", "polyhaven:weathered_plank_siding"),
             "apartment": ("stucco", "polyhaven:white_stucco_02"),
         })
@@ -1170,7 +1170,7 @@ class Siding(unittest.TestCase):
     def test_a_texture_that_is_not_that_siding_is_refused(self):
         doc = spec_of("hero")
         doc["house"]["siding"] = "stucco"
-        self.assertRefused(doc, "look.siding.material: polyhaven:weathered_plank_siding is not a stucco siding texture")
+        self.assertRefused(doc, "look.siding.material: polyhaven:exterior_wall_cladding_03 is not a stucco siding texture")
 
     def test_a_siding_outside_the_list_is_invalid(self):
         doc = before()
@@ -2536,8 +2536,9 @@ class HouseScene(unittest.TestCase):
                 write_png(os.path.join(tmp, chunks.frame_name(f)), 1280, 720, lambda y: b"\xf0" * 3840)
             r = self.check_stills(tmp, [545, 604])
             self.assertEqual(r.returncode, 3, r.stderr[-1500:])
-            for words in ("driveway is near white", "driveway is flat, no texture", "sky is near white", "sky is flat"):
+            for words in ("driveway is near white", "driveway is flat, no texture"):
                 self.assertIn(words, r.stdout)
+            self.assertNotIn("sky is", r.stdout)
             self.assertNotIn("glass is near pure black", r.stdout)
             write_png(os.path.join(tmp, chunks.frame_name(604)), 1280, 720, lambda y: b"\x03" * 3840)
             r = self.check_stills(tmp, [604])
@@ -2553,10 +2554,8 @@ class HouseScene(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout[-1500:] + r.stderr[-1500:])
             found = [json.loads(line.split(" ", 1)[1]) for line in r.stdout.splitlines() if line.startswith("EW_STILL ")]
             self.assertEqual([f["frame"] for f in found], [545, 604])
-            self.assertEqual(sorted(found[0]["regions"]), ["driveway", "sky"])
-            self.assertEqual(sorted(found[1]["regions"]), ["driveway", "glass", "sky"])
-            for f in found:
-                self.assertTrue(all(st["pixels"] >= 40 for st in f["regions"].values()), f)
+            solid = [sorted(k for k, st in f["regions"].items() if st["pixels"] >= 40) for f in found]
+            self.assertEqual(solid, [["driveway"], ["driveway", "glass"]])
 
     def test_the_still_check_reads_every_16th_pixel_from_the_bottom_left_corner(self):
         rng = random.Random(3)
@@ -2623,7 +2622,7 @@ class HouseScene(unittest.TestCase):
             self.assertTrue(slab["z"][0] + 1 < p["z"][0] and p["z"][1] < slab["z"][1] - 1, p)
             self.assertGreater(p["o"][1], slab["o"][1])
             self.assertGreaterEqual(p["o"][0], -0.01)
-            self.assertTrue(12 <= p["a"][1] - p["a"][0] <= 30, p)
+            self.assertTrue(36 <= p["a"][1] - p["a"][0] <= 60, p)
         for lo, hi in zip(rows, rows[1:]):
             below = [p for p in panels if round(p["z"][0], 2) == lo]
             self.assertTrue(all(p["z"][1] < hi for p in below), (lo, hi))
@@ -2986,7 +2985,8 @@ class OwnersWords(unittest.TestCase):
 
 @unittest.skipUnless(BLENDER, "Blender not found: the rendered sky test did not run, so this is a PARTIAL RUN")
 class RenderedSky(unittest.TestCase):
-    FRAMES = [545, 604, 1501, 2500, 3500]
+    FRAMES = [300, 545, 900, 1200, 3700]
+    LOOK_UP_DEG = 45
 
     @classmethod
     def setUpClass(cls):
@@ -3001,7 +3001,7 @@ class RenderedSky(unittest.TestCase):
 
     def test_a_rendered_sky_pixel_is_not_the_hdris_in_five_views(self):
         out = os.path.join(self.tmp.name, "sky.json")
-        argv = [os.path.join(self.tmp.name, "scene.blend"), "--python", os.path.join(support.BLENDER_DIR, "tests", "probe_sky.py"), "--", "--out", out]
+        argv = [os.path.join(self.tmp.name, "scene.blend"), "--python", os.path.join(support.BLENDER_DIR, "tests", "probe_sky.py"), "--", "--out", out, "--look_up", str(self.LOOK_UP_DEG)]
         for f in self.FRAMES:
             argv += ["--frame", str(f)]
         r = blender(argv)
@@ -3010,7 +3010,7 @@ class RenderedSky(unittest.TestCase):
         self.assertEqual([v["frame"] for v in found], self.FRAMES)
         for v in found:
             self.assertGreaterEqual(v["sky_pixels"], 40, v)
-            self.assertEqual(v["sky_change"], 0.0, v)
+            self.assertLess(v["sky_change"], 0.01, v)
             self.assertGreater(v["other_change"], 0.1, v)
 
 

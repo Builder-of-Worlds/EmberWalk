@@ -37,6 +37,10 @@ export const saveClip = async (db: D1Database, input: Clip): Promise<Clip> => {
   return toClip(row);
 };
 
+export const dropClip = async (db: D1Database, clipId: string): Promise<void> => {
+  await db.prepare("DELETE FROM clips WHERE id = ?").bind(Id.parse(clipId)).run();
+};
+
 export const clipsForWalk = async (db: D1Database, walkId: string): Promise<Clip[]> => {
   const { results } = await db.prepare("SELECT * FROM clips WHERE walk_id = ? ORDER BY kind").bind(Id.parse(walkId)).all<ClipRow>();
   return results.map(toClip);

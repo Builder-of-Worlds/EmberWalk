@@ -1,9 +1,11 @@
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { vi } from "vitest";
+import { DEFAULT_LIMITS } from "@emberwalk/shared";
 import { once } from "../../src/deps.ts";
 import { storageFindingMarks } from "../../src/finding-marks.ts";
 import { storageMarkSync } from "../../src/mark-sync.ts";
+import { offlineRechecks } from "../../src/recheck-api.ts";
 import { storagePrefs } from "../../src/prefs.ts";
 import { storageSentWalks } from "../../src/sent-walks.ts";
 import type { Deps } from "../../src/deps.ts";
@@ -211,6 +213,8 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
   const fixed = overrides.fixed ?? offlineFixed();
   return {
     media: grantedMedia(),
+    erase: { everything: async () => ({ code: "offline" }) },
+    forgetSent: async () => undefined,
     takes: once(() => openTakeStore(idb)),
     clock: fakeClock().clock,
     maxWalkMs: 360_000,
@@ -233,6 +237,8 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
     phone: fakePhone().phone,
     portfolio: unaskedPortfolio,
     awake: { hold: () => () => undefined },
+    limits: DEFAULT_LIMITS,
+    rechecks: offlineRechecks,
     ...overrides,
   };
 };

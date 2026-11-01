@@ -1,0 +1,26 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-before",
+  "file": "walk-30fps.mp4",
+  "size_bytes": 3899619,
+  "sha256": "9c5379462473935cce59122be2c9783da2d5216ebe93f669fb87667757a85830",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1280,
+  "height": 720,
+  "fps": 30.0,
+  "duration_s": 20.0,
+  "frame_count": 600,
+  "made_from": {
+    "file": "hero-before/walk.mp4",
+    "sha256": "66f453712b91b22efb348724d193dede1eecfd95b85aeaf81092f3d09ec01549",
+    "size_bytes": 343374474,
+    "first_frame": 186,
+    "last_frame": 485,
+    "first_time_s": 12.333333
+  },
+  "made_with": "Blender 5.2.3 LTS, Cycles on the Metal GPU, 64 adaptive samples, OpenImageDenoise, 1280 by 720; the scene file of the full hero walk (hero-before/scene.blend), its camera re-keyed to the walk route evaluated at 30 frames a second (the route's own function of time, whose even samples equal the 15 a second motion.json at all 4724 samples), 600 frames starting at walk time 12.333333 s, the time of whole frame 186 at 15 a second; frame k shows walk time 12.333333 s + (k - 1) / 30, so every odd numbered frame is the picture of a frame of walk.mp4 (PSNR 63 to 64 dB against the full walk's frames 186, 187, 188, 336 and 485). Encoded in two steps with ffmpeg 9.0.2. First pass: -framerate 30 -c:v libx264 -preset slow -crf 24 -pix_fmt yuv420p -g 30 -an -movflags +faststart (8648152 bytes, 3456284 bits a second, over the 5 MiB limit of the large files check). Final file, re-encoded from that first pass to fit the limit: -c:v libx264 -preset slow -crf 29 -pix_fmt yuv420p -g 30 -an -movflags +faststart",
+  "measured_with": "ffprobe -count_frames: 600 frames, 20.000000 s, 1280x720, h264, yuv420p, 30/1 a second, 1556890 bits a second (Sat Oct. 31st, 2026)"
+}

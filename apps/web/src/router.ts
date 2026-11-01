@@ -4,6 +4,7 @@ import type { Part } from "@emberwalk/shared";
 export const ROUTES = {
   home: "#/",
   how: "#/how",
+  about: "#/about",
   record: "#/record",
   send: "#/send",
   results: "#/results",
@@ -13,6 +14,8 @@ export const ROUTES = {
   approve: "#/approve",
   inspection: "#/inspection",
   history: "#/history",
+  recheck: "#/recheck",
+  report: "#/report",
 } as const;
 
 export type Route = keyof typeof ROUTES;
@@ -21,7 +24,7 @@ export const WALK_START = ROUTES.record;
 
 const BY_HASH = new Map<string, Route>(Object.entries(ROUTES).map(([route, hash]) => [hash, route as Route]));
 
-const WITH_ID: Route[] = ["send", "results", "finding", "checking", "fix", "approve", "inspection"];
+const WITH_ID: Route[] = ["send", "results", "finding", "checking", "fix", "approve", "inspection", "recheck", "report"];
 
 const idAfter = (prefix: string, hash: string): string | null => {
   if (!hash.startsWith(prefix) || hash.length === prefix.length) return null;
@@ -64,6 +67,14 @@ export const findingIdsIn = (hash: string): FindingIds | null => {
   return pair === null ? null : { resultsId: pair[0], findingId: pair[1] };
 };
 
+export const recheckFor = (resultsId: string, findingId: string): string =>
+  `${ROUTES.recheck}/${encodeURIComponent(resultsId)}/${encodeURIComponent(findingId)}`;
+
+export const recheckIdsIn = (hash: string): FindingIds | null => {
+  const pair = pairAfter(`${ROUTES.recheck}/`, hash);
+  return pair === null ? null : { resultsId: pair[0], findingId: pair[1] };
+};
+
 export const fixFor = withId("fix");
 
 export const inspectionFor = withId("inspection");
@@ -84,6 +95,10 @@ export const approveIdsIn = (hash: string): ApproveIds | null => {
 
 export const resultsIdIn = (hash: string): string | null => idAfter(`${ROUTES.results}/`, hash);
 
+export const reportFor = withId("report");
+
+export const reportIdIn = (hash: string): string | null => idAfter(`${ROUTES.report}/`, hash);
+
 export const walkIdIn = (hash: string): string | null => idAfter(`${ROUTES.checking}/`, hash);
 
 export const recordPartFor = (walkId: string, side: Part): string => `${ROUTES.record}/${encodeURIComponent(walkId)}/${side}`;
@@ -97,6 +112,7 @@ export const recordPartIn = (hash: string, corners = false): WalkPart | null => 
 const hasIds = (route: Route, hash: string): boolean => {
   if (route === "finding") return findingIdsIn(hash) !== null;
   if (route === "approve") return approveIdsIn(hash) !== null;
+  if (route === "recheck") return recheckIdsIn(hash) !== null;
   return idAfter(`${ROUTES[route]}/`, hash) !== null;
 };
 

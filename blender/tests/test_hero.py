@@ -105,6 +105,13 @@ class GoodSet(unittest.TestCase):
         doc["hazards"][0]["band"] = "5_30"
         self.assertRefused(self.problems(doc), "band is 5_30")
 
+    def test_a_truth_made_from_an_older_spec_is_refused(self):
+        older = copy.deepcopy(self.spec)
+        gutter = next(h for h in older["hazards"] if h["id"] == "gutter-leaves-front")
+        gutter["size_in"], gutter["elevation_in"] = [300, 6, 5], 104
+        _, _, _, doc, _ = made(older)
+        self.assertRefused(self.problems(doc), "gutter-leaves-front: box_in differs from the spec's")
+
     def test_a_truth_the_house_check_refuses_is_reported(self):
         doc = self.doc_copy()
         doc["hazards"][1]["rule_id"] = "no-such-rule"
@@ -388,6 +395,62 @@ class CheckHero(unittest.TestCase):
         r = self.run_check()
         self.assertEqual(r.returncode, 1)
         self.assertIn("EW_PROBLEM hero-before/parts.json", r.stderr)
+
+
+class CheckOtherHouses(unittest.TestCase):
+    """check_hero.py --house judges the mobile home and the apartment by the same checks as the hero."""
+
+    def good_set(self, name):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        spec, changes_doc = load("%s-before" % name, "spec.json"), load("%s-after" % name, "changes.json")
+        for scene, files, change in (("%s-before" % name, {"spec.json": spec}, None), ("%s-after" % name, {"changes.json": changes_doc}, changes_doc)):
+            _, walk, parts, doc, record = made(spec, change)
+            files.update({"motion.json": walk, "parts.json": parts, "truth.json": doc, "render.json": record})
+            os.makedirs(os.path.join(folder.name, scene))
+            for file_name, body in files.items():
+                with open(os.path.join(folder.name, scene, file_name), "w", encoding="utf-8") as f:
+                    json.dump(body, f)
+        return folder.name
+
+    def run_check(self, root, name):
+        return subprocess.run([sys.executable, CHECK, "--fixtures", root, "--house", name], capture_output=True, text=True)
+
+    def test_a_good_set_of_each_house_exits_0_and_names_both_scenes(self):
+        for name in ("mobile", "apartment"):
+            r = self.run_check(self.good_set(name), name)
+            self.assertEqual((r.returncode, r.stderr), (0, ""), name)
+            self.assertIn("EW_OK %s-before" % name, r.stdout)
+            self.assertIn("EW_OK %s-after" % name, r.stdout)
+
+    def test_one_house_never_passes_on_another_house_files(self):
+        r = self.run_check(self.good_set("mobile"), "apartment")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("EW_MISSING apartment-before/truth.json", r.stderr)
+        self.assertNotIn("EW_OK", r.stdout)
+
+    def test_a_mobile_truth_missing_a_hazard_exits_1(self):
+        root = self.good_set("mobile")
+        doc = load("mobile-before", "truth.json", root)
+        with open(os.path.join(root, "mobile-before", "truth.json"), "w", encoding="utf-8") as f:
+            json.dump(dict(doc, hazards=doc["hazards"][1:]), f)
+        r = self.run_check(root, "mobile")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("EW_PROBLEM mobile-before", r.stderr)
+        self.assertIn("EW_OK mobile-after", r.stdout)
+
+    def test_an_unknown_house_is_refused(self):
+        r = self.run_check(self.good_set("mobile"), "castle")
+        self.assertEqual(r.returncode, 2)
+        self.assertNotIn("EW_OK", r.stdout)
+
+    def test_every_driveway_has_a_textured_material(self):
+        for name in ("hero", "mobile", "apartment"):
+            spec = load("%s-before" % name, "spec.json")
+            for s in spec["structures"]:
+                if s["kind"] == "driveway":
+                    self.assertEqual(s["material"], "concrete", "%s %s" % (name, s["id"]))
+                    self.assertIn("concrete", spec["look"], name)
 
 
 if __name__ == "__main__":

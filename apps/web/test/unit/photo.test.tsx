@@ -71,8 +71,8 @@ describe("Photo", () => {
 
   it("shows a bundled sample still at its own path and fetches nothing", async () => {
     const stills = vi.fn(async () => null);
-    const view = await show("/assets/wood-pile-1.jpg", stills);
-    expect(view.img()?.getAttribute("src")).toBe("/assets/wood-pile-1.jpg");
+    const view = await show("/assets/synthetic-hero-west.jpg", stills);
+    expect(view.img()?.getAttribute("src")).toBe("/assets/synthetic-hero-west.jpg");
     expect(stills).not.toHaveBeenCalled();
     await view.unmount();
   });

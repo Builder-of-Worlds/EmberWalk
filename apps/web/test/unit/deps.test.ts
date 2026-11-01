@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stillPath, VISITOR_HEADER } from "@emberwalk/shared";
-import { browserDeps } from "../../src/deps.ts";
+import { DEFAULT_LIMITS, stillPath, VISITOR_HEADER } from "@emberwalk/shared";
+import { browserDeps, limitsFrom } from "../../src/deps.ts";
 import { SAMPLES } from "../../src/samples.ts";
 import { SENT_WALKS_KEY } from "../../src/sent-walks.ts";
 import { PENDING_ABORTS_KEY } from "../../src/uploader.ts";
@@ -125,5 +125,31 @@ describe("browserDeps", () => {
     expect(browserDeps().sentWalks.all()).toEqual([walk]);
     expect(JSON.parse(localStorage.getItem(SENT_WALKS_KEY) ?? "null")).toEqual([walk]);
     localStorage.removeItem(SENT_WALKS_KEY);
+  });
+
+  it("asks this site's POST /api/rechecks for a recheck link, as this phone's visitor", async () => {
+    const seen: Request[] = [];
+    vi.stubGlobal("fetch", async (request: Request) => {
+      seen.push(request);
+      return Response.json({ error: { code: "not_done", message: "No." } }, { status: 409 });
+    });
+    const deps = browserDeps();
+    const findingId = "00000000-0000-4000-8000-0000000a0001";
+    expect(await deps.rechecks.send(findingId, new Blob(["jpeg"], { type: "image/jpeg" }))).toEqual({ code: "not_done" });
+    expect(seen.map((r) => `${r.method} ${r.url}`)).toEqual([`POST ${window.location.origin}/api/rechecks`]);
+    expect(seen[0]?.headers.get(VISITOR_HEADER)).toBe(deps.prefs.visitorId());
+  });
+
+  it("reads the limits from the build, falling back to the defaults on a missing or bad value", () => {
+    expect(limitsFrom(undefined)).toEqual(DEFAULT_LIMITS);
+    expect(limitsFrom('{"recheckOn":true}')).toEqual({ ...DEFAULT_LIMITS, recheckOn: true });
+    for (const bad of ["", "not json", '{"recheckOn":"yes"}', '{"noSuchLimit":1}', "[1]"]) expect(limitsFrom(bad), bad).toEqual(DEFAULT_LIMITS);
+    expect(browserDeps().limits).toEqual(DEFAULT_LIMITS);
+    vi.stubEnv("VITE_EMBERWALK_LIMITS", '{"recheckOn":true}');
+    try {
+      expect(browserDeps().limits.recheckOn).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

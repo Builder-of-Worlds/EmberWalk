@@ -12,7 +12,7 @@ describe("the host folder behind the L2 test", () => {
     for (const name of ["render.json", "motion.json", "truth.json"]) {
       const response = await ask(name);
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ synthetic: true, scene: "test-yard-2" });
+      expect(await response.json()).toMatchObject({ synthetic: true, scene: "hero-before" });
     }
   });
 

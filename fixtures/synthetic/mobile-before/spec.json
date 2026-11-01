@@ -70,7 +70,7 @@
     {"id": "back-porch", "kind": "porch", "material": "concrete", "min_in": [132, 336], "max_in": [264, 408], "height_in": 30},
     {"id": "back-porch-steps", "kind": "steps", "material": "concrete", "min_in": [162, 408], "max_in": [234, 456], "height_in": 30},
     {"id": "carport", "kind": "carport", "material": "metal", "min_in": [-264, -24], "max_in": [-24, 312], "height_in": 96},
-    {"id": "parking-pad", "kind": "driveway", "material": "gravel", "min_in": [-264, -1260], "max_in": [-24, -24], "height_in": 0},
+    {"id": "parking-pad", "kind": "driveway", "material": "concrete", "min_in": [-264, -1260], "max_in": [-24, -24], "height_in": 0},
     {"id": "road", "kind": "road", "material": "asphalt", "min_in": [-1500, -1380], "max_in": [2220, -1260], "height_in": 0}
   ],
   "lot": {"min_in": [-1500, -1380], "max_in": [2220, 1716]},
@@ -79,6 +79,7 @@
     "trim": {"colour": "#f2efe8"},
     "roof": {"material": "polyhaven:grey_roof_01", "colour": "#8f9296", "tint": [1.0, 1.0, 1.0]},
     "ground": {"material": "polyhaven:withered_grass", "tint": [1.0, 0.95, 0.85]},
+    "concrete": {"material": "polyhaven:concrete_floor_02", "tint": [0.85, 0.83, 0.8]},
     "light": {"hdri": "polyhaven:goegap", "rotation_deg": -94}
   },
   "hazards": [
@@ -233,5 +234,17 @@
       "rule_id": "ca-dry-grass-far-ccr-z2"
     }
   ],
-  "route": {"placeholder": true}
+  "route": {
+    "standoff_in": 132,
+    "height_in": 54,
+    "tilt_deg": 12,
+    "pan_tilt_deg": 3,
+    "speed_in_s": 30,
+    "pan_s": 10,
+    "fps": 15,
+    "width_px": 1280,
+    "height_px": 720,
+    "focal_mm": 26,
+    "sensor_width_mm": 36
+  }
 }

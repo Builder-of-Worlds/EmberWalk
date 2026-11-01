@@ -6,6 +6,7 @@ export interface Env {
   RESEND_API_KEY?: string;
   UNSUBSCRIBE_SECRET?: string;
   POSTAL_FOOTER?: string;
+  POSTAL_ADDRESS?: string;
 }
 
 export interface Message {

@@ -7,6 +7,7 @@
   "scripts": {
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "pages": "node scripts/pages.mjs",
     "dev": "wrangler dev --local"
   },
   "devDependencies": {

@@ -12,7 +12,7 @@ import { s3StandIn } from "../../../../workers/api/test/s3-standin.ts";
 import { resetAll } from "../../../../workers/pipeline/test/fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, type Sighting, harness } from "../../../../workers/pipeline/test/harness.ts";
 import { importWalk, type Fetch } from "../../src/index.ts";
-import { hostRender } from "./files.ts";
+import { type Cut, hostRender, truthFrameAt } from "./files.ts";
 import { getFixedStandIn } from "./get-fixed-stand-in.ts";
 
 const ORIGIN = "https://api.test";
@@ -25,6 +25,8 @@ const EXPLAINED = "Explained for this walk: stack the wood pile 30 feet or more 
 type Asked = { findingId: string; ruleIds: string[] };
 type ExplainBody = { input: { content: { text?: string }[] }[] };
 
+type Measured = Cut & { size_bytes: number; duration_s: number; width: number; height: number };
+
 type TruthHazard = { concept: string; frame_boxes: { frame: number; box_px: [number, number, number, number] }[] };
 
 const render = hostRender(env.RENDER_FILES);
@@ -36,7 +38,7 @@ const apiEnv = () => ({
   R2_BUCKET_NAME: env.R2_BUCKET_NAME,
   R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID ?? "",
   R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY ?? "",
-  PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }) },
+  PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }), recheck: async () => ({ failed: "test_stand_in" }) },
   GET_FIXED: getFixedStandIn,
 });
 
@@ -61,19 +63,19 @@ const soon: Timer = {
   },
 };
 
-const sightings = (hazard: TruthHazard, frames: number): Sighting[] => {
+const sightings = (hazard: TruthHazard, frames: number, cut: Measured): Sighting[] => {
   const boxes = new Map(hazard.frame_boxes.map((f) => [f.frame, f.box_px]));
-  return Array.from({ length: frames }, (_, frame) => boxes.get(Math.round((frame / SAM_CLIP_FPS) * 30) + 1))
+  return Array.from({ length: frames }, (_, frame) => boxes.get(truthFrameAt(cut, frame, SAM_CLIP_FPS)))
     .map((px, frame) => ({ px, frame }))
     .filter((s): s is { px: [number, number, number, number]; frame: number } => s.px !== undefined)
     .map(({ px: [x1, y1, x2, y2], frame }) => ({
       frame,
       id: 0,
       box: [
-        Math.floor((x1 * FRAME_WIDTH) / 1920),
-        Math.floor((y1 * FRAME_HEIGHT) / 1080),
-        Math.min(FRAME_WIDTH - 1, Math.ceil((x2 * FRAME_WIDTH) / 1920)),
-        Math.min(FRAME_HEIGHT - 1, Math.ceil((y2 * FRAME_HEIGHT) / 1080)),
+        Math.floor((x1 * FRAME_WIDTH) / cut.width),
+        Math.floor((y1 * FRAME_HEIGHT) / cut.height),
+        Math.min(FRAME_WIDTH - 1, Math.ceil((x2 * FRAME_WIDTH) / cut.width)),
+        Math.min(FRAME_HEIGHT - 1, Math.ceil((y2 * FRAME_HEIGHT) / cut.height)),
       ],
       confidence: 0.9,
     }));
@@ -131,13 +133,13 @@ const checked = async (): Promise<string> => {
 
 beforeEach(async () => {
   await resetAll();
-  const measured = (await render.json("render.json")) as { size_bytes: number; duration_s: number };
+  const measured = (await render.json("render.json")) as Measured;
   const truth = (await (await env.RENDER_FILES.fetch("http://render/truth.json")).json()) as { hazards: TruthHazard[] };
   const frames = Math.round(measured.duration_s * SAM_CLIP_FPS);
   harness.probe = { bytes: measured.size_bytes, durationSeconds: measured.duration_s, isMp4: true };
   harness.clip = { frames, fps: SAM_CLIP_FPS, width: 1280, height: 720 };
   const hazard = truth.hazards.find((h) => h.concept === STAND_IN)!;
-  const found = sightings(hazard, frames);
+  const found = sightings(hazard, frames, measured);
   harness.answers[STAND_IN] = [{ found }];
   harness.answers["house wall"] = [{ found: wallBehind(found) }];
   harness.answers[ruleTable("ca")] = [explainReply];

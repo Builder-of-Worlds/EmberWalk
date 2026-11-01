@@ -6,10 +6,16 @@ export type UploadStore = {
   openFor(walkId: string): Promise<UploadRecord | null>;
 };
 
-const recordKey = (uploadId: string): string => `uploads/${encodeURIComponent(uploadId)}.json`;
+export const recordKey = (uploadId: string): string => `uploads/${encodeURIComponent(uploadId)}.json`;
 const MAX_KEY_BYTES = 1024;
-const walkKey = (walkId: string): string => `uploads/by-walk/${walkId}.json`;
+export const walkKey = (walkId: string): string => `uploads/by-walk/${walkId}.json`;
 
+export const walkUploadsPrefix = (walkId: string): string => `uploads/by-walk/${walkId}/`;
+
+const markerKey = async (walkId: string, uploadId: string): Promise<string> => {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(uploadId)));
+  return `${walkUploadsPrefix(walkId)}${[...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+};
 export const r2UploadStore = (bucket: R2Bucket): UploadStore => {
   const get = async (uploadId: string): Promise<UploadRecord | null> => {
     const key = recordKey(uploadId);
@@ -20,6 +26,7 @@ export const r2UploadStore = (bucket: R2Bucket): UploadStore => {
   return {
     get,
     async put(record) {
+      await bucket.put(await markerKey(record.walkId, record.uploadId), record.uploadId);
       await bucket.put(recordKey(record.uploadId), JSON.stringify(record));
       await bucket.put(walkKey(record.walkId), JSON.stringify({ uploadId: record.uploadId }));
     },

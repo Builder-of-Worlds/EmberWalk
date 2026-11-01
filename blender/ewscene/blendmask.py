@@ -12,6 +12,7 @@ def flat_colours(scene):
         v = maskbox.level_to_linear(indices[hazard_id]) if hazard_id else 0.0
         o.color = (v, v, v, 1.0)
     scene.render.engine = "BLENDER_WORKBENCH"
+    scene.compositing_node_group = None
     shading = scene.display.shading
     shading.light = "FLAT"
     shading.color_type = "OBJECT"

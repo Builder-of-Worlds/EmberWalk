@@ -6,6 +6,7 @@ import {
   findingsForWalk,
   gapsForWalk,
   getWalk,
+  partOfWalk,
   partsOf,
   tagsForWalk,
   type WalkRecord,
@@ -69,7 +70,7 @@ export class ReadRefused extends Error {
   }
 }
 
-const ownWalk = async (request: Request, db: D1Database, walkId: string): Promise<WalkRecord | Failure> => {
+export const ownWalk = async (request: Request, db: D1Database, walkId: string): Promise<WalkRecord | Failure> => {
   if (!Id.safeParse(walkId).success) return "unknown_walk";
   const visitor = request.headers.get(VISITOR_HEADER);
   if (visitor === null || !Fingerprint.safeParse(visitor).success) return "invalid_request";
@@ -209,7 +210,11 @@ export const resultsFor = async (db: D1Database, media: R2Bucket, walk: WalkReco
   });
 };
 
-const status = (walk: WalkRecord): WalkStatusResponse => ({ walkId: walk.id, state: walk.state, failure: walk.failure });
+const status = async (db: D1Database, walk: WalkRecord): Promise<WalkStatusResponse> => {
+  if (walk.failure === null) return { walkId: walk.id, state: walk.state, failure: null };
+  const part = await partOfWalk(db, walk.id);
+  return { walkId: walk.id, state: walk.state, failure: part === null ? walk.failure : { ...walk.failure, part: part.side } };
+};
 
 const still = async (db: D1Database, media: R2Bucket, walk: WalkRecord, findingId: string): Promise<Response> => {
   if (!Id.safeParse(findingId).success) return fail("not_found");
@@ -237,7 +242,7 @@ export const handleWalkRead = async (request: Request, env: { DB: D1Database; ME
   try {
     const walk = await ownWalk(request, env.DB, walkId);
     if (typeof walk === "string") return fail(walk);
-    if (results === undefined && findingId === undefined) return Response.json(status(walk));
+    if (results === undefined && findingId === undefined) return Response.json(await status(env.DB, walk));
     if (walk.state.name !== "done") return fail("walk_not_done");
     if (findingId !== undefined) return await (picture === "previews" ? preview : still)(env.DB, env.MEDIA, walk, findingId);
     return Response.json(await resultsFor(env.DB, env.MEDIA, walk));

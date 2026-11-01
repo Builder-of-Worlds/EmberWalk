@@ -9,9 +9,18 @@ test("renders with its headings and an email address to ask for removal", async 
   expect(headings).toEqual([
     "What we collect",
     "Why we collect it",
+    "What the app keeps on your phone",
+    "What the app sends",
+    "Video, sound and voice notes",
+    "Pictures and findings",
+    "Get It Fixed",
+    "Payments",
     "Who handles it",
+    "Who handles what the app sends",
     "We never sell it",
     "Cookies, tracking and Do Not Track",
+    "How long we keep things",
+    "Delete Everything",
     "How to be removed",
     "Children",
     "Changes",
@@ -19,13 +28,13 @@ test("renders with its headings and an email address to ask for removal", async 
   await expect(page.locator('main a[href="mailto:hello@emberwalk.app"]')).toBeVisible();
 });
 
-test("carries no draft mark and ends its removal section with the access and correction promise", async ({ page }) => {
+test("shows no draft marker in the page, ends its removal section with the access and correction promise and shows when it was updated", async ({ page }) => {
   await page.goto("/privacy");
   await expect(page.locator("[data-draft]")).toHaveCount(0);
   await expect(page.locator("body")).not.toHaveAttribute("data-drafts", /.*/);
   const removal = page.locator("main p", { hasText: "ask to be removed" });
   await expect(removal).toHaveText(/To see what we hold about you, or to correct it, write to the same address\.$/);
-  await expect(page.locator("main")).toContainText("Last updated: Oct. 26th, 2026.");
+  await expect(page.locator("main")).toContainText(/Last updated: [A-Z][a-z]+\. \d{1,2}(st|nd|rd|th), 2026\./);
 });
 
 test("says word for word what Turnstile sees, who does not track, and that it is not for children", async ({ page }) => {
@@ -68,11 +77,11 @@ test("leads back to the landing page from the name at the top", async ({ page })
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("sets no cookies and loads nothing from another host", async ({ page, context }) => {
+test("sets no cookies and loads nothing from another host", async ({ page, context, baseURL }) => {
   const hosts = new Set<string>();
   page.on("request", (request) => hosts.add(new URL(request.url()).host));
   await page.goto("/privacy");
   await settle(page);
-  expect([...hosts]).toEqual(["127.0.0.1:8799"]);
+  expect([...hosts]).toEqual([new URL(baseURL!).host]);
   expect(await context.cookies()).toEqual([]);
 });

@@ -2,22 +2,24 @@
   "schema": "emberwalk.render/1",
   "synthetic": true,
   "label": "Synthetic sample house",
-  "scene": "test-yard-2",
-  "file": "test-yard-2/walk.mp4",
-  "size_bytes": 2434671,
-  "sha256": "b1b45c253af2648bc597b82b5767c6996fc2945495f0b8c448113a3e008225b8",
+  "scene": "hero-before",
+  "file": "hero-before/walk-20s/walk.mp4",
+  "size_bytes": 4312727,
+  "sha256": "6fef74b3d8918d6c6114520b90c777646a1c8b64aa95729659d1cc6f219928b9",
   "codec": "h264",
   "pix_fmt": "yuv420p",
-  "width": 1920,
-  "height": 1080,
-  "fps": 30.0,
+  "width": 1280,
+  "height": 720,
+  "fps": 15.0,
   "duration_s": 20.0,
-  "frame_count": 600,
+  "frame_count": 300,
   "made_from": {
-    "file": "test-yard-2/walk.mp4",
-    "sha256": "0fc10ef76ffe5c8bbeb83bf3ae617ce63c3dd1d5b59b564fadf3132da95a7ca0",
-    "size_bytes": 25809527
+    "file": "hero-before/walk.mp4",
+    "sha256": "66f453712b91b22efb348724d193dede1eecfd95b85aeaf81092f3d09ec01549",
+    "size_bytes": 343374474,
+    "first_frame": 186,
+    "last_frame": 485
   },
-  "made_with": "ffmpeg 9.0.2: -an -c:v libx264 -preset slow -crf 34 -maxrate 1800k -bufsize 3600k -pix_fmt yuv420p -r 30 -movflags +faststart",
-  "measured_with": "ffprobe -count_frames: 600 frames, 20.000000 s, 1920x1080, h264, yuv420p, 973868 bits a second (Tue Oct. 27th, 2026)"
+  "made_with": "ffmpeg 9.0.2: -map 0:v:0 -an -c:v copy -movflags +faststart, from the 20 second cut of the full hero walk (frames 186 to 485, counted from 1), whose own sha256 is 33a1aea2474d67ca81bac92333655e34e8ad897cc76ee812fe8447c5528d5dad",
+  "measured_with": "ffprobe -count_frames: 300 frames, 20.000000 s, 1280x720, h264, yuv420p, 1723762 bits a second (Sat Oct. 31st, 2026)"
 }

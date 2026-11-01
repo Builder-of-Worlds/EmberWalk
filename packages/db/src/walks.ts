@@ -69,15 +69,29 @@ export class WalkLimitReached extends Error {
   }
 }
 
+export class PlanYearUsed extends Error {
+  constructor(visitorId: string) {
+    super(`visitor ${visitorId} has started as many walks as the plan year allows`);
+    this.name = "PlanYearUsed";
+  }
+}
+
 export type DailyCap = { since: string; most: number };
+export type PlanYearCap = { since: string | null; most: number };
 
 const INSERT_WALK =
   "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic) SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?";
-const UNDER_CAP =
-  " WHERE (SELECT COUNT(*) FROM walks WHERE visitor_id = ? AND part_of IS NULL AND id NOT IN (SELECT walk_id FROM walk_parts) AND synthetic = 0 AND state <> 'failed' AND created_at >= ?) < ?";
+const WHOLE = "SELECT COUNT(*) AS n FROM walks WHERE visitor_id = ? AND part_of IS NULL AND id NOT IN (SELECT walk_id FROM walk_parts) AND state <> 'failed'";
+const COUNTED = `${WHOLE} AND synthetic = 0`;
+const UNDER_CAP = ` WHERE (${WHOLE} AND synthetic IN (0, ?) AND created_at >= ?) < ?`;
+const IN_PLAN_YEAR = ` AND (? IS NULL OR created_at >= ?)`;
+const UNDER_PLAN_YEAR = ` AND (${COUNTED}${IN_PLAN_YEAR}) < ?`;
 const INSERT_PART = "INSERT INTO walk_parts (walk_id, part_of, part) SELECT ?, ?, ? WHERE changes() = 1";
 
-export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap): Promise<WalkRecord> => {
+const planYearUsed = async (db: D1Database, visitorId: string, year: PlanYearCap): Promise<boolean> =>
+  ((await db.prepare(`${COUNTED}${IN_PLAN_YEAR}`).bind(visitorId, year.since, year.since).first<{ n: number }>())?.n ?? 0) >= year.most;
+
+export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap, year?: PlanYearCap): Promise<WalkRecord> => {
   const walk = NewWalk.parse(input);
   const values = [
     walk.id,
@@ -89,22 +103,23 @@ export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap)
     walk.device.height,
     walk.synthetic ? 1 : 0,
   ];
+  const yearSql = year === undefined ? "" : UNDER_PLAN_YEAR;
+  const yearValues = year === undefined ? [] : [walk.visitorId, year.since, year.since, year.most];
   const insert =
     cap === undefined
-      ? db.prepare(`${INSERT_WALK} WHERE true ON CONFLICT (id) DO NOTHING`).bind(...values)
-      : db.prepare(`${INSERT_WALK}${UNDER_CAP} ON CONFLICT (id) DO NOTHING`).bind(...values, walk.visitorId, cap.since, cap.most);
+      ? db.prepare(`${INSERT_WALK} WHERE true${yearSql} ON CONFLICT (id) DO NOTHING`).bind(...values, ...yearValues)
+      : db.prepare(`${INSERT_WALK}${UNDER_CAP}${yearSql} ON CONFLICT (id) DO NOTHING`).bind(...values, walk.visitorId, walk.synthetic ? 1 : 0, cap.since, cap.most, ...yearValues);
   const parts = walk.partOf === null ? [] : [db.prepare(INSERT_PART).bind(walk.id, walk.partOf.walkId, walk.partOf.side)];
   const result = (await db.batch([insert, ...parts]))[0]!;
-  if (cap !== undefined && result.meta.changes === 0 && (await getWalk(db, walk.id)) === null) throw new WalkLimitReached(walk.visitorId);
+  const capped = cap !== undefined || year !== undefined;
+  if (capped && result.meta.changes === 0 && (await getWalk(db, walk.id)) === null) {
+    if (year !== undefined && (await planYearUsed(db, walk.visitorId, year))) throw new PlanYearUsed(walk.visitorId);
+    throw new WalkLimitReached(walk.visitorId);
+  }
   requireOne(result.meta.changes, walk.id, "new");
   const created = await getWalk(db, walk.id);
   if (created === null) throw new DbRefused(`walk ${walk.id} was not stored`);
   return created;
-};
-
-export const markWalkReal = async (db: D1Database, walkId: string): Promise<void> => {
-  const result = await db.prepare("UPDATE walks SET synthetic = 0 WHERE id = ?").bind(Id.parse(walkId)).run();
-  requireOne(result.meta.changes, walkId, "stored");
 };
 
 export const claimWalk = async (db: D1Database, walkId: string): Promise<boolean> => {

@@ -100,6 +100,7 @@ export class MetaClient {
     const hit = await this.cache.get(fp);
     if (hit !== null) {
       const value = c.read(hit);
+      if (c.walkId !== null) await this.cache.mark(fp, c.walkId);
       await this.writeCost(c, this.safeCost(c, hit), true);
       return { value, cached: true, costUsd: 0, fingerprint: fp };
     }
@@ -114,7 +115,7 @@ export class MetaClient {
     const lines = this.safeCost(c, raw);
     const costUsd = await this.writeCost(c, lines, false).finally(release);
     const value = c.read(raw);
-    await this.cache.put(fp, c.model, raw as Json);
+    await this.cache.put(fp, c.model, raw as Json, c.walkId);
     return { value, cached: false, costUsd, fingerprint: fp };
   }
 

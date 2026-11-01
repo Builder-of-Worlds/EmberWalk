@@ -1,0 +1,174 @@
+{
+  "schema": "emberwalk.recheck/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "before": "apartment-before",
+  "scene": "apartment-after",
+  "stills": [
+    {
+      "hazard_id": "gutter-leaves-back",
+      "before_frame": 3823,
+      "pose": {
+        "pos_in": [
+          804.0,
+          540.0,
+          54.0
+        ],
+        "heading_deg": 215.675,
+        "tilt_deg": -34.629,
+        "roll_deg": 0.698
+      },
+      "file": "synthetic-recheck-gutter-leaves-back.png",
+      "sha256": "da37b934d9f96d6d10ab5f55262949f3e10a65dbc22b77e883df5ccf5eda76fb",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "vent-debris-left",
+      "before_frame": 2561,
+      "pose": {
+        "pos_in": [
+          -131.71,
+          146.92,
+          54.71
+        ],
+        "heading_deg": 91.458,
+        "tilt_deg": 12.232,
+        "roll_deg": -0.596
+      },
+      "file": "synthetic-recheck-vent-debris-left.png",
+      "sha256": "fb7e73b6dfcbecd41893539c37daf2577380ba9f19dba57015aaef57e58a27df",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "dry-brush-front",
+      "before_frame": 1715,
+      "pose": {
+        "pos_in": [
+          843.68,
+          -131.58,
+          53.32
+        ],
+        "heading_deg": 1.409,
+        "tilt_deg": 11.66,
+        "roll_deg": -0.085
+      },
+      "file": "synthetic-recheck-dry-brush-front.png",
+      "sha256": "cc29cb09b6fc9a601094e7cbdff7898aec9e841fc6f24c276862e397fb8ad1ec",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "wood-pile-back",
+      "before_frame": 3198,
+      "pose": {
+        "pos_in": [
+          89.28,
+          731.55,
+          53.42
+        ],
+        "heading_deg": 179.935,
+        "tilt_deg": 12.383,
+        "roll_deg": -0.526
+      },
+      "file": "synthetic-recheck-wood-pile-back.png",
+      "sha256": "eaecfd2f572ae042e15dfc59999bfac6b4a14a88674c2e31405219785067fc2b",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "branch-over-roof-back",
+      "before_frame": 3801,
+      "pose": {
+        "pos_in": [
+          804.0,
+          540.0,
+          54.0
+        ],
+        "heading_deg": 133.683,
+        "tilt_deg": -35.586,
+        "roll_deg": -0.571
+      },
+      "file": "synthetic-recheck-branch-over-roof-back.png",
+      "sha256": "a98630eb32ba8051ea1160db168075c0be48b1656452ec99565a9190aea405ac",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "branch-over-roof-front",
+      "before_frame": 2091,
+      "pose": {
+        "pos_in": [
+          480.0,
+          -132.0,
+          54.0
+        ],
+        "heading_deg": 317.46,
+        "tilt_deg": -34.109,
+        "roll_deg": 0.223
+      },
+      "file": "synthetic-recheck-branch-over-roof-front.png",
+      "sha256": "2ce03c979946e9e6f5100e7c3dc4026fcc98ce5b7d5f9f4e3a162100b43dd95d",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "shrub-front",
+      "before_frame": 109,
+      "pose": {
+        "pos_in": [
+          307.95,
+          -132.06,
+          53.81
+        ],
+        "heading_deg": 359.536,
+        "tilt_deg": 13.016,
+        "roll_deg": 0.611
+      },
+      "file": "synthetic-recheck-shrub-front.png",
+      "sha256": "27a4bab7a31c91386388a20b0917f485c86bfd85d4ef97aa258cd3cd564c5d31",
+      "area_px": 0
+    },
+    {
+      "hazard_id": "dry-grass-front",
+      "before_frame": 1915,
+      "pose": {
+        "pos_in": [
+          480.0,
+          -132.0,
+          54.0
+        ],
+        "heading_deg": 115.272,
+        "tilt_deg": 3.67,
+        "roll_deg": 0.544
+      },
+      "file": "synthetic-recheck-dry-grass-front.png",
+      "sha256": "411e484b273d60338d96525fe72e0e765d58e76b7c5b1a65a86514d64e3563ad",
+      "area_px": 31473,
+      "box_px": [
+        436,
+        392,
+        1280,
+        605
+      ]
+    },
+    {
+      "hazard_id": "tall-grass-back",
+      "before_frame": 3668,
+      "pose": {
+        "pos_in": [
+          804.0,
+          540.0,
+          54.0
+        ],
+        "heading_deg": 345.019,
+        "tilt_deg": 2.322,
+        "roll_deg": 0.429
+      },
+      "file": "synthetic-recheck-tall-grass-back.png",
+      "sha256": "7a46bbdd5222e8a251305b5a6e7c4d8627d35a0361d914d02332009c3da71752",
+      "area_px": 20022,
+      "box_px": [
+        396,
+        392,
+        1278,
+        453
+      ]
+    }
+  ]
+}

@@ -106,22 +106,21 @@ describe("createResendMailer", () => {
 });
 
 describe("welcomeMessage", () => {
-  it("is addressed to the signup and names the launch date and the sender address", () => {
-    const message = welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y");
+  it("is addressed to the signup and names the sender address", () => {
+    const message = welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y", {});
     expect(message.to).toBe("a@example.com");
     expect(message.subject).toBe("You're on the list");
     expect(message.unsubscribeUrl).toBe("https://emberwalk.app/unsubscribe?t=x.y");
-    expect(message.body).toContain("Nov. 4th, 2026");
     expect(message.body).toContain("hello@emberwalk.app");
   });
 
   it("is finished with the unsubscribe link and the postal address", () => {
-    const text = finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y"), "EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000");
+    const text = finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y", {}), "EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000");
     expect(text).toContain("https://emberwalk.app/unsubscribe?t=x.y");
     expect(text.endsWith("EmberWalk, Sender Name, 1 Example Street, Example City, CA 00000")).toBe(true);
   });
 
   it("refuses to finish an email without a postal address", () => {
-    expect(() => finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y"), undefined)).toThrow("no postal address");
+    expect(() => finishEmail(welcomeMessage("a@example.com", "https://emberwalk.app/unsubscribe?t=x.y", {}), undefined)).toThrow("no postal address");
   });
 });

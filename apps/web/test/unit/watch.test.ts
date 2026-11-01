@@ -1,4 +1,4 @@
-import type { WalkState, WalkStatusResponse } from "@emberwalk/shared";
+import type { Part, WalkState, WalkStatusResponse } from "@emberwalk/shared";
 import { describe, expect, it } from "vitest";
 import type { Answer } from "../../src/api.ts";
 import { HELD_RETRY_MS, POLL_MS, SIGNAL_RETRY_MS, watchWalk } from "../../src/watch.ts";
@@ -7,8 +7,8 @@ import { fakeClock } from "./fakes.ts";
 
 const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b01";
 
-const at = (state: WalkState, message: string | null = null): Answer<WalkStatusResponse> => ({
-  value: { walkId: WALK, state, failure: message === null ? null : { code: "pipeline_failed", message } },
+const at = (state: WalkState, message: string | null = null, part?: Part): Answer<WalkStatusResponse> => ({
+  value: { walkId: WALK, state, failure: message === null ? null : { code: "pipeline_failed", message, ...(part === undefined ? {} : { part }) } },
 });
 
 const flush = async () => {
@@ -71,9 +71,16 @@ describe("watchWalk", () => {
 
   it("says a failed walk's own code and message and stops at once", async () => {
     const w = await watching([at({ name: "failed", step: "score" }, "Something went wrong while checking this walk.")]);
-    expect(w.seen).toEqual([{ kind: "failed", code: "pipeline_failed", message: "Something went wrong while checking this walk." }]);
+    expect(w.seen).toEqual([{ kind: "failed", code: "pipeline_failed", message: "Something went wrong while checking this walk.", part: null }]);
     await w.tick(60_000);
     expect(w.asked).toHaveLength(1);
+  });
+
+  it("says which part a failed walk names, and none when the answer names none", async () => {
+    const named = await watching([at({ name: "failed", step: "score" }, "Failed.", "front_left")]);
+    expect(named.seen).toEqual([{ kind: "failed", code: "pipeline_failed", message: "Failed.", part: "front_left" }]);
+    const unnamed = await watching([at({ name: "failed", step: "score" })]);
+    expect(unnamed.seen).toEqual([{ kind: "failed", code: null, message: null, part: null }]);
   });
 
   it("keeps asking after an answer off the contract, which counts as server_error", async () => {

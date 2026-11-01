@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { Unit, type Band, type Concept, type FindingLabel } from "@emberwalk/shared";
+import { Unit, type Band, type Concept, type FindingLabel, type Language } from "@emberwalk/shared";
 import { checked, FACTS, lookupIn } from "./lookup.ts";
+import type { RuleRow } from "./table.ts";
 import { stateFor } from "./state.ts";
 import { severityOf } from "./severity.ts";
 
@@ -24,6 +25,9 @@ export type RuleFinding = {
 
 const unique = (values: string[]) => [...new Set(values)];
 
+export const templateInstruction = (rule: RuleRow, plantState: Observation["plantState"], language: Language): string =>
+  plantState === "unsure" && rule.unsure !== null ? rule.unsure[language] : rule.plain[language];
+
 export function evaluate(observations: Observation[], jurisdiction: string): RuleFinding[] {
   const state = stateFor(jurisdiction);
   const list = z.array(Observation).parse(observations);
@@ -35,7 +39,7 @@ export function evaluate(observations: Observation[], jurisdiction: string): Rul
     return [
       {
         observationId: id,
-        instruction: query.plantState === "unsure" && first.unsure !== null ? first.unsure : first.plain.en,
+        instruction: templateInstruction(first, query.plantState, "en"),
         concept: query.concept,
         band: first.zone,
         ruleIds: rules.map((r) => r.id),

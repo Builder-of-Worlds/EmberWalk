@@ -1,8 +1,8 @@
 import type { WalkResults } from "./results.ts";
 import testYard from "./samples/test-yard.json";
-import woodPile from "./samples/wood-pile-1.jpg";
+import heroWest from "../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg";
 
-const STILLS: Record<string, string> = { "wood-pile-1.jpg": woodPile };
+const STILLS: Record<string, string> = { "synthetic-hero-west.jpg": heroWest };
 
 const withStills = (results: WalkResults): WalkResults => ({
   ...results,

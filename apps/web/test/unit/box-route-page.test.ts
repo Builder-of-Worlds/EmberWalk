@@ -80,10 +80,10 @@ describe("the box route words", () => {
 });
 
 describe("the recorded box probe", () => {
-  it("is the dry brush Muse Spark pointed at on frame 20 and SAM 3.1 tracked to frame 31", () => {
-    expect(probe).toMatchObject({ frame: 20, lastFrame: 31, hits: 12, window: 16 });
-    close(probe.spark, [264 / 1920, 444 / 1080, 884 / 1920, 719 / 1080]);
-    expect(probe.tracked.size).toBe(17);
+  it("is the dry brush Muse Spark pointed at on frame 31 and SAM 3.1 tracked to frame 39", () => {
+    expect(probe).toMatchObject({ frame: 31, lastFrame: 39, hits: 11, window: 12 });
+    close(probe.spark, [10 / 1280, 275 / 720, 222 / 1280, 437 / 720]);
+    expect(probe.tracked.size).toBe(13);
     expect(() => recordedProbe("no-such-hazard")).toThrow(/no-such-hazard/);
   });
 
@@ -100,7 +100,7 @@ describe("the box route beat page", () => {
     expect(s.video.src.endsWith("walk.mp4")).toBe(true);
     expect(s.video.muted).toBe(true);
     s.fire("loadeddata");
-    expect(s.video.currentTime).toBe(secondsAt(20));
+    expect(s.video.currentTime).toBe(secondsAt(31));
     expect(s.frames).toHaveLength(0);
     s.fire("seeked");
     expect(s.frames).toHaveLength(1);
@@ -143,30 +143,37 @@ describe("the box route beat page", () => {
     s.step(4.5);
     s.step(4.55);
     expect(s.calls.play).toBe(1);
-    expect(s.video.playbackRate).toBe(trackRate(20, 31));
+    expect(s.video.playbackRate).toBe(trackRate(31, 39));
     expect(said(s.first)).toEqual({ text: BEAT_WORDS.track, shown: true });
-    expect(said(s.second)).toEqual({ text: BEAT_WORDS.found(12, 16), shown: false });
+    expect(said(s.second)).toEqual({ text: BEAT_WORDS.found(11, 12), shown: false });
 
     s.video.currentTime = 0;
     const before = s.markerBox();
     s.step(4.6);
     close(s.markerBox(), before, 6);
 
-    s.video.currentTime = secondsAt(25);
+    s.video.currentTime = secondsAt(35);
     const from = s.markerBox();
     s.step(4.65);
-    close(s.markerBox(), dampBox(from, probe.tracked.get(25)!, 0.05, 5), 6);
+    close(s.markerBox(), dampBox(from, probe.tracked.get(35)!, 0.05, 5), 6);
+
+    s.video.currentTime = 17;
+    const mid = s.markerBox();
+    s.step(4.7);
+    const a = probe.tracked.get(33)!;
+    const b = probe.tracked.get(34)!;
+    close(s.markerBox(), dampBox(mid, a.map((v, i) => (v + b[i]!) / 2) as Box, 0.05, 5), 6);
 
     s.step(FOUND_AT);
     expect(said(s.second).shown).toBe(false);
     s.step(FOUND_AT + 0.001);
-    expect(said(s.second)).toEqual({ text: "Found on 12 of 16 frames.", shown: true });
+    expect(said(s.second)).toEqual({ text: "Found on 11 of 12 frames.", shown: true });
 
-    s.video.currentTime = secondsAt(31) - 0.01;
+    s.video.currentTime = secondsAt(39) - 0.01;
     s.step(6);
     expect(s.video.paused).toBe(false);
     expect(s.frames).toHaveLength(1);
-    s.video.currentTime = secondsAt(31);
+    s.video.currentTime = secondsAt(39);
     s.step(6.05);
     expect(s.video.paused).toBe(true);
     expect(s.frames).toHaveLength(0);
@@ -194,7 +201,7 @@ describe("the box route beat page", () => {
       s.video.currentTime = 15;
       replay();
       expect(s.video.paused).toBe(true);
-      expect(s.video.currentTime).toBe(secondsAt(20));
+      expect(s.video.currentTime).toBe(secondsAt(31));
       s.fire("seeked");
       s.frames.splice(1);
       s.step(0);
@@ -210,11 +217,17 @@ describe("the box route beat page", () => {
   it("shows the finished beat as a still when motion is reduced", () => {
     const s = begun(true);
     expect(said(s.first)).toEqual({ text: BEAT_WORDS.track, shown: true });
-    expect(said(s.second)).toEqual({ text: BEAT_WORDS.found(12, 16), shown: true });
-    close(s.markerBox(), probe.tracked.get(20)!, 6);
+    expect(said(s.second)).toEqual({ text: BEAT_WORDS.found(11, 12), shown: true });
+    close(s.markerBox(), probe.tracked.get(31)!, 6);
     expect(s.opacity()).toBe(1);
     expect(s.frames).toHaveLength(0);
     expect(s.calls.play).toBe(0);
+  });
+
+  it("plays the 30 a second clip of the hero walk", async () => {
+    document.body.innerHTML = PAGE;
+    await import("../../src/beat/box-route-main.ts");
+    expect(document.querySelector("video")!.src).toContain("walk-30fps");
   });
 
   it("refuses a page that is missing a part", () => {

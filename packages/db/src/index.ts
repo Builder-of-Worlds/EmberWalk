@@ -8,5 +8,6 @@ export * from "./get-it-fixed.ts";
 export * from "./ledger.ts";
 export * from "./parts.ts";
 export * from "./tags.ts";
+export * from "./timings.ts";
 export * from "./voice-notes.ts";
 export * from "./walks.ts";

@@ -58,21 +58,29 @@ export const replaceFindings = async (db: D1Database, walkId: string, input: Fin
   await db.batch([db.prepare("DELETE FROM findings WHERE walk_id = ? AND source = 'found'").bind(walk), ...findings.map((f) => insert(db, f))]);
 };
 
-export type Wording = Pick<Finding, "instruction" | "plantState" | "spacing"> & { findingId: string; veto: string | null };
+export type Wording = Pick<Finding, "instruction" | "plantState" | "spacing"> & { findingId: string; veto: string | null; ruleIds?: string[]; label?: Finding["label"] };
 
 export const applyWording = async (db: D1Database, walkId: string, updates: Wording[]): Promise<number> => {
   const saved = new Map((await findingsForWalk(db, walkId)).map((f) => [f.id, f]));
   const statements = updates.flatMap((u) => {
     const current = saved.get(u.findingId);
     if (current === undefined) return [];
-    const next = { ...current, instruction: u.instruction, plantState: u.plantState, spacing: u.spacing, veto: u.veto === null ? null : { reason: u.veto } };
+    const next = {
+      ...current,
+      instruction: u.instruction,
+      plantState: u.plantState,
+      spacing: u.spacing,
+      veto: u.veto === null ? null : { reason: u.veto },
+      ruleIds: u.ruleIds ?? current.ruleIds,
+      label: u.label ?? current.label,
+    };
     const checked = Finding.safeParse(next);
     if (!checked.success) return [];
     const f = checked.data;
     return [
       db
-        .prepare("UPDATE findings SET instruction = ?, plant_state = ?, spacing = ?, veto_reason = ? WHERE id = ? AND walk_id = ?")
-        .bind(f.instruction, f.plantState, f.spacing, f.veto === null ? null : f.veto.reason, f.id, f.walkId),
+        .prepare("UPDATE findings SET instruction = ?, plant_state = ?, spacing = ?, veto_reason = ?, rule_ids = ?, label = ? WHERE id = ? AND walk_id = ?")
+        .bind(f.instruction, f.plantState, f.spacing, f.veto === null ? null : f.veto.reason, JSON.stringify(f.ruleIds), f.label, f.id, f.walkId),
     ];
   });
   if (statements.length > 0) await db.batch(statements);

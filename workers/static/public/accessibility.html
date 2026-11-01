@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accessibility | EmberWalk</title>
+  <meta name="description" content="The accessibility standard EmberWalk aims at, what has been checked, known gaps and how to tell us about a barrier.">
+  <link rel="canonical" href="https://emberwalk.app/accessibility">
+  <meta name="theme-color" content="#1a271e">
+  <link rel="icon" href="/brand/icon-32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/brand/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="EmberWalk">
+  <meta property="og:url" content="https://emberwalk.app/accessibility">
+  <meta property="og:title" content="Accessibility | EmberWalk">
+  <meta property="og:description" content="The accessibility standard EmberWalk aims at, what has been checked, known gaps and how to tell us about a barrier.">
+  <meta property="og:image" content="https://emberwalk.app/brand/share-card.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The EmberWalk shield and house mark with the words Wildfire Home Check, and the question: When the next wildfire comes, will your home be ready?">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Accessibility | EmberWalk">
+  <meta name="twitter:description" content="The accessibility standard EmberWalk aims at, what has been checked, known gaps and how to tell us about a barrier.">
+  <meta name="twitter:image" content="https://emberwalk.app/brand/share-card.png">
+  <meta name="twitter:image:alt" content="The EmberWalk shield and house mark with the words Wildfire Home Check, and the question: When the next wildfire comes, will your home be ready?">
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/atkinson-hyperlegible-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="/pages.css">
+  <script src="/boot.js"></script>
+  <script type="module" src="/site.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="/">EmberWalk</a>
+  </header>
+
+  <main>
+    <section class="block">
+      <div class="column prose card">
+        <h1 class="rise">Accessibility</h1>
+        <h2 class="rise">The standard</h2>
+        <p class="rise">EmberWalk aims to meet the Web Content Accessibility Guidelines (WCAG) 2.2, level AA, on this site and in the app.</p>
+        <h2 class="rise">What has been checked</h2>
+        <p class="rise">Automated browser tests check EmberWalk's pages on a phone 390 pixels wide and on a desktop 1440 pixels wide.</p>
+        <p class="rise">On the landing page they check that:</p>
+        <ul class="rise">
+          <li>every image has alt text and a set size</li>
+          <li>the page has one main heading and skips no heading level</li>
+          <li>every form control has a label</li>
+          <li>the Tab key reaches every control in reading order, each with a visible focus ring</li>
+          <li>every line of text is readable against what is behind it</li>
+          <li>footer links are at least 24 pixels tall to tap</li>
+          <li>with reduced motion turned on, the opening lockup sits still and the totals show at once</li>
+        </ul>
+        <p class="rise">On the pages that hold the policies and company details, they check that nothing scrolls sideways on a phone, that headings and links are centred, and that running text sits in a column clear of the screen edges.</p>
+        <h2 class="rise">Known gaps</h2>
+        <p class="rise">We have not finished a test with a screen reader, so there may be barriers we have not found. The walk itself needs a phone camera and moving around the outside of a home, which not everyone can do alone.</p>
+        <h2 class="rise">Tell us about a barrier</h2>
+        <p class="rise">If something on EmberWalk is hard to use, write to us.</p>
+        <p class="rise contact">The Arbiter Bibendi LLC<br><a href="mailto:hello@emberwalk.app">hello@emberwalk.app</a></p>
+        <p class="rise updated">Last updated: Oct. 31st, 2026.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <nav class="footer-links" aria-label="Site"><a href="/pricing">Pricing</a> <a href="/terms">Terms</a> <a href="/privacy">Privacy Policy</a> <a href="/refunds">Refunds</a> <a href="/about">About</a> <a href="/contact">Contact</a> <a href="/security">Security</a> <a href="/accessibility">Accessibility</a> <a href="mailto:hello@emberwalk.app">hello@emberwalk.app</a></nav>
+    <small class="seller">EmberWalk is a product of The Arbiter Bibendi LLC.</small>
+  </footer>
+</body>
+</html>

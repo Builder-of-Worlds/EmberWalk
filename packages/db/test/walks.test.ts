@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DbRefused } from "../src/errors.ts";
-import { claimWalk, completeWalk, createWalk, failWalk, getWalk, markWalkReal, moveWalkStep, setWalkProgress, WalkLimitReached } from "../src/walks.ts";
+import { claimWalk, completeWalk, createWalk, failWalk, getWalk, moveWalkStep, PlanYearUsed, setWalkProgress, WalkLimitReached } from "../src/walks.ts";
 import type { NewWalk } from "../src/walks.ts";
 import { OTHER_WALK, resetDb, seedWalk, WALK } from "./fixtures.ts";
 
@@ -65,11 +65,23 @@ describe("creating a walk", () => {
       await expect(createWalk(env.DB, live({ id: id(5) }), { since, most: 1 })).rejects.toBeInstanceOf(WalkLimitReached);
     });
 
-    it("never counts sample walks, so a visitor can try several samples and still start every live walk allowed", async () => {
-      for (const n of [1, 2, 3, 4]) await createWalk(env.DB, newWalk({ id: id(n) }), { since, most: 1 });
-      expect((await createWalk(env.DB, live({ id: id(5) }), { since, most: 1 })).id).toBe(id(5));
-      await expect(createWalk(env.DB, live({ id: id(6) }), { since, most: 1 })).rejects.toBeInstanceOf(WalkLimitReached);
-      expect(await count()).toBe(5);
+    it("never counts sample walks toward live walks, so a visitor can try a sample and still start every live walk allowed", async () => {
+      await createWalk(env.DB, newWalk({ id: id(1) }), { since, most: 1 });
+      expect((await createWalk(env.DB, live({ id: id(2) }), { since, most: 1 })).id).toBe(id(2));
+      await expect(createWalk(env.DB, live({ id: id(3) }), { since, most: 1 })).rejects.toBeInstanceOf(WalkLimitReached);
+      expect(await count()).toBe(2);
+    });
+
+    it("counts sample walks and live walks toward a sample, so claiming a sample never starts more walks than the cap", async () => {
+      await createWalk(env.DB, newWalk({ id: id(1) }), { since, most: 2 });
+      await createWalk(env.DB, newWalk({ id: id(2) }), { since, most: 2 });
+      await expect(createWalk(env.DB, newWalk({ id: id(3) }), { since, most: 2 })).rejects.toBeInstanceOf(WalkLimitReached);
+      expect((await createWalk(env.DB, live({ id: id(4) }), { since, most: 2 })).id).toBe(id(4));
+      await expect(createWalk(env.DB, newWalk({ id: id(5) }), { since, most: 3 })).rejects.toBeInstanceOf(WalkLimitReached);
+      await env.DB.prepare("UPDATE walks SET state = 'processing', step = 'prepare' WHERE id = ?").bind(id(1)).run();
+      await failWalk(env.DB, id(1), "prepare", { code: "not_sample_render", message: "This is not a sample walk." });
+      expect((await createWalk(env.DB, newWalk({ id: id(6) }), { since, most: 3 })).id).toBe(id(6));
+      expect(await count()).toBe(4);
     });
 
     it("still refuses a repeated id as a repeat, not as the cap", async () => {
@@ -78,11 +90,31 @@ describe("creating a walk", () => {
     });
   });
 
-  it("marks a walk real, and refuses a walk that is not stored", async () => {
-    await createWalk(env.DB, newWalk({ synthetic: true }));
-    await markWalkReal(env.DB, WALK);
-    expect((await getWalk(env.DB, WALK))?.synthetic).toBe(false);
-    await expect(markWalkReal(env.DB, OTHER_WALK)).rejects.toBeInstanceOf(DbRefused);
+  describe("under a plan year cap", () => {
+    const id = (n: number) => `7f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7b${String(n).padStart(2, "0")}`;
+    const day = { since: "2000-01-01T00:00:00.000Z", most: 99 };
+    const live = (n: number) => newWalk({ id: id(n), synthetic: false });
+    const count = async () => (await env.DB.prepare("SELECT count(*) AS n FROM walks").first<{ n: number }>())?.n;
+
+    it("stores walks up to the plan year's allowance in the insert itself and refuses the next as the plan year, storing nothing", async () => {
+      const year = { since: "2026-01-01T00:00:00.000Z", most: 2 };
+      await createWalk(env.DB, live(1), day, year);
+      await env.DB.prepare("UPDATE walks SET created_at = '2025-12-31T23:59:59.999Z' WHERE id = ?").bind(id(1)).run();
+      for (const n of [2, 3]) await createWalk(env.DB, live(n), day, year);
+      await expect(createWalk(env.DB, live(4), day, year)).rejects.toBeInstanceOf(PlanYearUsed);
+      expect(await count()).toBe(3);
+      await expect(createWalk(env.DB, live(5), day, { since: null, most: 3 })).rejects.toBeInstanceOf(PlanYearUsed);
+      await expect(createWalk(env.DB, live(6), { since: day.since, most: 3 }, { since: null, most: 9 })).rejects.toBeInstanceOf(WalkLimitReached);
+    });
+
+    it("lets only one of three concurrent starts through at three of four", async () => {
+      const year = { since: null, most: 4 };
+      for (const n of [1, 2, 3]) await createWalk(env.DB, live(n), day, year);
+      const results = await Promise.allSettled([4, 5, 6].map((n) => createWalk(env.DB, live(n), day, year)));
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected" && r.reason instanceof PlanYearUsed)).toHaveLength(2);
+      expect(await count()).toBe(4);
+    });
   });
 
   it("refuses an id that is already a walk and leaves the first walk alone", async () => {

@@ -1,5 +1,6 @@
 import { cacheIndex, d1Ledger } from "@emberwalk/db";
 import { type AnswerCache, fetchTransport, MetaClient } from "@emberwalk/meta";
+import { cacheMarkKey } from "@emberwalk/shared";
 import type { Env } from "./env.ts";
 
 export type Deps = {
@@ -16,8 +17,11 @@ export type Deps = {
 
 type CachedAnswer = Awaited<ReturnType<AnswerCache["get"]>>;
 
-const r2Cache = (db: D1Database, bucket: R2Bucket): AnswerCache => {
+export const r2Cache = (db: D1Database, bucket: R2Bucket): AnswerCache => {
   const index = cacheIndex(db);
+  const mark = async (fingerprint: string, walkId: string): Promise<void> => {
+    await bucket.put(cacheMarkKey(walkId, fingerprint), "");
+  };
   return {
     async get(fingerprint) {
       const entry = await index.get(fingerprint);
@@ -25,11 +29,13 @@ const r2Cache = (db: D1Database, bucket: R2Bucket): AnswerCache => {
       const stored = await bucket.get(entry.answer);
       return stored === null ? null : ((await stored.json()) as CachedAnswer);
     },
-    async put(fingerprint, model, answer) {
+    async put(fingerprint, model, answer, walkId) {
       const key = `cache/${fingerprint}.json`;
+      if (walkId !== null) await mark(fingerprint, walkId);
       await bucket.put(key, JSON.stringify(answer));
       await index.put({ fingerprint, model, createdAt: new Date().toISOString(), answer: key });
     },
+    mark,
   };
 };
 

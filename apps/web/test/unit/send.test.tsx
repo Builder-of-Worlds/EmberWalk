@@ -1,11 +1,12 @@
-import type { FaultReportRequest, WalkState, WalkStatusResponse } from "@emberwalk/shared";
+import type { FaultReportRequest, Part, WalkState, WalkStatusResponse } from "@emberwalk/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer, Failure } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
-import { copy, unbacked } from "../../src/copy.ts";
+import { copy, draft, unbacked } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
-import { resultsFor, ROUTES, sendFor } from "../../src/router.ts";
+import { DRAFT_WORDS_KEY } from "../../src/draft-words.ts";
+import { recordPartFor, resultsFor, ROUTES, sendFor } from "../../src/router.ts";
 import { OPENS_IN_MS, Send } from "../../src/screens/Send.tsx";
 import type { Sender } from "../../src/sender.ts";
 import type { Progress, SendResult } from "../../src/uploader.ts";
@@ -705,6 +706,45 @@ describe("after the walk is sent", () => {
     await offersTheSameWalk(view, kept);
     expect(view.host.querySelector("[role=alert]")).toBeNull();
     expect(window.location.hash).not.toBe(resultsFor(WALK));
+  });
+
+  describe("a failed walk whose failure names a part", () => {
+    const failedAt = (part?: Part): Answer<WalkStatusResponse> => ({
+      value: { walkId: WALK, state: { name: "failed", step: "score" }, failure: { code: "score_failed", message: "Failed.", ...(part === undefined ? {} : { part }) } },
+    });
+    const links = (view: Awaited<ReturnType<typeof sentWith>>["view"]) => [...view.host.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+
+    afterEach(() => window.localStorage.removeItem(DRAFT_WORDS_KEY));
+
+    it("offers that side alone with its hint, beside Send My Walk, never a whole walk", async () => {
+      const { view, kept } = await sentWith([failedAt("back")]);
+      await offersTheSameWalk(view, kept);
+      expect(links(view)).toEqual([[copy.results.walkSide("back"), recordPartFor(WALK, "back")]]);
+      expect(view.text()).toContain(copy.results.hint.walk_side("back"));
+      await view.unmount();
+    });
+
+    it("names no part when the failure names none", async () => {
+      const { view, kept } = await sentWith([failedAt()]);
+      await offersTheSameWalk(view, kept);
+      expect(links(view)).toEqual([]);
+      expect(view.text()).not.toContain("corner");
+      await view.unmount();
+    });
+
+    it("keeps a corner's words off the screen until the draft words are on, as Results does", async () => {
+      const off = await sentWith([failedAt("front_left")]);
+      await offersTheSameWalk(off.view, off.kept);
+      expect(links(off.view)).toEqual([]);
+      await off.view.unmount();
+
+      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
+      const on = await sentWith([failedAt("front_left")]);
+      await offersTheSameWalk(on.view, on.kept);
+      expect(links(on.view)).toEqual([[draft.corners.panCorner("front_left"), recordPartFor(WALK, "front_left")]]);
+      expect(on.view.text()).toContain(draft.corners.hint("front_left"));
+      await on.view.unmount();
+    });
   });
 
   it("waits for signal while checking, then carries on when signal returns", async () => {

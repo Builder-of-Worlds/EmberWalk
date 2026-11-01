@@ -65,7 +65,7 @@ export type TakeStore = {
   saveUpload(id: string, upload: UploadState | null): Promise<Take>;
   addPart(id: string, uploadId: string, part: CompletedPart): Promise<Take>;
   dropUpload(id: string, uploadId: string): Promise<Take>;
-  saveTags(id: string, tags: TagsSent): Promise<Take>;
+  saveTags(id: string, tags: TagsSent | null): Promise<Take>;
   setJurisdiction(id: string, jurisdiction: Jurisdiction): Promise<Take>;
   remove(id: string): Promise<void>;
 };

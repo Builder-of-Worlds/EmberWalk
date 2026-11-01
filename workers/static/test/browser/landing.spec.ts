@@ -57,8 +57,12 @@ const ringState = (page: Page) =>
     };
   });
 
-function approvedCopy(): { blocks: string[]; held: string[]; placeholder: string; options: string[]; button: string } {
+function approvedCopy(): { launchDate: string; blocks: string[]; held: string[]; placeholder: string; options: string[]; button: string } {
   return JSON.parse(readFileSync(new URL("./approved-copy.json", import.meta.url), "utf8"));
+}
+
+function asServed(text: string) {
+  return test.info().project.metadata.launchDateShown === true ? text : text.replace(`${approvedCopy().launchDate} `, "");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -89,7 +93,7 @@ test.describe("page", () => {
         return parts.map((part) => part.trim()).filter((part) => part !== "").join(" ").replace(/\s+/g, " ");
       }),
     );
-    expect(blocks).toEqual(copy.blocks);
+    expect(blocks).toEqual(copy.blocks.map(asServed));
     await expect(page.locator('input[name="email"]')).toHaveAttribute("placeholder", copy.placeholder);
     expect(await page.$$eval('select[name="role"] option', (options) => options.map((option) => option.textContent))).toEqual(copy.options);
     await expect(page.locator("form button")).toHaveText(copy.button);
@@ -186,7 +190,7 @@ test.describe("page", () => {
   test("lets a visitor reach and hit every control", async ({ page }) => {
     await page.goto("/");
     await settle(page);
-    const controls = ['input[name="email"]', 'select[name="role"]', "form button", 'a[href="/privacy"]', 'a[href="mailto:hello@emberwalk.app"]'];
+    const controls = ['input[name="email"]', 'select[name="role"]', "form button", 'main a[href="/privacy"]', 'main a[href="mailto:hello@emberwalk.app"]'];
     for (const selector of controls) {
       const locator = page.locator(selector);
       await locator.scrollIntoViewIfNeeded();
@@ -215,12 +219,12 @@ test.describe("page", () => {
     expect(order).toEqual(expect.arrayContaining(["email", "role", "BUTTON"]));
   });
 
-  test("loads the font from this site, sets no cookies and calls no other host but Turnstile", async ({ page, context }) => {
+  test("loads the font from this site, sets no cookies and calls no other host but Turnstile", async ({ page, context, baseURL }) => {
     const hosts = new Set<string>();
     page.on("request", (request) => hosts.add(new URL(request.url()).host));
     await page.goto("/");
     await settle(page);
-    expect([...hosts].filter((host) => host !== "127.0.0.1:8799" && host !== "challenges.cloudflare.com")).toEqual([]);
+    expect([...hosts].filter((host) => host !== new URL(baseURL!).host && host !== "challenges.cloudflare.com")).toEqual([]);
     expect(await page.evaluate(() => document.fonts.check('700 1em "Atkinson Hyperlegible"'))).toBe(true);
     expect(await context.cookies()).toEqual([]);
     expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
@@ -228,7 +232,7 @@ test.describe("page", () => {
 
   test("links the privacy page under the form", async ({ page }) => {
     await page.goto("/");
-    const link = page.getByRole("link", { name: "Privacy Policy", exact: true });
+    const link = page.locator("main").getByRole("link", { name: "Privacy Policy", exact: true });
     await expect(link).toHaveAttribute("href", "/privacy");
     const form = (await page.locator("form").boundingBox())!;
     const linkBox = (await link.boundingBox())!;
@@ -699,10 +703,10 @@ test.describe("landing layout and motion", () => {
     await context.close();
   });
 
-  test("serves GSAP 3.15.0 and ScrollTrigger from this site, notices kept, and runs the loop on them", async ({ page }) => {
+  test("serves GSAP 3.15.0 and ScrollTrigger from this site, notices kept, and runs the loop on them", async ({ page, baseURL }) => {
     const bodies: string[] = [];
     page.on("response", async (response) => {
-      if (response.request().resourceType() !== "script" || !response.url().startsWith("http://127.0.0.1:8799/")) return;
+      if (response.request().resourceType() !== "script" || !response.url().startsWith(`${baseURL}/`)) return;
       bodies.push(await response.text().catch(() => ""));
     });
     await loaded(page);
@@ -1146,7 +1150,7 @@ test.describe("signup form", () => {
     await expect(page).toHaveTitle("EmberWalk | Get your home ready for wildfire season");
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       "content",
-      "EmberWalk launches Nov. 4th, 2026. Take one walk around your house with your phone and see what could catch, what to fix first, and what California requires.",
+      asServed("EmberWalk launches Nov. 4th, 2026. Take one walk around your house with your phone and see what could catch, what to fix first, and what California requires."),
     );
     await expect(page.locator("[data-draft]")).toHaveCount(0);
     await expect(page.locator("body")).not.toHaveAttribute("data-drafts", /.*/);

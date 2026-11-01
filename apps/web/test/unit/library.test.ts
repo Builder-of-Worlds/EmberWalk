@@ -27,7 +27,7 @@ const citedFeet = (row: Pick<RuleRow, "citation" | "requirement">): Set<string> 
   return new Set([...said, ...zones.flatMap(ZONE_FEET)]);
 };
 
-const wordings = (row: RuleRow): string[] => [row.plain.en, ...(row.unsure === null ? [] : [row.unsure])];
+const wordings = (row: RuleRow): string[] => [row.plain.en, ...(row.unsure === null ? [] : [row.unsure.en])];
 
 describe("the fix sentence library", () => {
   it("reads distances from sentences and citations the way the table writes them", () => {

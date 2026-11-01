@@ -5,7 +5,7 @@ import { copy } from "../../src/copy.ts";
 import { findingFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBodyAt, liveFindingId } from "../unit/result-fakes.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const BODY = liveBodyAt([[2, 3], [12, 19]]);
 

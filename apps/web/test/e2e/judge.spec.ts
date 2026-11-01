@@ -21,7 +21,7 @@ test("the judge copy opens from a folder with no request outside it, then works 
   await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   const photo = page.locator(".proof img");
   await expect(photo).toBeVisible();
-  expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
+  expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1600);
   expect(page.viewportSize()?.width).toBe(390);
   expect(await page.evaluate(sideways)).toBe(0);
 

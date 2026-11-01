@@ -1,0 +1,89 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-before",
+  "file": "hero-before/walk.mp4",
+  "size_bytes": 343374474,
+  "sha256": "66f453712b91b22efb348724d193dede1eecfd95b85aeaf81092f3d09ec01549",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1280,
+  "height": 720,
+  "fps": 15.0,
+  "duration_s": 314.933,
+  "frame_count": 4724,
+  "settings": {
+    "engine": "CYCLES",
+    "samples": 64,
+    "render_seconds": 5422.4,
+    "blender": "5.2.3 LTS",
+    "machine": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "chunk_order": [
+      [
+        4201,
+        4500
+      ],
+      [
+        1801,
+        2100
+      ],
+      [
+        1501,
+        1800
+      ],
+      [
+        2701,
+        3000
+      ],
+      [
+        601,
+        900
+      ],
+      [
+        3901,
+        4200
+      ],
+      [
+        2401,
+        2700
+      ],
+      [
+        3601,
+        3900
+      ],
+      [
+        301,
+        600
+      ],
+      [
+        4501,
+        4724
+      ],
+      [
+        1,
+        300
+      ],
+      [
+        1201,
+        1500
+      ],
+      [
+        3301,
+        3600
+      ],
+      [
+        3001,
+        3300
+      ],
+      [
+        2101,
+        2400
+      ],
+      [
+        901,
+        1200
+      ]
+    ]
+  }
+}

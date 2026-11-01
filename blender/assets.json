@@ -9,17 +9,52 @@
   "polyhaven:dry_branches_medium_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dry_branches_medium_01", "resolution": "1k", "concepts": ["dry brush"], "cluster": 6},
   "polyhaven:goegap": {"kind": "hdri", "license": "CC0-1.0", "source": "https://polyhaven.com/a/goegap", "resolution": "2k"},
   "polyhaven:dry_meadow": {"kind": "hdri", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dry_meadow", "resolution": "2k"},
+  "polyhaven:belfast_farmhouse": {"kind": "hdri", "license": "CC0-1.0", "source": "https://polyhaven.com/a/belfast_farmhouse", "resolution": "2k"},
+  "polyhaven:exterior_wall_cladding_03": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/exterior_wall_cladding_03", "resolution": "2k", "sidings": ["wood", "fiber cement lap"]},
+  "polyhaven:leafy_grass": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/leafy_grass", "resolution": "2k"},
+  "polyhaven:park_dirt": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/park_dirt", "resolution": "2k"},
+  "polyhaven:wood_chips": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/wood_chips", "resolution": "2k"},
+  "polyhaven:dry_decay_leaves": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dry_decay_leaves", "resolution": "2k"},
+  "polyhaven:gravel_ground_01": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/gravel_ground_01", "resolution": "2k"},
+  "polyhaven:weathered_brown_planks": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/weathered_brown_planks", "resolution": "2k"},
+  "polyhaven:jolcham_oak_bark_01": {"kind": "texture", "license": "CC0-1.0", "source": "https://polyhaven.com/a/jolcham_oak_bark_01", "resolution": "2k"},
+  "polyhaven:island_tree_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/island_tree_01", "resolution": "1k", "concepts": ["tree"]},
+  "polyhaven:island_tree_02": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/island_tree_02", "resolution": "1k", "concepts": ["tree"]},
+  "polyhaven:pine_tree_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/pine_tree_01", "resolution": "1k", "concepts": ["tree"]},
+  "polyhaven:wild_rooibos_bush": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/wild_rooibos_bush", "resolution": "1k", "concepts": ["shrub"]},
+  "polyhaven:searsia_lucida": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/searsia_lucida", "resolution": "1k", "concepts": ["shrub"]},
+  "polyhaven:bark_debris_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/bark_debris_01", "resolution": "1k", "concepts": ["litter"]},
+  "polyhaven:dead_quiver_branch_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dead_quiver_branch_01", "resolution": "1k", "concepts": ["dry brush"]},
+  "polyhaven:outdoor_table_chair_set_01": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/outdoor_table_chair_set_01", "resolution": "1k", "concepts": ["patio furniture"]},
+  "polyhaven:metal_trash_can": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/metal_trash_can", "resolution": "1k", "concepts": ["trash can"]},
+  "polyhaven:propane_tank": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/propane_tank", "resolution": "1k", "concepts": ["propane tank"]},
+  "polyhaven:dead_tree_trunk": {"kind": "model", "license": "CC0-1.0", "source": "https://polyhaven.com/a/dead_tree_trunk", "resolution": "1k", "concepts": ["wood pile"]},
   "scripted:wood_pile": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wood pile"], "material": "polyhaven:bark_brown_02"},
   "scripted:wood_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks"},
   "scripted:wood_picket_fence": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["wooden fence"], "material": "polyhaven:weathered_planks", "tint": [3.4, 3.2, 2.9]},
   "scripted:gutter_leaves": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["roof debris"], "material": "polyhaven:withered_grass", "paint": {"colour": "#7a4f2a", "grain": 0.5, "normal": 1.0}},
-  "scripted:vent_leaf_mulch": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["foundation vent"], "material": "polyhaven:withered_grass", "paint": {"colour": "#4d3520", "grain": 0.5, "normal": 1.0}},
+  "scripted:vent_leaf_mulch": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["foundation vent"], "material": "polyhaven:dry_decay_leaves", "paint": {"colour": "#8a6840", "grain": 0.7, "normal": 1.0}},
   "scripted:overhanging_branch": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["tree branch over roof"], "material": "polyhaven:bark_brown_02"},
-  "scripted:dead_shrub": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shrub"], "material": "polyhaven:withered_grass"},
-  "scripted:propane_tank": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["propane tank"], "material": "polyhaven:grey_roof_01", "paint": {"colour": "#e6e4de", "grain": 0.06, "normal": 0.05}},
-  "scripted:storage_shed": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shed"], "material": "polyhaven:weathered_planks"},
-  "scripted:trash_cans": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["trash can"], "material": "polyhaven:grey_roof_01", "paint": {"colour": "#2f3133", "grain": 0.1, "normal": 0.05}},
-  "scripted:patio_set": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["patio furniture"], "material": "polyhaven:weathered_planks"},
+  "scripted:dead_shrub": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shrub"], "material": "polyhaven:withered_grass", "photoscan": {"default": [
+    {"id": "polyhaven:searsia_lucida", "pick": ["searsia_lucida_f_LOD1"], "fit": "stretch", "tint": [2.4, 1.1, 0.45], "tint_only": ["leaves"]},
+    {"id": "polyhaven:searsia_lucida", "pick": ["searsia_lucida_g_LOD1"], "fit": "stretch", "tint": [2.4, 1.1, 0.45], "tint_only": ["leaves"]}]}},
+  "scripted:propane_tank": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["propane tank"], "material": "polyhaven:grey_roof_01", "paint": {"colour": "#e6e4de", "grain": 0.06, "normal": 0.05}, "photoscan": {"default": [
+    {"id": "polyhaven:propane_tank", "pick": ["propane_tank"], "lay": true, "turn_deg": 90, "paint": [0.72, 0.71, 0.67]}]}},
+  "scripted:storage_shed": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shed"], "material": "polyhaven:weathered_brown_planks", "paint": {"colour": "#5a5247", "grain": 0.8, "normal": 1.0}},
+  "scripted:trash_cans": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["trash can"], "material": "polyhaven:grey_roof_01", "paint": {"colour": "#2f3133", "grain": 0.1, "normal": 0.05}, "photoscan": {"default": [
+    {"id": "polyhaven:metal_trash_can", "pick": ["metal_trash_can", "metal_trash_can_lid", "metal_trash_can_handle_left", "metal_trash_can_handle_right"], "copies": 2, "paint": [0.012, 0.012, 0.014]}]}},
+  "scripted:patio_set": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["patio furniture"], "material": "polyhaven:weathered_planks", "photoscan": {"default": [
+    {"id": "polyhaven:outdoor_table_chair_set_01", "pick": ["outdoor_table_chair_set_01_table", "outdoor_table_chair_set_01_chair_01", "outdoor_table_chair_set_01_chair_02"], "turn_deg": 90}]}},
   "scripted:tall_dry_grass": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["dry grass"], "material": "polyhaven:withered_grass", "paint": {"colour": "#dcbc8c", "grain": 0.3, "normal": 0.2, "translucent": 0.5}},
-  "scripted:lot_tree": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["tree"], "material": "polyhaven:bark_brown_02"}
+  "scripted:lot_tree": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["tree"], "material": "polyhaven:bark_brown_02", "photoscan": {
+    "oak": [
+      {"id": "polyhaven:island_tree_01", "pick": ["island_tree_01_LOD1"], "copies": 4, "tint": [0.7, 0.62, 0.4], "tint_only": ["leaves"]},
+      {"id": "polyhaven:island_tree_02", "pick": ["island_tree_02_LOD1"], "copies": 4, "tint": [0.7, 0.62, 0.4], "tint_only": ["leaves"]}],
+    "conifer": [
+      {"id": "polyhaven:pine_tree_01", "pick": ["pine_tree_01_a_LOD2"]},
+      {"id": "polyhaven:pine_tree_01", "pick": ["pine_tree_01_b_LOD2"]},
+      {"id": "polyhaven:pine_tree_01", "pick": ["pine_tree_01_c_LOD2"]}]}},
+  "scripted:bed_shrub": {"kind": "scripted", "license": "own work, made by blender/ewscene", "concepts": ["shrub"], "material": "polyhaven:withered_grass", "photoscan": {"default": [
+    {"id": "polyhaven:searsia_lucida", "pick": ["searsia_lucida_c_LOD1"], "fit": "stretch", "tint": [2.4, 1.1, 0.45], "tint_only": ["leaves"]},
+    {"id": "polyhaven:searsia_lucida", "pick": ["searsia_lucida_b_LOD1"], "fit": "stretch", "tint": [2.4, 1.1, 0.45], "tint_only": ["leaves"]}]}}
 }

@@ -209,11 +209,13 @@ describe("three walks per visitor per day", () => {
     expect(await walkCount()).toBe(3);
   });
 
-  it("never counts sample walks toward the limit", async () => {
-    for (let n = 0; n < 4; n++) expect((await call("/api/walks", body({ synthetic: true }))).status).toBe(200);
+  it("never counts sample walks toward the live walks, but a client that claims a sample starts no more than three a day", async () => {
+    for (let n = 0; n < 3; n++) expect((await call("/api/walks", body({ synthetic: true }))).status).toBe(200);
+    const fourth = await call("/api/walks", body({ synthetic: true }));
+    expect([fourth.status, fourth.json.error.code]).toEqual([429, "walk_limit_reached"]);
     await startThree();
     expect((await call("/api/walks", body())).status).toBe(429);
-    expect(await walkCount()).toBe(7);
+    expect(await walkCount()).toBe(6);
   });
 
   it("counts each visitor apart, and walks from before today not at all", async () => {

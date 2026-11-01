@@ -4,7 +4,7 @@ import math
 import os
 import subprocess
 
-from . import placement, schema, units
+from . import photoscan, placement, schema, units, yard
 
 SPEC = "emberwalk.house-spec/1"
 TRUTH = "emberwalk.house-truth/1"
@@ -137,6 +137,9 @@ def validate(doc, catalog, rules):
     _clean_sides(doc)
     if doc["state"] == "before":
         _demo_bar(doc)
+    if kind == SPEC:
+        from . import downspout
+        downspout.plan(doc)
     return doc
 
 
@@ -814,6 +817,10 @@ def used_assets(doc, catalog):
         ids.append(item["asset"])
         if "material" in catalog[item["asset"]]:
             ids.append(catalog[item["asset"]]["material"])
+        if look.get("photoscans"):
+            ids.extend(photoscan.used_ids(catalog[item["asset"]]))
+    if look.get("photoscans"):
+        ids.extend(yard.asset_ids(doc, catalog))
     if any(burns(s) for s in doc["structures"]):
         ids.append(WOOD_TEXTURE)
     return [{"id": i, "kind": catalog[i]["kind"], "license": catalog[i]["license"], "source": catalog[i].get("source")} for i in dict.fromkeys(ids)]

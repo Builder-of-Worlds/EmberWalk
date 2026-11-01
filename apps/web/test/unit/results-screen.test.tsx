@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { walkApi } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
-import { GAP_HINTS, SIDES } from "@emberwalk/shared";
+import { DEFAULT_LIMITS, GAP_HINTS, SIDES } from "@emberwalk/shared";
 import { copy, draft, longDate } from "../../src/copy.ts";
 import { apiResults, samplesThenApi } from "../../src/live-api.ts";
 import { marksKey } from "../../src/finding-marks.ts";
 import { storagePrefs, VIEW_KEY } from "../../src/prefs.ts";
 import type { WalkResults } from "../../src/results.ts";
-import { findingFor, recordPartFor, resultsFor, ROUTES } from "../../src/router.ts";
+import { DRAFT_WORDS_KEY, recheckWords } from "../../src/draft-words.ts";
+import { findingFor, recheckFor, recordPartFor, resultsFor, ROUTES } from "../../src/router.ts";
 import { SAMPLES, sampleResults } from "../../src/samples.ts";
 import { fakeClock, memoryMarks, memoryPrefs, memoryStorage, refusingStorage, testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
@@ -443,7 +444,7 @@ describe("Simple and Detailed", () => {
 });
 
 describe("status and green", () => {
-  const RECHECK = { photo: "recheck.jpg", atMs: Date.UTC(2026, 10, 2, 12) };
+  const RECHECK = { photo: "recheck.jpg", atMs: Date.UTC(2026, 10, 2, 12), result: "cleared" };
   const marked = (status: Record<string, unknown>) => {
     const storage = memoryStorage();
     storage.setItem(marksKey("walk-1"), JSON.stringify({ removed: {}, status }));
@@ -467,6 +468,18 @@ describe("status and green", () => {
     for (const [status, heading] of cases) {
       const view = await open(results, { marks: marked(status) });
       expect(view.h1(), JSON.stringify(status)).toBe(heading);
+      await view.unmount();
+    }
+  });
+
+  it("counts a recheck toward green only when its answer is cleared; still there and unsure stay Done, not rechecked yet", async () => {
+    for (const result of ["still_there", "unsure"]) {
+      const answered = { ...RECHECK, result };
+      const view = await open(walk([required, close, far]), { marks: marked({ req: { kind: "done", recheck: answered }, close: { kind: "done", recheck: RECHECK } }) });
+      expect(view.h1(), result).toBe(copy.results.fixFirst(1));
+      expect(statuses(view.host), result).toEqual({ req: "done", close: "rechecked", far: "needs_fixing" });
+      const row = view.host.querySelector("li.finding[data-finding=req] [data-part=status]")!;
+      expect([...row.querySelectorAll("p")].map((p) => p.textContent)).toEqual([copy.status.kind.done, copy.status.notRechecked]);
       await view.unmount();
     }
   });
@@ -501,6 +514,54 @@ describe("status and green", () => {
       expect([...row("far").querySelectorAll("p")].map((p) => p.textContent)).toEqual([copy.status.kind.fix_planned]);
     }
     await view.unmount();
+  });
+
+  describe("the way to a recheck photo", () => {
+    const ON = { ...DEFAULT_LIMITS, recheckOn: true };
+    const links = (host: HTMLElement) =>
+      Object.fromEntries(
+        [...host.querySelectorAll("li.finding")].map((li) => {
+          const a = li.querySelector("a[data-part=recheck]");
+          return [li.getAttribute("data-finding"), a === null ? null : [a.textContent, a.getAttribute("href")]];
+        }),
+      );
+    const MARKS = { req: { kind: "done", recheck: RECHECK }, close: { kind: "done" }, far: { kind: "fix_planned" } };
+    afterEach(() => window.localStorage.removeItem(DRAFT_WORDS_KEY));
+
+    it("offers a recheck on a Done item not rechecked yet, and on no other row", async () => {
+      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
+      const view = await open(walk([required, close, far, finding("open")]), { limits: ON, marks: marked(MARKS) });
+      expect(links(view.host)).toEqual({ req: null, close: [recheckWords.entry, recheckFor("walk-1", "close")], far: null, open: null });
+      await view.unmount();
+    });
+
+    it("offers a still there or unsure item another recheck", async () => {
+      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
+      const view = await open(walk([required]), { limits: ON, marks: marked({ req: { kind: "done", recheck: { ...RECHECK, result: "unsure" } } }) });
+      expect(links(view.host)).toEqual({ req: [recheckWords.entry, recheckFor("walk-1", "req")] });
+      await view.unmount();
+    });
+
+    it("offers none while the recheck flag or the draft words are off", async () => {
+      for (const [limits, draft] of [[DEFAULT_LIMITS, "on"], [ON, null]] as const) {
+        if (draft === null) window.localStorage.removeItem(DRAFT_WORDS_KEY);
+        else window.localStorage.setItem(DRAFT_WORDS_KEY, draft);
+        const view = await open(walk([required, close]), { limits, marks: marked(MARKS) });
+        expect(links(view.host), String(limits.recheckOn)).toEqual({ req: null, close: null });
+        await view.unmount();
+      }
+    });
+
+    it("offers none on a sample walk", async () => {
+      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
+      const sample = SAMPLES[0]!;
+      const marks = memoryMarks();
+      for (const f of sample.findings) marks.setStatus(sample.id, f.id, "done");
+      const view = await open(sample, { limits: ON, marks });
+      expect(view.host.querySelectorAll("li.finding [data-status=done]").length).toBeGreaterThan(0);
+      expect(view.host.querySelector("a[data-part=recheck]")).toBeNull();
+      await view.unmount();
+    });
   });
 
   it("shows Needs Fixing on every row of a walk nobody has marked", async () => {

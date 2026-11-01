@@ -12,7 +12,7 @@ const sideways = () => document.documentElement.scrollWidth - document.documentE
 const PART_WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7c01";
 const PART_BYTES = 32 * 1024;
 const EXPIRES = "2026-10-27T20:00:00.000Z";
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 const BACK_GAP = { side: "back", kind: "not_checked", hint: "again" } as const;
 
 type Part = { state: WalkState; started: unknown[]; gap?: Gap; tags?: Tag[] };

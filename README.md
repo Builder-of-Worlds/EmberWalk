@@ -2,19 +2,22 @@
 
 Wildfire defensible space checks from one phone video, using Meta SAM 3.1 and Muse on Cloudflare.
 
-**Status, Friday Oct. 30th, 2026:** Get It Fixed is built, and the first deploy is ready.
+**Status, Saturday Oct. 31st, 2026:** the homeowner's report, plans and the website's pages are built and tested. The website goes live shortly after this upload.
 
 ## What it does
 
 The homeowner films one walk around the house, and EmberWalk finds what could carry fire to the house and ranks what to fix first, with the California rule behind each item.
 
-As of the end of Day 5:
+As of the end of Day 6:
 
-- **Film one walk.** The loop around the house is followed by a pan of the yard from each side, tagged by corner, and one side or corner can be filmed again on its own. Walks upload while they are recorded and pick up again when signal returns, and the phone keeps each walk's video, so a house is never walked twice.
+- **Film one walk.** The loop around the house is followed by a pan of the yard from each side, tagged by corner, and one side or corner can be filmed again on its own. When one part of a walk cannot be checked, the rest is still scored. Walks upload while they are recorded and pick up again when signal returns, and the phone keeps each walk's video, so a house is never walked twice.
 - **What the app finds.** All 25 objects on the list, from dry brush and fences to gas cans, grills and wooden decks, each at a published source's distance. A second model reviews each finding and shows its reason when it sees it differently.
 - **How results look.** Required Now first, with a fix first list. The house is drawn from above with rings at 5, 30 and 100 feet and a numbered pin for each finding. See It Fixed previews the top three findings fixed, labelled as an AI preview.
+- **The homeowner's report.** The findings to fix first, each with its blurred photo and a dated record, approved by the homeowner before it is printed. A share link opens the approved report and nothing else, and can be turned off at any time.
 - **Get It Fixed.** The homeowner enters a ZIP code and sees licensed crews for each kind of work, closest first. Nothing is sent until the homeowner approves it.
-- **Defensible space record.** Each finding is marked Needs Fixing, Fix Planned or Done, with its date.
+- **Defensible space record.** Each finding is marked Needs Fixing, Fix Planned or Done, with its date. One photo of a spot marked Done confirms the fix.
+- **Privacy.** Delete Everything erases every walk, photo and report a phone has made, after one confirmation. A household's records are deleted 12 months after its last walk or plan.
+- **Plans.** Yearly plans for homeowners and for landlords and property managers, with extra walks that carry over.
 
 ## How it works
 
@@ -65,6 +68,7 @@ EmberWalk is built during the Meta Global AI Developer Hackathon, Monday Oct. 26
 | 3 | Wednesday Oct. 28th | Results back on the phone, one side redone, the coverage check, the location step and plainer wording. [Write-up](docs/devlog/day-03.md) |
 | 4 | Thursday Oct. 29th | The two part walk, light on each side, the checking screen's step counts, the full object list in the pipeline and rules by state. [Write-up](docs/devlog/day-04.md) |
 | 5 | Friday Oct. 30th | Get It Fixed, See It Fixed and the second check, the house drawn with its findings, rules for the newer objects, the walk sent while recorded and a first deploy made ready. [Write-up](docs/devlog/day-05.md) |
+| 6 | Saturday Oct. 31st | The homeowner's report and share link, Delete Everything, a recheck photo, plans, an owner page and the website's pages. [Write-up](docs/devlog/day-06.md) |
 
 ## License
 

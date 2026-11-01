@@ -30,11 +30,11 @@ for (const item of pages) {
   });
 }
 
-test("sets no cookie and loads nothing from another host", async ({ page, context }) => {
+test("sets no cookie and loads nothing from another host", async ({ page, context, baseURL }) => {
   const hosts = new Set<string>();
   page.on("request", (request) => hosts.add(new URL(request.url()).host));
   await page.goto(await pages[0].path());
   await settle(page);
   expect(await context.cookies()).toEqual([]);
-  expect([...hosts]).toEqual(["127.0.0.1:8799"]);
+  expect([...hosts]).toEqual([new URL(baseURL!).host]);
 });

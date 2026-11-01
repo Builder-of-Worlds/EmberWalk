@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { copy, walkDate } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { deleteEverythingWords, draftWordsShown } from "../draft-words.ts";
 import { JUDGE } from "../judge.ts";
 import { checkingFor, resultsFor, ROUTES, sendFor, WALK_START } from "../router.ts";
 import { SAMPLES } from "../samples.ts";
@@ -66,6 +67,11 @@ export const Home = () => {
       <a className="button" href={ROUTES.history}>
         {copy.history.title}
       </a>
+      {draftWordsShown() ? (
+        <a className="button" href={ROUTES.about}>
+          {deleteEverythingWords.entry}
+        </a>
+      ) : null}
       {checking.length + takes.length > 0 ? <YourWalks checking={checking} takes={takes} /> : null}
     </main>
   );

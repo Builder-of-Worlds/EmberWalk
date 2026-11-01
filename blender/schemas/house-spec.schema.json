@@ -63,6 +63,19 @@
               }
             },
             "gutters": {"type": "boolean"},
+            "downspouts": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["side", "along_in"],
+                "properties": {
+                  "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+                  "along_in": {"type": "integer", "minimum": 0}
+                }
+              }
+            },
             "skirting": {"type": "boolean"},
             "foundation_vents": {
               "type": "array",
@@ -194,6 +207,7 @@
       "additionalProperties": false,
       "required": ["siding", "trim", "roof", "ground", "light"],
       "properties": {
+        "photoscans": {"type": "boolean", "description": "Optional. True builds the lot with Poly Haven photoscan models (catalog photoscan entries) and a dense meadow in place of scripted stand ins."},
         "siding": {
           "type": "object",
           "additionalProperties": false,
@@ -226,7 +240,76 @@
           "required": ["material", "tint"],
           "properties": {
             "material": {"type": "string", "minLength": 1},
-            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+            "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}},
+            "mix": {
+              "type": "array",
+              "description": "Optional. Other Poly Haven ground textures that show through in patches; share is the area each covers.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["material", "share"],
+                "properties": {
+                  "material": {"type": "string", "minLength": 1},
+                  "share": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.9},
+                  "tint": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}}
+                }
+              }
+            }
+          }
+        },
+        "woods": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional. Sightlines the woodland ring leaves open, so the walk camera sees sky past the house. Each is a bearing from the house centre (degrees, 0 is east, 90 is north) and a half width; only trees too tall for the sky angle are kept out of it.",
+          "properties": {
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {"type": "number"}
+              }
+            }
+          }
+        },
+        "front_yard": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional. A mulch bed (gravel once the house is the after scene) with dead shrubs, and a concrete walk, in front of the house. Flat ground only: no hazard sits in it.",
+          "properties": {
+            "bed": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["corners_in", "before", "after"],
+              "properties": {
+                "corners_in": {"type": "array", "minItems": 3, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}},
+                "before": {"type": "string", "minLength": 1},
+                "after": {"type": "string", "minLength": 1},
+                "shrubs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["at_in", "size_in"],
+                    "properties": {
+                      "at_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+                      "size_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}}
+                    }
+                  }
+                }
+              }
+            },
+            "walk": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from_in", "to_in", "width_in"],
+              "properties": {
+                "from_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+                "to_in": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+                "width_in": {"type": "number", "exclusiveMinimum": 0}
+              }
+            }
           }
         },
         "concrete": {
@@ -245,6 +328,17 @@
           "properties": {
             "hdri": {"type": "string", "minLength": 1},
             "rotation_deg": {"type": "number", "minimum": -360, "maximum": 360},
+            "warm": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 5}, "description": "Optional. Multiplier on the light the sky gives the scene, not on the sky the camera sees."},
+            "fill": {"type": "number", "exclusiveMinimum": 0, "maximum": 10, "description": "Optional. Strength of a shadowless sun that lifts the shaded walls, so lit and shaded faces differ as little as in a hazy photo."},
+            "haze": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["colour", "density_per_m"],
+              "properties": {
+                "colour": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+                "density_per_m": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.05}
+              }
+            },
             "sky": {
               "type": "object",
               "additionalProperties": false,
@@ -329,6 +423,7 @@
         "pan_tilt_deg": {"type": "number", "minimum": -30, "maximum": 45},
         "speed_in_s": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
         "pan_s": {"type": "number", "minimum": 10, "maximum": 20},
+        "up_sweep_deg": {"type": "number", "minimum": 0, "maximum": 45, "description": "Left out or 0, the walk never looks up. Above 0, an 8 s sweep follows each pan: the camera turns 80 degrees to one side while tilting this many degrees above the horizon, sweeps 160 degrees across the wall, then returns."},
         "fps": {"enum": [15, 24, 25, 30, 60]},
         "width_px": {"type": "integer", "minimum": 1},
         "height_px": {"type": "integer", "minimum": 1},

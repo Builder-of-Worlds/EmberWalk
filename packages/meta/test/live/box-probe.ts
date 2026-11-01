@@ -5,7 +5,7 @@ import type { SpendLedger } from "../../src/stores.ts";
 import { type Hazard, iou, type Rect } from "./env.ts";
 import { assertRoomFor, isFound, type Score } from "./probe.ts";
 import { type ImageSize, gridToPixels, POINT_TARGETS, sparkBoxCall } from "./spark-box.ts";
-import { matchTight, tightRect, tightWindow } from "./tight.ts";
+import { matchTight, tightRect, tightWindow, type TruthCut } from "./tight.ts";
 
 export const PROMPT_FRAMES = 3;
 const SAM_OBJECT_ID = 1;
@@ -30,6 +30,7 @@ export type BoxProbeOptions = {
   frames: number;
   fps: number;
   clip: ImageSize;
+  cut?: TruthCut;
   stopLineUsd: number;
   hazards: Hazard[];
   picture: (frame: number) => Uint8Array;
@@ -37,19 +38,19 @@ export type BoxProbeOptions = {
   now?: () => Date;
 };
 
-export function pickPromptFrames(hazard: Hazard, frames: number, fps: number, count: number): number[] {
-  const window = tightWindow(hazard, frames, fps);
+export function pickPromptFrames(hazard: Hazard, frames: number, fps: number, count: number, cut?: TruthCut): number[] {
+  const window = tightWindow(hazard, frames, fps, cut);
   if (window.length <= count) return window;
   return Array.from({ length: count }, (_, i) => window[Math.floor(((i + 1) * window.length) / (count + 1))]!);
 }
 
-const empty = (hazard: Hazard, o: BoxProbeOptions): Score => ({ window: tightWindow(hazard, o.frames, o.fps).length, hits: 0, elsewhere: 0, found: false });
+const empty = (hazard: Hazard, o: BoxProbeOptions): Score => ({ window: tightWindow(hazard, o.frames, o.fps, o.cut).length, hits: 0, elsewhere: 0, found: false });
 
 export async function runBoxProbe(o: BoxProbeOptions): Promise<BoxRow[]> {
   const rows: BoxRow[] = [];
   for (const hazard of o.hazards) {
     if (!Object.hasOwn(POINT_TARGETS, hazard.concept)) continue;
-    for (const frame of pickPromptFrames(hazard, o.frames, o.fps, o.count ?? PROMPT_FRAMES)) {
+    for (const frame of pickPromptFrames(hazard, o.frames, o.fps, o.count ?? PROMPT_FRAMES, o.cut)) {
       const base = { hazard: hazard.id, frame, grid: null, pixels: null, sparkIou: null, samFingerprint: null };
       const point = sparkBoxCall({ concept: hazard.concept, jpeg: o.picture(frame), content: "synthetic" });
       await assertRoomFor(o, point.estimateNano);
@@ -67,7 +68,7 @@ export async function runBoxProbe(o: BoxProbeOptions): Promise<BoxRow[]> {
         continue;
       }
       const pixels = gridToPixels(grid, o.clip);
-      const truth = tightRect(hazard, frame, o.fps);
+      const truth = tightRect(hazard, frame, o.fps, o.cut);
       const track = samBoxVideoCall({
         video: o.video,
         prompts: { frame, frameWidth: o.clip.width, frameHeight: o.clip.height, boxes: [{ id: SAM_OBJECT_ID, ...pixels }] },
@@ -76,7 +77,7 @@ export async function runBoxProbe(o: BoxProbeOptions): Promise<BoxRow[]> {
       });
       await assertRoomFor(o, track.estimateNano);
       const sam = await o.client.call(track);
-      const match = matchTight(hazard, sam.value.frames, o.frames, o.fps);
+      const match = matchTight(hazard, sam.value.frames, o.frames, o.fps, o.cut);
       rows.push({
         hazard: hazard.id,
         frame,

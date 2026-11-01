@@ -41,7 +41,7 @@ const FileRule = z.strictObject({
   plain: Rule.shape.plain,
   statute: Tag.nullable(),
   when: When,
-  unsure: Rule.shape.plain.shape.en.nullable(),
+  unsure: Rule.shape.plain.nullable(),
 });
 
 type Shape = {

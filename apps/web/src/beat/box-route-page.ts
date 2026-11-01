@@ -1,8 +1,9 @@
-import answers from "../../../../fixtures/meta/box-probe-test-yard-2-answers.json";
-import rows from "../../../../fixtures/meta/box-probe-test-yard-2-rows.json";
+import answers from "../../../../fixtures/meta/box-probe-hero-answers.json";
+import rows from "../../../../fixtures/meta/box-probe-hero-rows.json";
+import render from "../../../../fixtures/synthetic/test-yard-2/import/render-30fps.json";
 import { type Box, boxAt, damp, dampBox, frameAt, phaseAt, pixelBox, samBoxes, secondsAt, trackRate } from "./box-route.ts";
 
-const VIDEO = { width: 1920, height: 1080 };
+const VIDEO = { width: render.width, height: render.height };
 export const NOTHING_AT = 1.125;
 export const FOUND_AT = 5.75;
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
@@ -22,9 +23,9 @@ const textOf = (answer: Answer | undefined): string =>
 
 export type Probe = { spark: Box; tracked: Map<number, Box>; frame: number; lastFrame: number; hits: number; window: number };
 
-export const recordedProbe = (hazard = "dry-brush-1"): Probe => {
+export const recordedProbe = (hazard = "dry-brush-left"): Probe => {
   const row = rows[0]!.find((r) => r.hazard === hazard);
-  if (row === undefined) throw new Error(`the box probe has no ${hazard}`);
+  if (row === undefined || row.pixels === null) throw new Error(`the box probe has no ${hazard}`);
   const tracked = samBoxes(textOf((answers as Record<string, Answer>)[`pass1-${row.samFingerprint}`]));
   return {
     spark: pixelBox(row.pixels, VIDEO.width, VIDEO.height),

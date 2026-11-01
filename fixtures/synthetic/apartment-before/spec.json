@@ -22,6 +22,10 @@
     },
     "features": {
       "gutters": true,
+      "downspouts": [
+        {"side": "front", "along_in": 8},
+        {"side": "wing_side", "along_in": 176}
+      ],
       "windows": [
         {"side": "front", "along_in": 60, "width_in": 48, "height_in": 48, "sill_in": 44},
         {"side": "front", "along_in": 240, "width_in": 48, "height_in": 48, "sill_in": 44},
@@ -138,8 +142,8 @@
       "side": "back",
       "distance_in": 0,
       "along_in": 24,
-      "size_in": [528, 6, 5],
-      "elevation_in": 224,
+      "size_in": [528, 26, 11],
+      "elevation_in": 220,
       "band": "0_5",
       "contact": true,
       "label": "required_now",
@@ -312,5 +316,18 @@
       "rule_id": "ca-dry-grass-far-ccr-z2"
     }
   ],
-  "route": {"pan_s": 10}
+  "route": {
+    "standoff_in": 132,
+    "height_in": 54,
+    "tilt_deg": 12,
+    "pan_tilt_deg": 3,
+    "speed_in_s": 34,
+    "pan_s": 10,
+    "up_sweep_deg": 35,
+    "fps": 15,
+    "width_px": 1280,
+    "height_px": 720,
+    "focal_mm": 26,
+    "sensor_width_mm": 36
+  }
 }

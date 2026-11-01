@@ -13,7 +13,7 @@ const SECOND = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7d02";
 const PART_BYTES = 32 * 1024;
 const EXPIRES = "2026-10-27T20:00:00.000Z";
 const FAILED = "Something went wrong while checking this walk. Please try again.";
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 const BACK_GAP: Gap = { side: "back", kind: "not_checked", hint: "again" };
 
 type Server = { ids: string[]; started: unknown[]; uploaded: number[]; state: WalkState; lost?: boolean; failure?: { code: string; message: string } };

@@ -104,6 +104,25 @@ export function syntheticRender(yard = YARD_ONE): string {
   return file;
 }
 
+export const HERO_BEFORE = "hero-before";
+const SAMPLE_IMPORT = path.join(REPO, "fixtures/synthetic", YARD_TWO, "import");
+
+type SampleRender = { synthetic: boolean; fps: number; sha256: string; made_from: { first_frame: number } };
+const sampleRender = (folder: string): SampleRender => JSON.parse(readFileSync(path.join(folder, "render.json"), "utf8")) as SampleRender;
+
+export function sampleCut(folder = SAMPLE_IMPORT): { fps: number; first: number } {
+  const info = sampleRender(folder);
+  return { fps: info.fps, first: info.made_from.first_frame };
+}
+
+export function sampleWalk(folder = SAMPLE_IMPORT): string {
+  const file = path.join(folder, "walk.mp4");
+  const info = sampleRender(folder);
+  const sha = createHash("sha256").update(readFileSync(file)).digest("hex");
+  if (!info.synthetic || sha !== info.sha256) throw new Error(`${file} is not the synthetic render named in render.json`);
+  return file;
+}
+
 export function reencode(input: string, output: string, fps: number): number {
   execFileSync("ffmpeg", [
     "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-i", input,

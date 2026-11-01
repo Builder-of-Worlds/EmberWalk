@@ -3,7 +3,7 @@ import os
 
 from ewscene import assets, house, maskbox, probe, route
 
-BEFORE, AFTER = "hero-before", "hero-after"
+HOUSES = ("hero", "mobile", "apartment")
 SCENE_FILES = ("truth.json", "motion.json", "parts.json", "render.json")
 CATALOG = assets.load_catalog()
 RULES = house.load_rules()
@@ -25,6 +25,11 @@ def spec_problems(spec, doc):
                 out.append("%s has no %s" % (hazard_id, key))
             elif have[hazard_id][key] != want[hazard_id][key]:
                 out.append("%s: %s is %s, the spec says %s" % (hazard_id, key, have[hazard_id][key], want[hazard_id][key]))
+    made = {h["id"]: h for h in house.truth_from_spec(spec, RULES)["hazards"]}
+    for hazard_id in sorted(set(have) & set(made)):
+        for key, value in made[hazard_id].items():
+            if key not in ("band", "side", "rule_id") and have[hazard_id].get(key) != value:
+                out.append("%s: %s differs from the spec's" % (hazard_id, key))
     try:
         house.validate(doc, CATALOG, RULES)
     except house.HouseError as e:
@@ -128,42 +133,45 @@ def guarded(run, files):
         return ["the files are malformed: %s: %s" % (type(e).__name__, e)]
 
 
-def before_scene_problems(files):
-    spec = files.get(BEFORE, "spec.json")
-    walk, parts = files.get(BEFORE, "motion.json"), files.get(BEFORE, "parts.json")
+def before_scene_problems(files, before, after):
+    spec = files.get(before, "spec.json")
+    walk, parts = files.get(before, "motion.json"), files.get(before, "parts.json")
     out = []
     if (walk, parts) != route.build(spec):
         out.append("motion.json and parts.json differ from the route built from the spec")
-    return out + truth_problems(spec, files.get(BEFORE, "truth.json"), walk, files.get(BEFORE, "render.json"))
+    return out + truth_problems(spec, files.get(before, "truth.json"), walk, files.get(before, "render.json"))
 
 
-def after_scene_problems(files):
-    spec, changes = files.get(BEFORE, "spec.json"), files.get(AFTER, "changes.json")
-    after = house.after_spec(spec, changes, CATALOG, RULES)
-    walk, parts = files.get(AFTER, "motion.json"), files.get(AFTER, "parts.json")
+def after_scene_problems(files, before, after):
+    spec, changes = files.get(before, "spec.json"), files.get(after, "changes.json")
+    after_spec = house.after_spec(spec, changes, CATALOG, RULES)
+    walk, parts = files.get(after, "motion.json"), files.get(after, "parts.json")
     out = []
-    if (walk, parts) != route.build(after):
+    if (walk, parts) != route.build(after_spec):
         out.append("motion.json and parts.json differ from the route built from the after spec")
-    doc = files.get(AFTER, "truth.json")
-    out += truth_problems(after, doc, walk, files.get(AFTER, "render.json"))
-    return out + after_problems(doc, changes, files.get(BEFORE, "motion.json"), files.get(BEFORE, "parts.json"), walk, parts)
+    doc = files.get(after, "truth.json")
+    out += truth_problems(after_spec, doc, walk, files.get(after, "render.json"))
+    return out + after_problems(doc, changes, files.get(before, "motion.json"), files.get(before, "parts.json"), walk, parts)
 
 
-def check(root):
+def check(root, name="hero"):
     """Returns the missing file keys, the (where, problem) pairs and the scenes that passed; a scene is judged only when every file it needs was read."""
+    if name not in HOUSES:
+        raise ValueError("unknown house %s" % name)
+    before, after = "%s-before" % name, "%s-after" % name
     files = Files(root)
-    files.need(BEFORE, "spec.json", *SCENE_FILES)
-    files.need(AFTER, "changes.json", *SCENE_FILES)
+    files.need(before, "spec.json", *SCENE_FILES)
+    files.need(after, "changes.json", *SCENE_FILES)
     problems = list(files.problems)
     clean = []
     judged = (
-        (BEFORE, files.has(BEFORE, "spec.json", *SCENE_FILES), before_scene_problems),
-        (AFTER, files.has(AFTER, "changes.json", *SCENE_FILES) and files.has(BEFORE, "spec.json", "motion.json", "parts.json"), after_scene_problems),
+        (before, files.has(before, "spec.json", *SCENE_FILES), before_scene_problems),
+        (after, files.has(after, "changes.json", *SCENE_FILES) and files.has(before, "spec.json", "motion.json", "parts.json"), after_scene_problems),
     )
     for scene, ready, run in judged:
         if not ready:
             continue
-        found = guarded(run, files)
+        found = guarded(lambda f: run(f, before, after), files)
         problems += [(scene, p) for p in found]
         if not found:
             clean.append(scene)

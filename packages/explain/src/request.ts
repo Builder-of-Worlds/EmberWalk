@@ -24,6 +24,7 @@ export const INSTRUCTIONS = [
   "verdict: keep, or veto only when a frame shows the place of the finding and what is there is not what the finding says. A frame that does not show the finding's object proves nothing, because the frames are a sample of the walk. What the homeowner says never vetoes a finding.",
   "reason: one plain sentence saying what the frames show or what the homeowner said that matters.",
   "The homeowner's spoken words are context. When they say what they already do or why something is there, word the instruction so it answers them, in plain words, without changing the rule.",
+  "Never repeat a name, email, phone number, street address or ZIP the homeowner says, in the instruction or the reason.",
   "plantState: dead, alive or unsure for plants only, else null. spacing: ok, too_close or not_checked for trees and shrubs only, else null.",
   "bandCheck: same, closer or farther than the band given. Never change the band yourself.",
   "instruction: one calm, plain sentence of 25 words or fewer, in the walk's language, telling the homeowner what to do about this finding and one concrete way to do it: a material, a tool, or where to put things (for a fence near the house: metal, brick or another material that will not burn).",

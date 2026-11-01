@@ -1,5 +1,5 @@
 import { MetaRefused, type MetaClient, type RefusalReason } from "@emberwalk/meta";
-import { evaluate, RULES, type RuleFinding, type RuleRow } from "@emberwalk/rules";
+import { evaluate, RULES, templateInstruction, type RuleFinding, type RuleRow } from "@emberwalk/rules";
 import { PLANT_CONCEPTS, SPACED_CONCEPTS, type Band, type PlantState, type Spacing } from "@emberwalk/shared";
 import type { z } from "zod";
 import {
@@ -23,7 +23,7 @@ export type ExplainResult = {
   findingId: string;
   band: Band;
   wording: Wording;
-  instruction: string;
+  instruction: string | null;
   ruleIds: string[];
   label: RuleFinding["label"];
   verdict: "keep" | "veto";
@@ -36,6 +36,8 @@ export type ExplainResult = {
 };
 
 export type Explanation = { results: ExplainResult[]; costUsd: number; refused: RefusalReason | "transport" | null };
+
+type PlantStateOrNone = z.infer<typeof PlantState> | null;
 
 type Context = { input: ExplainInput; table: Map<string, RuleRow>; all: Map<string, RuleRow> };
 
@@ -54,19 +56,19 @@ const rulesFeet = (ruleIds: string[], c: Context): Set<number> =>
   new Set(
     ruleIds.flatMap((id) => {
       const r = c.all.get(id)!;
-      return feetIn([r.condition, r.plain.en, r.plain.es, r.unsure ?? ""].join(" "));
+      return feetIn([r.condition, r.plain.en, r.plain.es, r.unsure?.en ?? "", r.unsure?.es ?? ""].join(" "));
     }),
   );
 
-const templateText = (f: Pick<RuleFinding, "instruction" | "ruleIds">, c: Context): string =>
-  c.input.language === "en" ? f.instruction : c.all.get(f.ruleIds[0]!)!.plain[c.input.language];
+const templateText = (f: Pick<RuleFinding, "instruction" | "ruleIds">, plantState: PlantStateOrNone, c: Context): string =>
+  c.input.language === "en" ? f.instruction : templateInstruction(c.all.get(f.ruleIds[0]!)!, plantState, c.input.language);
 
 function template(f: ExplainFinding, c: Context, problems: string[]): ExplainResult {
   return {
     findingId: f.findingId,
     band: f.band,
     wording: "template",
-    instruction: templateText(f, c),
+    instruction: templateText(f, f.observation.plantState, c),
     ruleIds: f.ruleIds,
     label: f.label,
     verdict: "keep",
@@ -79,7 +81,7 @@ function template(f: ExplainFinding, c: Context, problems: string[]): ExplainRes
   };
 }
 
-function sentenceProblems(instruction: string, used: Pick<RuleFinding, "instruction" | "ruleIds">, c: Context): string[] {
+function sentenceProblems(instruction: string, used: Pick<RuleFinding, "instruction" | "ruleIds">, plantState: PlantStateOrNone, c: Context): string[] {
   const allowed = rulesFeet(used.ruleIds, c);
   const named = feetIn(instruction);
   const wrong = named.filter((n) => !allowed.has(n));
@@ -87,7 +89,7 @@ function sentenceProblems(instruction: string, used: Pick<RuleFinding, "instruct
     const listed = [...allowed].sort((x, y) => x - y).join(", ") || "no";
     return [`names ${wrong.join(", ")} feet, its rules name ${listed} feet`];
   }
-  const kept = feetIn(templateText(used, c));
+  const kept = feetIn(templateText(used, plantState, c));
   const dropped = kept.length > 0 && !kept.some((n) => named.includes(n)) ? [`does not keep its rule's distance of ${kept.join(" to ")} feet`] : [];
   return [...wordingProblems(instruction), ...dropped];
 }
@@ -112,16 +114,16 @@ function judge(f: ExplainFinding, a: FindingAnswer, c: Context): ExplainResult |
   const modelVeto = a.verdict === "veto" && shown;
   const vetoBy = again === undefined ? "rules" : modelVeto ? "model" : null;
   if (vetoBy === null) {
-    const wording = sentenceProblems(a.instruction, used, c);
+    const wording = sentenceProblems(a.instruction, used, plantState, c);
     if (wording.length > 0) return wording;
   }
   return {
     findingId: f.findingId,
     band: f.band,
     wording: vetoBy === null ? "model" : "template",
-    instruction: vetoBy === null ? trimmed(a.instruction) : templateText(used, c),
-    ruleIds: used.ruleIds,
-    label: used.label,
+    instruction: vetoBy === null ? trimmed(a.instruction) : vetoBy === "rules" ? null : templateText(used, plantState, c),
+    ruleIds: vetoBy === "rules" ? [] : used.ruleIds,
+    label: vetoBy === "rules" ? "recommended" : used.label,
     verdict: vetoBy === null ? "keep" : "veto",
     vetoBy,
     reason: vetoBy === null && a.verdict === "veto" ? null : a.reason,

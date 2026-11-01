@@ -112,7 +112,7 @@ test("with motion refused, the phone guides each side, tags it at each Next tap,
   await page.goto(`/${resultsFor(LIVE_WALK)}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
   await expect(page.locator("p.hint")).toHaveText(copy.results.hint.walk_side("left"));
-  await expect(page.locator("main a.button")).toHaveText([copy.results.walkSide("left")]);
+  await expect(page.locator('main a.button:not([data-part="report"])')).toHaveText([copy.results.walkSide("left")]);
   await expect(page.getByRole("link", { name: copy.send.recordWalk })).toHaveCount(0);
   expect(await page.evaluate(sideways)).toBe(0);
   await page.getByRole("link", { name: copy.results.walkSide("left") }).click();
@@ -150,7 +150,7 @@ test('"asks for that part only (one side or corner)": a walk with one corner fai
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
   await expect(page.locator("main ul.lines li span")).toHaveText([draft.corners.gap.missing("front_right")]);
   await expect(page.locator("p.hint")).toHaveText(draft.corners.hint("front_right"));
-  await expect(page.locator("main a.button")).toHaveText([draft.corners.panCorner("front_right")]);
+  await expect(page.locator('main a.button:not([data-part="report"])')).toHaveText([draft.corners.panCorner("front_right")]);
   await expect(page.getByRole("link", { name: copy.send.recordWalk })).toHaveCount(0);
   expect(await page.evaluate(sideways)).toBe(0);
 

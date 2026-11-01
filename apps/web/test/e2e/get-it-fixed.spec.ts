@@ -7,7 +7,7 @@ import { C1, C3, crew, J1, job, jobsView, K1, M1, M2, message, respond, standIn,
 import type { StandIn } from "../unit/fixed-fakes.ts";
 import { liveBody, liveFindingId } from "../unit/result-fakes.ts";
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
 

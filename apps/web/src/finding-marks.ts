@@ -3,14 +3,17 @@ export type Removal = { findingId: string; atMs: number };
 export const STATUSES = ["needs_fixing", "fix_planned", "done"] as const;
 export type StatusKind = (typeof STATUSES)[number];
 
-export type Recheck = { photo: string; atMs: number };
+export const RECHECK_RESULTS = ["cleared", "still_there", "unsure"] as const;
+export type RecheckResult = (typeof RECHECK_RESULTS)[number];
+
+export type Recheck = { photo: string; atMs: number; result: RecheckResult };
 
 export type FindingStatus = { kind: StatusKind; note: string; recheck: Recheck | null; doneOn?: string };
 
 export const NEEDS_FIXING: FindingStatus = { kind: "needs_fixing", note: "", recheck: null };
 
 export const isRechecked = (status: FindingStatus): status is FindingStatus & { recheck: Recheck } =>
-  status.kind === "done" && status.recheck !== null;
+  status.kind === "done" && status.recheck?.result === "cleared";
 
 export type FindingMarks = {
   removed(resultsId: string): Removal[];
@@ -18,11 +21,15 @@ export type FindingMarks = {
   restore(resultsId: string, findingId: string): void;
   statusOf(resultsId: string, findingId: string): FindingStatus;
   setStatus(resultsId: string, findingId: string, kind: StatusKind, note?: string, doneOn?: string): void;
+  setRecheck(resultsId: string, findingId: string, recheck: Recheck): void;
+  forgetAllBut(keep: readonly string[]): void;
 };
+
+const MARKS_PREFIX = "emberwalk.findings.";
 
 type Stored = { removed: Record<string, number>; status: Record<string, FindingStatus> };
 
-export const marksKey = (resultsId: string): string => `emberwalk.findings.${resultsId}`;
+export const marksKey = (resultsId: string): string => `${MARKS_PREFIX}${resultsId}`;
 
 const empty = (): Stored => ({ removed: {}, status: {} });
 
@@ -34,8 +41,12 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isTime = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 const recheckIn = (value: unknown): Recheck | null =>
-  isRecord(value) && typeof value.photo === "string" && value.photo !== "" && isTime(value.atMs)
-    ? { photo: value.photo, atMs: value.atMs }
+  isRecord(value) &&
+  typeof value.photo === "string" &&
+  value.photo !== "" &&
+  isTime(value.atMs) &&
+  RECHECK_RESULTS.includes(value.result as RecheckResult)
+    ? { photo: value.photo, atMs: value.atMs, result: value.result as RecheckResult }
     : null;
 
 const statusIn = (value: unknown): FindingStatus | null => {
@@ -125,6 +136,24 @@ export const storageFindingMarks = (storage: () => Storage): FindingMarks => {
           ...(kind === "done" && doneOn !== undefined ? { doneOn } : {}),
         };
       write(resultsId, { ...stored, status });
+    },
+    setRecheck: (resultsId, findingId, recheck) => {
+      const current = statusOf(resultsId, findingId);
+      const checked = recheckIn(recheck);
+      if (current.kind !== "done" || checked === null) return;
+      const stored = read(resultsId);
+      write(resultsId, { ...stored, status: { ...stored.status, [findingId]: { ...current, recheck: checked } } });
+    },
+    forgetAllBut: (keep) => {
+      for (const resultsId of [...known.keys()]) if (!keep.includes(resultsId)) known.delete(resultsId);
+      try {
+        const store = storage();
+        const keys = Array.from({ length: store.length }, (_, i) => store.key(i)).filter((key): key is string => key !== null);
+        for (const key of keys)
+          if (key.startsWith(MARKS_PREFIX) && !keep.includes(key.slice(MARKS_PREFIX.length))) store.removeItem(key);
+      } catch {
+        return;
+      }
     },
   };
 };

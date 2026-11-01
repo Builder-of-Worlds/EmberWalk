@@ -6,7 +6,7 @@ const SHARE_CARD = `${SITE}brand/share-card.png`;
 
 const PAGES = [
   { path: "/", url: SITE, title: "EmberWalk | Get your home ready for wildfire season" },
-  { path: "/privacy", url: `${SITE}privacy`, title: "EmberWalk privacy policy" },
+  { path: "/privacy", url: `${SITE}privacy`, title: "Privacy policy | EmberWalk" },
 ];
 
 async function headTags(page: Page) {

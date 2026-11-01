@@ -9,7 +9,7 @@ import { LIVE_WALK, liveBody } from "../unit/result-fakes.ts";
 const PART_BYTES = 32 * 1024;
 const EXPIRES = "2026-10-27T20:00:00.000Z";
 const FAILED = "Something went wrong while checking this walk. Please try again.";
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 type Walk = { state: WalkState; asked: number; refuse?: ErrorCode; faults?: unknown[]; faultAnswer?: Promise<void> };
 

@@ -1,0 +1,10 @@
+# Names only. Values live in .dev.vars (gitignored) locally and as Worker secrets or vars when deployed.
+# Stripe: test mode values locally; live values only at the go-live deploy.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_INDIVIDUAL=
+STRIPE_PRICE_LANDLORD=
+STRIPE_PRICE_EXTRA_WALK=
+STRIPE_AUTOMATIC_TAX=
+# Payments stay off until paymentsOn is true in this JSON. Plan names, prices and walk counts live in packages/shared/src/billing.ts.
+EMBERWALK_LIMITS=

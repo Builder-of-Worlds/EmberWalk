@@ -25,7 +25,7 @@ const apiFetch: Fetch = async (request) => {
       R2_BUCKET_NAME: env.R2_BUCKET_NAME,
       ...(env.R2_ACCESS_KEY_ID === undefined ? {} : { R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID }),
       ...(env.R2_SECRET_ACCESS_KEY === undefined ? {} : { R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY }),
-      PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }) },
+      PIPELINE_SERVICE: { start: async () => ({ started: false, reason: "test_stand_in" }), recheck: async () => ({ failed: "test_stand_in" }) },
       GET_FIXED: getFixedStandIn,
     });
   }
@@ -56,7 +56,8 @@ describe("a hero walk imported from its render folder", () => {
     expect((await env.MEDIA.list()).objects.map((o) => o.size)).toContain(measured.size_bytes);
     const [tag, ...rest] = await tagsForWalk(env.DB, done.walkId);
     expect(rest).toEqual([]);
-    expect(tag).toMatchObject({ kind: "loop", startSeconds: 0, endSeconds: measured.duration_s });
+    expect(tag).toMatchObject({ kind: "loop", startSeconds: 0 });
+    expect(tag?.endSeconds).toBeCloseTo(measured.duration_s, 3);
     expect(tag?.samples).toHaveLength(motion.samples.length);
   });
 

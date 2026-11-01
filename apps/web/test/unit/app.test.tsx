@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
 import { copy } from "../../src/copy.ts";
-import { findingFor, findingIdsIn, recordPartFor, recordPartIn, resultsFor, routeFor, ROUTES, sendFor } from "../../src/router.ts";
+import { findingFor, findingIdsIn, recheckFor, recheckIdsIn, recordPartFor, recordPartIn, resultsFor, routeFor, ROUTES, sendFor } from "../../src/router.ts";
 import { testDeps, UNASKED_PORTFOLIO } from "./fakes.ts";
 import { render, settle } from "./render.ts";
 
@@ -51,6 +51,25 @@ describe("findingFor and findingIdsIn", () => {
     }
     expect(findingIdsIn(ROUTES.finding)).toBeNull();
     expect(routeFor(ROUTES.finding)).toBe("finding");
+  });
+});
+
+describe("recheckFor and recheckIdsIn", () => {
+  it("round trip a results id and a finding id onto the recheck screen", () => {
+    for (const [resultsId, findingId] of [["walk-1", "a"], ["sample/yard", "wood/pile 1"], ["%", "é"]] as const) {
+      const hash = recheckFor(resultsId, findingId);
+      expect(recheckIdsIn(hash)).toEqual({ resultsId, findingId });
+      expect(findingIdsIn(hash)).toBeNull();
+      expect(routeFor(hash)).toBe("recheck");
+    }
+  });
+
+  it("refuse a bare, short, long or badly escaped recheck hash", () => {
+    for (const hash of ["#/recheck/", "#/recheck/walk", "#/recheck/walk/", "#/recheck//a", "#/recheck/a/b/c", "#/recheck/%E0%A4%A/a"]) {
+      expect(recheckIdsIn(hash), hash).toBeNull();
+      expect(routeFor(hash), hash).not.toBe("recheck");
+    }
+    expect(recheckIdsIn(findingFor("walk", "a"))).toBeNull();
   });
 });
 

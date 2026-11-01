@@ -23,6 +23,10 @@ EASE_S = 0.75
 TURN_IN = 36
 PAN_TURN_S = 2
 SWEEP_DEG = 45
+UP_SWEEP_MAX_DEG = 45
+UP_TURN_S = 2
+UP_SWEEP_S = 4
+UP_SPAN_DEG = 80
 PAN_SIDES = ("front", "right", "back", "left")
 WALKABLE = ("porch", "deck", "landing")
 PARTS = "emberwalk.route-parts/1"
@@ -48,11 +52,13 @@ def params(spec):
     for key, value in spec["route"].items():
         if key == "placeholder":
             continue
-        if key not in DEFAULTS:
+        if key not in DEFAULTS and key != "up_sweep_deg":
             raise house.HouseError("refused", "route: unknown setting %s" % key)
         p[key] = value
     if not PAN_S[0] <= p["pan_s"] <= PAN_S[1]:
         raise house.HouseError("refused", "route: pan %s s is outside %d to %d s" % (p["pan_s"], PAN_S[0], PAN_S[1]))
+    if not 0 <= p.get("up_sweep_deg", 0) <= UP_SWEEP_MAX_DEG:
+        raise house.HouseError("refused", "route: up sweep %s deg is outside 0 to %d deg" % (p["up_sweep_deg"], UP_SWEEP_MAX_DEG))
     return p
 
 
@@ -160,6 +166,16 @@ def _pan_at(tau, p):
     return 180 + a + (180 - a) * k, 1 - k
 
 
+def _sweep_at(tau):
+    if tau < UP_TURN_S:
+        k = _smooth(tau / UP_TURN_S)
+        return -UP_SPAN_DEG * k, k
+    if tau < UP_TURN_S + UP_SWEEP_S:
+        return -UP_SPAN_DEG + 2 * UP_SPAN_DEG * _smooth((tau - UP_TURN_S) / UP_SWEEP_S), 1.0
+    k = _smooth((tau - UP_TURN_S - UP_SWEEP_S) / UP_TURN_S)
+    return UP_SPAN_DEG * (1 - k), 1 - k
+
+
 def hazard_boxes(spec):
     by_side = {e["side"]: e for e in house.edges(spec)}
     out = {}
@@ -216,6 +232,9 @@ def _timeline(spec, p, path):
         if pan is not None:
             events.append({"kind": "pan", "t0": t, "t1": t + p["pan_s"], "s0": at, "pan": pan})
             t += p["pan_s"]
+            if p.get("up_sweep_deg"):
+                events.append({"kind": "sweep", "t0": t, "t1": t + 2 * UP_TURN_S + UP_SWEEP_S, "s0": at, "pan": pan})
+                t = events[-1]["t1"]
     return events, t
 
 
@@ -225,7 +244,12 @@ def _pose(i, p, path, corners, surface, events, turns):
     e = events[k]
     spun = 360.0 * turns[k]
     tilt = p["tilt_deg"]
-    if e["kind"] != "pan":
+    if e["kind"] == "sweep":
+        at, gait = e["s0"], 0.0
+        swing, lift = _sweep_at(t - e["t0"])
+        heading = _wall_heading(path, corners, at) + spun + swing
+        tilt += (-p["up_sweep_deg"] - p["tilt_deg"]) * lift
+    elif e["kind"] != "pan":
         d, gait = _walk_at(min(t - e["t0"], e["t1"] - e["t0"]), e["t1"] - e["t0"], e["s1"] - e["s0"])
         at = e["s0"] + d
         heading = _wall_heading(path, corners, at) + spun
@@ -267,7 +291,7 @@ def check_samples(spec, samples):
 
 def _part(e, fps):
     out = {"kind": e["kind"]}
-    if e["kind"] != "pan":
+    if e["kind"] not in ("pan", "sweep"):
         out["loop_in"] = [round(e["s0"], 6), round(e["s1"], 6)]
     else:
         out.update(side=e["pan"]["side"], bearing_deg=e["pan"]["bearing_deg"])

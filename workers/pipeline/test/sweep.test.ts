@@ -317,6 +317,18 @@ describe("the hourly schedule", () => {
     expect(crons[0]).toMatch(/^\d{1,2} \* \* \* \*$/);
   });
 
+  it("also erases the records of a phone whose last walk is over 12 months old", async () => {
+    const walkId = freshWalkId();
+    await seedWalk(walkId, { state: "done" });
+    await env.DB.prepare("UPDATE walks SET created_at = '2020-01-01T00:00:00.000Z' WHERE id = ?").bind(walkId).run();
+    await put(`clips/${walkId}/loop.mp4`);
+
+    await worker.scheduled?.({ scheduledTime: Date.now(), cron: "17 * * * *", type: "scheduled" } as never, env);
+
+    expect(await getWalk(env.DB, walkId)).toBeNull();
+    expect(await present([`clips/${walkId}/loop.mp4`])).toEqual([]);
+  });
+
   it("leaves a recent walk alone when it fires", async () => {
     const walkId = await walkWithVideo();
 

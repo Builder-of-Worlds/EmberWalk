@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AgentJob, MessageStatus, Phone, Trade, Zip } from "./agent.ts";
 import { Fingerprint, Id, Language, Point, Text, Timestamp, Unit } from "./common.ts";
-import { Finding, FindingStatus, MapPin, Preview, Rule } from "./finding.ts";
+import { Finding, FindingStatus, MapPin, Preview, Recheck, Rule } from "./finding.ts";
 import { UPLOAD_REFUSALS } from "./upload.ts";
 import { Box, Concept, Device, Gap, GAP_KINDS, Jurisdiction, LOOP_CONCEPTS, Part, PARTS, Walk, WalkState } from "./walk.ts";
 
@@ -21,7 +21,7 @@ export const StartWalkRequest = z.strictObject({
 
 export const StartWalkResponse = z.strictObject({ walkId: Id, state: WalkState });
 
-export const WalkFailure = z.strictObject({ code: Text(60), message: Text(300) });
+export const WalkFailure = z.strictObject({ code: Text(60), message: Text(300), part: Part.optional() });
 
 export const WalkStatusResponse = z.strictObject({ walkId: Id, state: WalkState, failure: WalkFailure.nullable() });
 
@@ -126,6 +126,18 @@ export const RecheckLinkResponse = z.strictObject({
   headers: z.strictObject({ "content-length": z.string().regex(/^[1-9]\d{0,11}$/), "content-type": z.string().min(1) }),
   expiresAt: Timestamp,
 });
+
+export const recheckPhotoKey = (walkId: string, findingId: string, recheckId: string): string => `rechecks/${walkId}/${findingId}/${recheckId}`;
+
+export const recheckAnswerKey = (walkId: string, findingId: string, recheckId: string): string => `${recheckPhotoKey(walkId, findingId, recheckId)}.json`;
+
+export const RecheckRequest = z.strictObject({ findingId: Id });
+
+export const RecheckResponse = z.strictObject({ recheck: Recheck });
+
+export const RECHECK_ROUTE_CODES = ["invalid_request", "not_found", "method_not_allowed", "not_done", "no_photo", "too_large", "too_many_rechecks", "server_error"] as const;
+
+export const RecheckErrorBody = z.strictObject({ error: z.strictObject({ code: z.enum(RECHECK_ROUTE_CODES), message: Text(300) }) });
 
 export const ReportRequest = z.strictObject({ walkId: Id, language: Language });
 
@@ -286,6 +298,22 @@ export const FaultReportRequest = z.strictObject({ walkId: Id, code: ErrorCode, 
 
 export const FaultReportResponse = z.strictObject({ received: z.literal(true) });
 
+export const DELETE_EVERYTHING_PATH = "/api/everything";
+
+export const DeleteEverythingRequest = z.strictObject({ visitorId: Fingerprint });
+
+export const DeleteEverythingResponse = z.strictObject({ walks: z.int().nonnegative(), left: z.int().nonnegative() });
+
+export const DELETE_EVERYTHING_CODES = ["invalid_request", "body_too_large", "not_found", "method_not_allowed", "conflict", "server_error"] as const satisfies readonly ErrorCode[];
+
+export const cacheMarksPrefix = (walkId: string): string => `cache/by-walk/${walkId}/`;
+
+export const cacheMarkKey = (walkId: string, fingerprint: string): string => `${cacheMarksPrefix(walkId)}${fingerprint}`;
+
+export type DeleteEverythingRequest = z.infer<typeof DeleteEverythingRequest>;
+export type DeleteEverythingResponse = z.infer<typeof DeleteEverythingResponse>;
+export type DeleteEverythingCode = (typeof DELETE_EVERYTHING_CODES)[number];
+
 export type WalkPart = z.infer<typeof WalkPart>;
 export type StartWalkRequest = z.infer<typeof StartWalkRequest>;
 export type StartWalkResponse = z.infer<typeof StartWalkResponse>;
@@ -301,6 +329,10 @@ export type PreviewRequest = z.infer<typeof PreviewRequest>;
 export type PreviewResponse = z.infer<typeof PreviewResponse>;
 export type RecheckLinkRequest = z.infer<typeof RecheckLinkRequest>;
 export type RecheckLinkResponse = z.infer<typeof RecheckLinkResponse>;
+export type RecheckRequest = z.infer<typeof RecheckRequest>;
+export type RecheckResponse = z.infer<typeof RecheckResponse>;
+export type RecheckRouteCode = (typeof RECHECK_ROUTE_CODES)[number];
+export type RecheckErrorBody = z.infer<typeof RecheckErrorBody>;
 export type ReportRequest = z.infer<typeof ReportRequest>;
 export type ReportResponse = z.infer<typeof ReportResponse>;
 export type ShareRequest = z.infer<typeof ShareRequest>;

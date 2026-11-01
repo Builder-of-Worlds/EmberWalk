@@ -64,7 +64,7 @@ describe("finding marks", () => {
   });
 });
 
-const RECHECK = { photo: "recheck/a.jpg", atMs: Date.UTC(2026, 10, 2, 12) };
+const RECHECK = { photo: "recheck/a.jpg", atMs: Date.UTC(2026, 10, 2, 12), result: "cleared" as const };
 
 const withStatus = (status: Record<string, unknown>) => {
   const storage = memoryStorage();
@@ -94,9 +94,46 @@ describe("finding status", () => {
     }
     expect(isRechecked(withStatus({ a: { kind: "done", recheck: RECHECK } }).statusOf("walk-1", "a"))).toBe(true);
     expect(isRechecked(withStatus({ a: { kind: "fix_planned", recheck: RECHECK } }).statusOf("walk-1", "a"))).toBe(false);
-    for (const recheck of [null, {}, { photo: "", atMs: 1 }, { photo: "p.jpg" }, { photo: "p.jpg", atMs: "1" }, { photo: 3, atMs: 1 }]) {
+    for (const recheck of [
+      null,
+      {},
+      { photo: "", atMs: 1, result: "cleared" },
+      { photo: "p.jpg", result: "cleared" },
+      { photo: "p.jpg", atMs: "1", result: "cleared" },
+      { photo: 3, atMs: 1, result: "cleared" },
+      { photo: "p.jpg", atMs: 1 },
+      { photo: "p.jpg", atMs: 1, result: "gone" },
+    ]) {
       expect(withStatus({ a: { kind: "done", recheck } }).statusOf("walk-1", "a"), JSON.stringify(recheck)).toEqual({ kind: "done", note: "", recheck: null });
     }
+  });
+
+  it("reads Rechecked only after a cleared answer; still there and unsure keep the recheck but stay short of it", () => {
+    const marks = storageFindingMarks(() => memoryStorage());
+    marks.setStatus("walk-1", "a", "done");
+    for (const result of ["still_there", "unsure"] as const) {
+      marks.setRecheck("walk-1", "a", { ...RECHECK, result });
+      expect(marks.statusOf("walk-1", "a"), result).toEqual({ kind: "done", note: "", recheck: { ...RECHECK, result } });
+      expect(isRechecked(marks.statusOf("walk-1", "a")), result).toBe(false);
+    }
+    marks.setRecheck("walk-1", "a", RECHECK);
+    expect(isRechecked(marks.statusOf("walk-1", "a"))).toBe(true);
+    marks.setRecheck("walk-1", "a", { ...RECHECK, result: "unsure" });
+    expect(isRechecked(marks.statusOf("walk-1", "a"))).toBe(false);
+    expect(isRechecked(withStatus({ a: { kind: "done", recheck: { ...RECHECK, result: "still_there" } } }).statusOf("walk-1", "a"))).toBe(false);
+  });
+
+  it("keeps a recheck answer only on a Done item, and on the same storage after", () => {
+    const storage = memoryStorage();
+    const marks = storageFindingMarks(() => storage);
+    marks.setRecheck("walk-1", "a", RECHECK);
+    expect(marks.statusOf("walk-1", "a")).toEqual(NEEDS_FIXING);
+    marks.setStatus("walk-1", "b", "fix_planned", "crew");
+    marks.setRecheck("walk-1", "b", RECHECK);
+    expect(marks.statusOf("walk-1", "b").recheck).toBeNull();
+    marks.setStatus("walk-1", "c", "done", "", "2026-11-01");
+    marks.setRecheck("walk-1", "c", RECHECK);
+    expect(storageFindingMarks(() => storage).statusOf("walk-1", "c")).toEqual({ kind: "done", note: "", recheck: RECHECK, doneOn: "2026-11-01" });
   });
 
   it("keeps a recheck when Done is chosen again, and drops it on any other status", () => {

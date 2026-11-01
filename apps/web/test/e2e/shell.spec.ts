@@ -1,10 +1,28 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { copy } from "../../src/copy.ts";
+import { DRAFT_WORDS_KEY } from "../../src/draft-words.ts";
 import { ROUTES } from "../../src/router.ts";
 import { offCentre, sideways } from "./geometry.ts";
 
 const UNROUTED = ["#/homes", "#/map", "#/map/x"];
+
+const NEEDS_IDS = ["recheck", "report"];
+
+const reach = async (page: Page, route: string, hash: string) => {
+  if (route === "about") {
+    await page.goto("/");
+    await page.evaluate((key) => window.localStorage.setItem(key, "on"), DRAFT_WORDS_KEY);
+  }
+  await page.goto(`/${hash}`);
+  if (NEEDS_IDS.includes(route)) {
+    await expect(page.locator(".app")).toBeAttached();
+    await expect(page.locator("main")).toHaveCount(0);
+  } else {
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  }
+  if (route === "about") await page.evaluate((key) => window.localStorage.removeItem(key), DRAFT_WORDS_KEY);
+};
 
 test("loads with no signal after the first visit", async ({ page, context }) => {
   await page.goto("/");
@@ -26,8 +44,7 @@ test("loads with no signal after the first visit", async ({ page, context }) => 
 for (const [route, hash] of Object.entries(ROUTES)) {
   test(`no sideways scroll on the ${route} screen at 390 px`, async ({ page }) => {
     await page.route("**/api/history", (answer) => answer.fulfill({ json: { walks: [] } }));
-    await page.goto(`/${hash}`);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await reach(page, route, hash);
     expect(page.viewportSize()?.width).toBe(390);
     expect(await page.evaluate(sideways)).toBe(0);
   });
@@ -42,10 +59,7 @@ const sample = async (page: Page) => {
 const screens: [string, (page: Page) => Promise<void>][] = [
   ...Object.entries(ROUTES).map(([route, hash]): [string, (page: Page) => Promise<void>] => [
     route,
-    async (page) => {
-      await page.goto(`/${hash}`);
-      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    },
+    (page) => reach(page, route, hash),
   ]),
   ["sample results", sample],
   [
@@ -90,6 +104,7 @@ test.describe("at 1440 by 900", () => {
       expect(page.viewportSize()).toEqual({ width: 1440, height: 900 });
       const scroll = await page.evaluate(sideways);
       if (scroll !== 0) found.push(`${screen}: ${scroll} px sideways scroll`);
+      if (NEEDS_IDS.includes(screen)) continue;
       for (const line of await page.evaluate(offCentre)) found.push(`${screen}: ${line}`);
     }
     expect(found).toEqual([]);

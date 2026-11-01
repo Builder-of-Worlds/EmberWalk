@@ -7,7 +7,7 @@ import { LIVE_WALK, liveBody, liveBodyAt, liveFindingId, pin } from "../unit/res
 
 const sideways = () => document.documentElement.scrollWidth - document.documentElement.clientWidth;
 
-const STILL = readFile(new URL("../../src/samples/wood-pile-1.jpg", import.meta.url));
+const STILL = readFile(new URL("../../../../fixtures/synthetic/hero-look/synthetic-hero-west.jpg", import.meta.url));
 
 test("the fix first list runs out to 30 feet nearest first at 390 px, every row reachable and saying how far it is", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
@@ -121,7 +121,7 @@ test("the sample house opens from Home in both views at 390 px, and the view is 
   await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   const photo = page.locator(".proof img");
   await expect(photo).toBeVisible();
-  expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
+  expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1600);
   expect(page.viewportSize()?.width).toBe(390);
   expect(await page.evaluate(sideways)).toBe(0);
   await expect(page.locator(".citations")).toHaveCount(0);
@@ -145,7 +145,7 @@ test("one finding opens from the sample house at 390 px, and This Isn't Right th
   await expect(page.locator("main.one-finding")).toBeVisible();
   await expect(page.locator("p.sentence")).toHaveText(sentence ?? "");
   await expect(page.getByText(/synthetic/i)).toHaveCount(0);
-  expect(await page.locator(".proof img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(960);
+  expect(await page.locator(".proof img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1600);
   expect(page.viewportSize()?.width).toBe(390);
   expect(await page.evaluate(sideways)).toBe(0);
 

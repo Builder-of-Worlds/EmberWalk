@@ -1,4 +1,4 @@
-import type { ErrorCode, WalkState, WalkStatusResponse } from "@emberwalk/shared";
+import type { ErrorCode, Part, WalkState, WalkStatusResponse } from "@emberwalk/shared";
 import type { Answer, Failure } from "./api.ts";
 
 export const POLL_MS = 2_000;
@@ -16,7 +16,7 @@ export type Timer = { later(run: () => void, ms: number): () => void };
 export type Watched =
   | { kind: "checking"; state: WalkState }
   | { kind: "done" }
-  | { kind: "failed"; code: string | null; message: string | null }
+  | { kind: "failed"; code: string | null; message: string | null; part: Part | null }
   | { kind: "waiting" }
   | { kind: "held"; code: ErrorCode }
   | { kind: "lost" };
@@ -61,7 +61,7 @@ export const watchWalk = (
     }
     const { state, failure } = answer.value;
     if (state.name === "done") return onState({ kind: "done" });
-    if (state.name === "failed") return onState({ kind: "failed", code: failure?.code ?? null, message: failure?.message ?? null });
+    if (state.name === "failed") return onState({ kind: "failed", code: failure?.code ?? null, message: failure?.message ?? null, part: failure?.part ?? null });
     onState({ kind: "checking", state });
     later();
   };

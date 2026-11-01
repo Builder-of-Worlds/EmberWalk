@@ -8,6 +8,7 @@ export type Prefs = {
   jurisdiction(): Jurisdiction | null;
   setJurisdiction(code: Jurisdiction): void;
   visitorId(): string;
+  renewVisitorId(): string;
   view(): ViewPreference;
   setView(view: ViewPreference): void;
   agreedToSend(): boolean;
@@ -64,6 +65,11 @@ export const storagePrefs = (storage: () => Storage): Prefs => {
       if (visitor !== null) return visitor;
       const stored = read(VISITOR_KEY);
       visitor = stored !== null && VISITOR_ID.test(stored) ? stored : newVisitorId();
+      write(VISITOR_KEY, visitor);
+      return visitor;
+    },
+    renewVisitorId: () => {
+      visitor = newVisitorId();
       write(VISITOR_KEY, visitor);
       return visitor;
     },
