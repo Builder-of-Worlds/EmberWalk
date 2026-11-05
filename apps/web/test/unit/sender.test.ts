@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { uploadApi, walkApi } from "../../src/api.ts";
 import type { Fetch } from "../../src/api.ts";
 import { once } from "../../src/deps.ts";
+import { localDay } from "../../src/mark-sync.ts";
 import { FALLBACK_RULES, walkRequest, walkSender } from "../../src/sender.ts";
 import { openTakeStore } from "../../src/take-store.ts";
+import { sendPart } from "../../src/uploader.ts";
 import type { Pan, Take, TagsSent, TakeSetup } from "../../src/take-store.ts";
 import { IDBFactory } from "fake-indexeddb";
 import sideWalk from "../../../../fixtures/synthetic/side-walk/walk.json";
@@ -18,7 +20,7 @@ const WALK = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
 const PARENT = "6f0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a02";
 const VISITOR = "b".repeat(64);
 const DEVICE = { camera: "Back Camera", width: 1280, height: 720 };
-const WALK_FIELDS = ["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId"];
+const WALK_FIELDS = ["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId", "walkedOn"];
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
@@ -116,6 +118,7 @@ describe("walkRequest", () => {
       synthetic: false,
       visitorId: VISITOR,
       startKey: "t",
+      walkedOn: localDay(bare().createdAt),
     });
   });
 
@@ -184,7 +187,7 @@ describe("walkSender", () => {
       visitorId: () => VISITOR,
     });
 
-    expect(await cutOff(take, () => undefined)).toEqual({ code: "offline" });
+    expect(await cutOff(take, () => undefined)).toEqual({ code: "storage_blocked" });
     expect((await store.get(take.id)).upload?.walkId).toBe(WALK);
     expect(await send(take, () => undefined)).toEqual({ walkId: WALK });
     expect(server.walksStarted()).toBe(1);
@@ -232,6 +235,18 @@ describe("walkSender", () => {
     });
     expect(await send(take, () => undefined)).toEqual({ code: "offline" });
     expect((await store.get(take.id)).upload).toBeNull();
+  });
+
+  it("names a part the storage never answered apart from the API's own silence, and a stopped send as offline", async () => {
+    const api = { part: async () => ({ value: { url: "https://bucket.r2.test/p", method: "PUT" as const, headers: {}, expiresAt: "2026-11-03T20:00:00.000Z" } }) };
+    const blocked = { api: api as never, put: () => Promise.reject(new TypeError("Load failed")) };
+    expect(await sendPart(blocked, "u", new Blob(["x"]), 1)).toEqual({ code: "storage_blocked" });
+    const halt = new AbortController();
+    halt.abort();
+    expect(await sendPart(blocked, "u", new Blob(["x"]), 1, halt.signal)).toEqual({ code: "offline" });
+    const stoppedMidway = new AbortController();
+    const cut = { api: api as never, put: () => { stoppedMidway.abort(); return Promise.reject(new DOMException("stopped", "AbortError")); } };
+    expect(await sendPart(cut, "u", new Blob(["x"]), 1, stoppedMidway.signal)).toEqual({ code: "offline" });
   });
 });
 
@@ -503,7 +518,7 @@ describe("the walk's tag", () => {
     const server = fakeServer({ tags: answer as () => Response });
     const { store, take } = await setup(server);
 
-    expect(await cutOffSender(server, store)(take, () => undefined)).toEqual({ code: "offline" });
+    expect(await cutOffSender(server, store)(take, () => undefined)).toEqual({ code: "storage_blocked" });
 
     expect(server.seen.map((r) => new URL(r.url).pathname)).toContain("/api/uploads/part");
     expect((await store.get(take.id)).tags).toEqual({ ids: [expect.any(String)], sent, refusal });
@@ -515,11 +530,11 @@ describe("the walk's tag", () => {
     const { send, store, take } = await setup(server, {}, FOUR_SIDES, 45_000);
     const cutOff = cutOffSender(server, store);
 
-    expect(await cutOff(take, () => undefined)).toEqual({ code: "offline" });
+    expect(await cutOff(take, () => undefined)).toEqual({ code: "storage_blocked" });
     const first = (await store.get(take.id)).tags as TagsSent;
     expect(first.ids).toHaveLength(4);
     failing = false;
-    expect(await cutOff(take, () => undefined)).toEqual({ code: "offline" });
+    expect(await cutOff(take, () => undefined)).toEqual({ code: "storage_blocked" });
     expect((await store.get(take.id)).tags).toEqual({ ids: first.ids, sent: true, refusal: null });
     expect(await send(take, () => undefined)).toEqual({ walkId: WALK });
 

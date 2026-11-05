@@ -1,12 +1,12 @@
 # Terms of Service
 Description: The terms for using EmberWalk, a wildfire home check sold by {{legalName}}.
-Last updated: 2026-10-31
+Last updated: 2026-11-01
 
 These terms are between you and {{legalName}}, the seller of {{productName}}.
 
 ## What EmberWalk is
 
-EmberWalk is a phone web app. You film one slow loop around your home. EmberWalk checks what it sees against California's defensible space rules, zone by zone, and lists every problem with the rule behind it.
+EmberWalk is a phone web app. You film one slow loop around your home. EmberWalk checks what it sees against California's defensible space rules, zone by zone, and lists the problems it finds, with the rule behind each one.
 
 ## What EmberWalk is not
 
@@ -38,4 +38,4 @@ EmberWalk is a checking aid, not an inspection. Our total responsibility to you 
 
 ## Changes to these terms
 
-We email you at least 30 days before a change to these terms that matters. Each policy page on this site shows the date it was last updated at the bottom. Questions about these terms go to the address on the [Contact](/contact) page.
+We post a change to these terms that matters on this page at least 30 days before it takes effect. Each policy page on this site shows the date it was last updated at the bottom. Questions about these terms go to the address on the [Contact](/contact) page.

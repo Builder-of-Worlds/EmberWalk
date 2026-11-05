@@ -19,13 +19,13 @@ PICKED=""
 for arg in "$@"; do
   case "$arg" in
     --remote-migrations) MIGRATE=1 ;;
-    pipeline | getfixed | api | static) PICKED="$PICKED $arg " ;;
-    *) refuse "unknown argument $arg; name any of pipeline, getfixed, api, static, and --remote-migrations" ;;
+    pipeline | getfixed | api | judges | static) PICKED="$PICKED $arg " ;;
+    *) refuse "unknown argument $arg; name any of pipeline, getfixed, api, judges, static, and --remote-migrations" ;;
   esac
 done
 WORKERS=""
-for name in pipeline getfixed api static; do
-  case "${PICKED:- pipeline getfixed api static }" in
+for name in pipeline getfixed api judges static; do
+  case "${PICKED:- pipeline getfixed api judges static }" in
     *" $name "*) WORKERS="$WORKERS $name" ;;
   esac
 done
@@ -35,7 +35,14 @@ secrets_of() {
   case "$1" in
     pipeline) echo "META_API_KEY R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY" ;;
     getfixed) echo "META_API_KEY RESEND_API_KEY MAIL_FOOTER OPTOUT_SECRET" ;;
-    api) echo "R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY" ;;
+    api)
+      if [ "$PAYMENTS" = on ]; then
+        echo "R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY RESEND_API_KEY TURNSTILE_SECRET POSTAL_FOOTER STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_PRICE_INDIVIDUAL STRIPE_PRICE_LANDLORD STRIPE_PRICE_EXTRA_WALK"
+      else
+        echo "R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY RESEND_API_KEY TURNSTILE_SECRET POSTAL_FOOTER"
+      fi
+      ;;
+    judges) echo "" ;;
     static) echo "TURNSTILE_SECRET RESEND_API_KEY UNSUBSCRIBE_SECRET POSTAL_FOOTER POSTAL_ADDRESS" ;;
   esac
 }
@@ -60,6 +67,7 @@ HEAD=$(git rev-parse HEAD)
 [ "$(cat .deploy-checked)" = "$HEAD" ] || refuse "HEAD $HEAD is not the commit the deploy gate passed; run sh tools/gate.sh --deploy again"
 [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || refuse "CLOUDFLARE_API_TOKEN is empty; no wrangler call is made without it"
 PROBLEMS=$(node "$CHECK" configs "$ROOT" $WORKERS) || refuse "${PROBLEMS:-the config check could not run}"
+PAYMENTS=$(node "$CHECK" payments "$ROOT") || refuse "whether payments are on could not be read from workers/api/wrangler.jsonc"
 case " $WORKERS " in
   *" pipeline "*) docker info > /dev/null 2>&1 || refuse "Docker is not running; the pipeline's media Container image is built locally at deploy, so start Docker first" ;;
 esac
@@ -76,6 +84,10 @@ WHOAMI=$(wrangler_in api whoami --json) || refuse "wrangler whoami failed with t
 EXPECTED=$(echo "$WHOAMI" | node "$CHECK" account) || refuse "the token does not reach account $EXPECTED"
 for name in $WORKERS; do
   NAMES=$(secrets_of "$name")
+  if [ -z "$NAMES" ]; then
+    echo "emberwalk-$name needs no secrets"
+    continue
+  fi
   echo "emberwalk-$name needs the secrets $NAMES"
   LISTED=$(wrangler_in "$name" secret list --format json) || refuse "the secrets of emberwalk-$name could not be listed; set them first, each with: cd workers/$name && npx wrangler secret put NAME"
   MISSING=$(echo "$LISTED" | node "$CHECK" secrets $NAMES) || refuse "emberwalk-$name is missing the secrets $MISSING; set each with: cd workers/$name && npx wrangler secret put NAME"
@@ -102,12 +114,15 @@ deploy() {
   echo "emberwalk-$target deployed"
 }
 
+BUILT=""
 build_app() {
+  [ -z "$BUILT" ] || return 0
   echo "Building the phone app into apps/web/dist, then the judge copy into apps/web/dist/judge last"
-  npm run build -w apps/web || stopped "the phone app did not build; emberwalk-api was not deployed"
-  npm run build:judge -w apps/web || stopped "the judge copy did not build; emberwalk-api was not deployed"
-  [ -f apps/web/dist/index.html ] || stopped "apps/web/dist/index.html is missing after the builds; emberwalk-api was not deployed"
-  [ -f apps/web/dist/judge/index.html ] || stopped "apps/web/dist/judge/index.html is missing after the builds; emberwalk-api was not deployed"
+  npm run build -w apps/web || stopped "the phone app did not build; emberwalk-$1 was not deployed"
+  npm run build:judge -w apps/web || stopped "the judge copy did not build; emberwalk-$1 was not deployed"
+  [ -f apps/web/dist/index.html ] || stopped "apps/web/dist/index.html is missing after the builds; emberwalk-$1 was not deployed"
+  [ -f apps/web/dist/judge/index.html ] || stopped "apps/web/dist/judge/index.html is missing after the builds; emberwalk-$1 was not deployed"
+  BUILT=1
 }
 
 for name in $WORKERS; do
@@ -115,10 +130,20 @@ for name in $WORKERS; do
     pipeline) deploy pipeline "the walk pipeline Workflow, its hourly cron and the media Container built from containers/media/Dockerfile" ;;
     getfixed) deploy getfixed "Get It Fixed, the crew search, the drafts, the email send and the follow-up timer, called by the API over a service binding with no public address" ;;
     api)
-      build_app
-      deploy api "the API and the phone app from apps/web/dist on go.emberwalk.app, with the judge copy at go.emberwalk.app/judge/"
+      build_app api
+      command grep -qx "judge/" apps/web/dist/.assetsignore 2> /dev/null || stopped "apps/web/dist/.assetsignore does not leave the judge copy out; emberwalk-api was not deployed"
+      deploy api "the API and the phone app from apps/web/dist on go.emberwalk.app, with go.emberwalk.app/judge/ sent to judges.emberwalk.app"
       ;;
-    static) deploy static "the landing page and signup on emberwalk.app from workers/static/public; no judge copy at emberwalk.app/judge/ until its address there is decided" ;;
+    judges)
+      build_app judges
+      [ -f apps/web/dist/judge/index.html ] || stopped "apps/web/dist/judge/index.html is missing; emberwalk-judges was not deployed"
+      node "$(dirname "$CHECK")/judge-media.mjs" check || stopped "the judge media are not the approved media; emberwalk-judges was not deployed"
+      deploy judges "the judge copy from apps/web/dist/judge on judges.emberwalk.app, open without a sign-in, the sample house only, with no API, no database and no secrets"
+      ;;
+    static)
+      mkdir -p workers/static/public/vendor
+      cp node_modules/hls.js/dist/hls.light.min.js workers/static/public/vendor/hls.light.min.js 2> /dev/null || stopped "hls.js is not installed; emberwalk-static was not deployed"
+      deploy static "the landing page and signup on emberwalk.app from workers/static/public; no judge copy at emberwalk.app/judge/ until its address there is decided" ;;
   esac
 done
 echo "DEPLOY done: $WORKERS"

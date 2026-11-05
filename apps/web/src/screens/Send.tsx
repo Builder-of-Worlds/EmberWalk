@@ -1,13 +1,14 @@
 import { isCorner, type Part } from "@emberwalk/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isWalkGate } from "../api.ts";
 import type { Failure } from "../api.ts";
 import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
-import { draftWordsShown } from "../draft-words.ts";
+import { billingWords } from "../draft-words.ts";
 import { progressOf } from "../progress.ts";
 import type { Shown } from "../progress.ts";
 import type { Clock } from "../recorder.ts";
-import { recordPartFor, resultsFor, ROUTES, sendFor } from "../router.ts";
+import { recordPartFor, resultsFor, ROUTES, sendFor, SIGN_IN_PATH } from "../router.ts";
 import type { Sender } from "../sender.ts";
 import type { Take, TakeStore } from "../take-store.ts";
 import type { Progress, SendResult } from "../uploader.ts";
@@ -48,12 +49,29 @@ const FAILS_AGAIN: ReadonlySet<string> = new Set([
   "not_mp4",
   "too_long",
   "no_frames",
-  "real_footage_not_allowed",
   "media_invalid_media",
   "media_no_video",
   "media_media_too_long",
   "media_input_too_large",
 ]);
+
+const NO_ANSWER: ReadonlySet<Failure> = new Set(["offline", "storage_blocked"]);
+
+const refusedLine = (code: Failure): string => {
+  if (NO_ANSWER.has(code) && !navigator.onLine) return copy.send.refused.offline;
+  return code === "offline" ? copy.send.unreachable : copy.send.refused[code];
+};
+
+const waitingLine = (signIn: boolean): string => {
+  if (signIn) return copy.send.checkSignIn;
+  return navigator.onLine ? copy.send.checkUnreachable : copy.send.refused.offline;
+};
+
+const SignIn = () => (
+  <a className="button primary" href={`${SIGN_IN_PATH}${window.location.hash}`}>
+    {copy.send.signIn}
+  </a>
+);
 
 const resendable = (watched: Watched) => watched.kind !== "failed" || watched.code === null || !FAILS_AGAIN.has(watched.code);
 
@@ -61,7 +79,6 @@ export const OPENS_IN_MS = 1_500;
 
 const PartAsk = ({ opens, part }: { opens: string; part: Part }) => {
   const corner = isCorner(part);
-  if (corner && !draftWordsShown()) return null;
   return (
     <>
       <p className="hint">{corner ? draft.corners.hint(part) : copy.results.hint.walk_side(part)}</p>
@@ -151,7 +168,8 @@ const Checking = ({ walkId, opens, status, clock, forget, keep, resend }: Checki
         <p role="status">{copy.send.sent}</p>
         <p>{copy.send.refused.walk_not_done}</p>
         <Trail shown={shown} still={watched.kind === "waiting"} />
-        {watched.kind === "waiting" ? <p role="alert">{copy.send.refused.offline}</p> : null}
+        {watched.kind === "waiting" ? <p role="alert">{waitingLine(watched.signIn === true)}</p> : null}
+        {watched.kind === "waiting" && watched.signIn === true ? <SignIn /> : null}
       </>
     );
   const said = watched.kind === "failed" ? watched.message : partWalk || kept !== false ? null : copy.send.lost;
@@ -232,7 +250,7 @@ const SendWalk = ({ take, send, clock, status }: { take: Take; send: Sender; clo
   }, [take, send, sentWalks]);
 
   const minutes = savedMinutes(take);
-  const waiting = sending.kind === "refused" && sending.code === "offline";
+  const waiting = sending.kind === "refused" && NO_ANSWER.has(sending.code);
   useEffect(() => {
     if (!waiting) return;
     const resume = () => void start();
@@ -244,9 +262,10 @@ const SendWalk = ({ take, send, clock, status }: { take: Take; send: Sender; clo
     };
   }, [waiting, start, clock]);
 
+  const signInFirst = sending.kind === "refused" && sending.code === "sign_in_needed";
   const sendButton = (
     <button
-      className="button primary"
+      className={signInFirst ? "button" : "button primary"}
       type="button"
       onClick={() => {
         prefs.markAgreedToSend();
@@ -292,10 +311,17 @@ const SendWalk = ({ take, send, clock, status }: { take: Take; send: Sender; clo
   return (
     <>
       <h1>{copy.send.title}</h1>
-      <p role="alert">{copy.send.refused[sending.code]}</p>
+      <p role="alert">{refusedLine(sending.code)}</p>
       {waiting && minutes !== null ? <p>{copy.send.savedMinutes(minutes)}</p> : null}
       <Saved take={take} />
-      {sendButton}
+      {signInFirst ? <SignIn /> : null}
+      {isWalkGate(sending.code) ? (
+        <a className="button primary" href={ROUTES.plan}>
+          {sending.code === "plan_needed" ? billingWords.choosePlan : billingWords.seePlan}
+        </a>
+      ) : (
+        sendButton
+      )}
       <NotNow onPress={keepOnPhone} />
     </>
   );
@@ -328,7 +354,7 @@ export const CheckingWalk = ({ walkId = null }: { walkId?: string | null }) => {
     if (sent !== null) window.location.hash = sendFor(sent.takeId);
   }, [sent]);
   return (
-    <main className="screen">
+    <main className="screen checking">
       {walkId === null ? (
         <NoWalk />
       ) : (

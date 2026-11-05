@@ -74,4 +74,24 @@ describe("presign", () => {
     expect(url).toContain("/b/originals/a%20b/it%27s%20%281%29.mp4?");
     expect(url).toContain("uploadId=a%2Bb%2Fc%3D");
   });
+
+  it("writes https unless the local rehearsal asks for http", async () => {
+    expect(new URL(await presign(awsExample)).protocol).toBe("https:");
+    expect(new URL(await presign({ ...awsExample, devHttp: false })).protocol).toBe("https:");
+  });
+
+  it("writes http for a local rehearsal host only, with the same signature as https", async () => {
+    for (const host of ["127.0.0.1:8799", "localhost:8799", "host.docker.internal:8799"]) {
+      const http = await presign({ ...awsExample, host, devHttp: true });
+      const https = await presign({ ...awsExample, host });
+      expect(http.startsWith(`http://${host}/test.txt?`)).toBe(true);
+      expect(signatureOf(http)).toBe(signatureOf(https));
+    }
+  });
+
+  it("refuses http for any other host, so a deployed Worker can never sign one", async () => {
+    for (const host of ["examplebucket.s3.amazonaws.com", "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com", "127.0.0.1.example.com"]) {
+      await expect(presign({ ...awsExample, host, devHttp: true })).rejects.toThrow(/local rehearsal host/);
+    }
+  });
 });

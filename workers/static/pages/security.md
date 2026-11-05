@@ -1,6 +1,6 @@
 # Security
 Description: Where EmberWalk runs, how the site and your walks are protected, what Delete Everything erases and what it keeps.
-Last updated: 2026-10-31
+Last updated: 2026-11-02
 
 ## Where EmberWalk runs
 
@@ -8,21 +8,21 @@ Cloudflare hosts EmberWalk: the site, the app's servers, the database, the file 
 
 ## The website
 
-Every page of emberwalk.app tells your browser to use HTTPS only. It loads scripts only from this site and from Cloudflare Turnstile, which checks that a person is using the sign up form, and it cannot be shown inside another site's frame. The site sets no cookies of its own and loads no analytics.
+Every page of emberwalk.app tells your browser to use HTTPS only. It loads scripts only from this site and from Cloudflare Turnstile, which checks that a person is using the sign up form, and it cannot be shown inside another site's frame. The site sets no cookies of its own and loads no analytics. The app at go.emberwalk.app sets one cookie, and only when you sign in.
 
 ## Your walks
 
-There is no account, name or password. Your walks are tied to a random code kept on your phone.
+You do not need an account to walk a house, and EmberWalk never asks for your name or a password. Your walks are tied to a random code kept on your phone. If you choose to sign in, we keep your email address.
 
-- Video of a walk is deleted when the walk finishes. A sweep every hour also deletes any original video still there after 24 hours.
+- Video of a walk is deleted when the walk finishes. A sweep every hour also deletes any original video still there after 24 hours, so an original is gone within about 25 hours at most.
 - Sound is cut from the video, sent for transcription and deleted straight after.
 - The proof pictures EmberWalk keeps are blurred where it finds people, faces, license plates, house numbers, street signs and mailboxes. Photos you take to recheck a fix are not blurred.
 - Pictures go to Meta's models to be checked before the blur is applied. The [Privacy policy](/privacy) says what each company receives.
 - Your phone's position is read once and only a rule area such as ca is kept. Your coordinates are never sent.
 
-## Meta and the paid setting
+## Meta
 
-EmberWalk's code refuses to send real walk content to Meta unless billing for Meta's service is set to paid.
+EmberWalk sends your walk to Meta only on a paid Meta account.
 
 ## Payments
 

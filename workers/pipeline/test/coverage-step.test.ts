@@ -404,14 +404,14 @@ describe("the coverage step on walks it cannot fully check", () => {
     expect(await lookKeys(walkId)).toEqual([]);
   });
 
-  it("records the look as not checked and starts no request on real footage while free credits are in use", async () => {
+  it("asks for the look on real footage while free credits are in use", async () => {
     stageSamePlace({ same: true, confidence: 0.9 });
     const { walkId, clips } = await seeded({ synthetic: false });
 
     await checkCoverage(deps(), walkId, clips);
 
-    expect((await recordOf(walkId)).look).toEqual({ notChecked: expect.stringContaining("real_content_on_free_credits") });
-    expect(askedForLook()).toBe(0);
+    expect((await recordOf(walkId)).look).toMatchObject({ same: true, confidence: 0.9 });
+    expect(askedForLook()).toBe(1);
     expect(await lookKeys(walkId)).toEqual([]);
   });
 

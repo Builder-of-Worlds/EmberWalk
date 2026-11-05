@@ -2,22 +2,28 @@ import { z } from "zod";
 import { AgentJob, MessageStatus, Phone, Trade, Zip } from "./agent.ts";
 import { Fingerprint, Id, Language, Point, Text, Timestamp, Unit } from "./common.ts";
 import { Finding, FindingStatus, MapPin, Preview, Recheck, Rule } from "./finding.ts";
+import { InviteCode } from "./portfolio.ts";
 import { UPLOAD_REFUSALS } from "./upload.ts";
-import { Box, Concept, Device, Gap, GAP_KINDS, Jurisdiction, LOOP_CONCEPTS, Part, PARTS, Walk, WalkState } from "./walk.ts";
+import { Box, Concept, Device, Gap, GAP_KINDS, Jurisdiction, LOOP_CONCEPTS, Part, PARTS, Side, SIDES, Walk, WalkState } from "./walk.ts";
 
 export const VISITOR_HEADER = "x-emberwalk-visitor";
 
 export const WalkPart = z.strictObject({ walkId: Id, side: Part });
 
-export const StartWalkRequest = z.strictObject({
-  partOf: WalkPart.nullable().default(null),
-  language: Language,
-  jurisdiction: Jurisdiction,
-  device: Device,
-  synthetic: z.boolean(),
-  visitorId: Fingerprint,
-  startKey: Id.optional(),
-});
+export const StartWalkRequest = z
+  .strictObject({
+    partOf: WalkPart.nullable().default(null),
+    language: Language,
+    jurisdiction: Jurisdiction,
+    device: Device,
+    synthetic: z.boolean(),
+    visitorId: Fingerprint,
+    startKey: Id.optional(),
+    walkedOn: z.iso.date().optional().catch(undefined),
+    inviteCode: InviteCode.optional(),
+    propertyId: Id.optional(),
+  })
+  .refine((r) => r.inviteCode === undefined || r.propertyId === undefined, { message: "a walk names an invite or a property, not both", path: ["propertyId"] });
 
 export const StartWalkResponse = z.strictObject({ walkId: Id, state: WalkState });
 
@@ -52,6 +58,8 @@ export const ResultFinding = z.strictObject({
   distanceFeet: Finding.shape.distanceFeet,
   label: Finding.shape.label,
   instruction: Finding.shape.instruction,
+  instructions: z.strictObject({ en: Finding.shape.instruction, es: Finding.shape.instruction }).optional(),
+  advice: z.literal(true).optional(),
   sources: z.array(ResultSource).min(1).max(20),
   confidence: Unit,
   proof: z.strictObject({
@@ -63,6 +71,7 @@ export const ResultFinding = z.strictObject({
   voiceNote: Finding.shape.voiceNote,
   preview: z.string().regex(new RegExp(`^/api/walks/${UUID}/previews/${UUID}$`)).nullable().optional(),
   secondCheck: SecondCheck.nullable().optional(),
+  sides: z.array(Side).max(SIDES.length).optional(),
 });
 
 export const WalkResultsResponse = z
@@ -76,9 +85,10 @@ export const WalkResultsResponse = z
     parts: z.array(WalkPart).max(PARTS.length),
     findings: z.array(ResultFinding).max(2500),
     notChecked: z.array(Concept).max(LOOP_CONCEPTS.length),
+    unplaced: z.array(z.strictObject({ concept: Concept, side: Side.nullable() })).max(LOOP_CONCEPTS.length * (SIDES.length + 1)).optional(),
     pins: z.array(MapPin).max(2500).optional(),
   })
-  .refine((r) => r.coverage !== "checked" || (r.gaps.length === 0 && r.notChecked.length === 0), {
+  .refine((r) => r.coverage !== "checked" || (r.gaps.length === 0 && r.notChecked.length === 0 && (r.unplaced ?? []).every((u) => u.side === null)), {
     message: "a checked walk has no gap and nothing that was not checked",
     path: ["coverage"],
   })
@@ -265,7 +275,29 @@ export const FixedInspectionResponse = z.strictObject({
   subject: Text(300),
   body: Text(10_000),
   links: z.array(z.strictObject({ label: Text(200), url: z.url({ protocol: /^https?$/ }) })).max(20),
+  contact: z.strictObject({ agency: Text(200), email: z.email().max(320), source: z.url({ protocol: /^https$/ }), readOn: z.iso.date() }).nullable(),
+  messageId: Id.nullable(),
+  sent: z.boolean(),
+  replies: z.array(z.strictObject({ id: Id, text: Text(10_000), receivedAt: Timestamp })).max(200),
 });
+
+export const CrewSignupRequest = z.strictObject({
+  businessName: z.string().trim().min(1).max(120),
+  licenseNumber: z.string().regex(/^\d{1,12}$/),
+  licenseClass: z.enum(["C-27", "C-49"]),
+  email: z.email().max(254),
+  phone: Phone.nullable(),
+  zip: Zip,
+  agreed: z.literal(true),
+});
+
+export const CrewSignupResponse = z.strictObject({ status: z.enum(["check_email", "license_listed", "license_waiting"]) });
+
+export const FixedNamedCrewRequest = z
+  .strictObject({ name: z.string().trim().min(1).max(120), email: z.email().max(254).nullable(), phone: Phone.nullable() })
+  .refine((crew) => crew.email !== null || crew.phone !== null);
+
+export const FixedInspectionSentResponse = z.strictObject({ status: z.literal("sent") });
 
 const FixedSavedMark = z.strictObject({
   id: Id,
@@ -359,5 +391,9 @@ export type FixedJobsResponse = z.infer<typeof FixedJobsResponse>;
 export type FixedApprovalResponse = z.infer<typeof FixedApprovalResponse>;
 export type FixedSentByPhoneResponse = z.infer<typeof FixedSentByPhoneResponse>;
 export type FixedInspectionResponse = z.infer<typeof FixedInspectionResponse>;
+export type FixedInspectionSentResponse = z.infer<typeof FixedInspectionSentResponse>;
+export type CrewSignupRequest = z.infer<typeof CrewSignupRequest>;
+export type CrewSignupResponse = z.infer<typeof CrewSignupResponse>;
+export type FixedNamedCrewRequest = z.infer<typeof FixedNamedCrewRequest>;
 export type FixedMarkResponse = z.infer<typeof FixedMarkResponse>;
 export type FixedHistoryResponse = z.infer<typeof FixedHistoryResponse>;

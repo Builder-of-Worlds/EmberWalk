@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 
 import support
-from ewscene import assets
+from ewscene import assets, paths
 
 
 def md5(data):
@@ -121,6 +121,17 @@ class Fetch(unittest.TestCase):
         again = assets.ensure("polyhaven:weathered_plank_siding", self.entry(), self.cache, web)
         self.assertEqual(web.calls, [])
         self.assertEqual(again["files"], first["files"])
+
+    def test_a_moved_cache_is_still_offline_and_names_its_new_folder(self):
+        old = os.path.join(self.tmp.name, "home", "emberwalk-assets", "polyhaven")
+        assets.ensure("polyhaven:weathered_plank_siding", self.entry(), old, FakeWeb(texture_routes()))
+        new = os.path.join(self.tmp.name, "master", "emberwalk-assets", "polyhaven")
+        os.makedirs(os.path.dirname(new))
+        os.rename(old, new)
+        web = FakeWeb({})
+        man = assets.ensure("polyhaven:weathered_plank_siding", self.entry(), new, web)
+        self.assertEqual(web.calls, [])
+        self.assertTrue(all(p.startswith(new + os.sep) and os.path.isfile(p) for p in man["files"].values()))
 
     def test_ensure_fetches_again_when_a_file_is_gone(self):
         man = assets.ensure("polyhaven:weathered_plank_siding", self.entry(), self.cache, FakeWeb(texture_routes()))
@@ -295,7 +306,7 @@ class Fetch(unittest.TestCase):
             os.environ["EMBERWALK_ASSETS"] = self.cache
             self.assertEqual(assets.cache_dir(), os.path.join(self.cache, "polyhaven"))
             del os.environ["EMBERWALK_ASSETS"]
-            self.assertEqual(assets.cache_dir(), os.path.expanduser("~/emberwalk-assets/polyhaven"))
+            self.assertEqual(assets.cache_dir(), os.path.join(paths.venture_root(), "emberwalk-assets", "polyhaven"))
         finally:
             if old is not None:
                 os.environ["EMBERWALK_ASSETS"] = old

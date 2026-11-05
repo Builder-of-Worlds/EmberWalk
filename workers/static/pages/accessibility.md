@@ -1,26 +1,24 @@
 # Accessibility
-Description: The accessibility standard EmberWalk aims at, what has been checked, known gaps and how to tell us about a barrier.
-Last updated: 2026-10-31
+Description: The accessibility standard EmberWalk aims at, what works today, known gaps and how to tell us about a barrier.
+Last updated: 2026-11-02
 
 ## The standard
 
 EmberWalk aims to meet the Web Content Accessibility Guidelines (WCAG) 2.2, level AA, on this site and in the app.
 
-## What has been checked
+## What works today
 
-Automated browser tests check EmberWalk's pages on a phone 390 pixels wide and on a desktop 1440 pixels wide.
+On the home page:
 
-On the landing page they check that:
+- every image has a text description
+- headings follow in order
+- every form field has a label
+- the Tab key reaches every control in reading order, and you can see which one you are on
+- text stands out against what is behind it
+- footer links are large enough to tap
+- if your device asks for less motion, the opening stays still and the totals show at once
 
-- every image has alt text and a set size
-- the page has one main heading and skips no heading level
-- every form control has a label
-- the Tab key reaches every control in reading order, each with a visible focus ring
-- every line of text is readable against what is behind it
-- footer links are at least 24 pixels tall to tap
-- with reduced motion turned on, the opening lockup sits still and the totals show at once
-
-On the pages that hold the policies and company details, they check that nothing scrolls sideways on a phone, that headings and links are centred, and that running text sits in a column clear of the screen edges.
+On the policy and company pages, nothing scrolls sideways on a phone and the text stays clear of the screen's edges.
 
 ## Known gaps
 

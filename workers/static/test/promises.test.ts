@@ -131,8 +131,9 @@ describe("what the landing page promises, on a synthetic sample house", () => {
     const body = withWork("Hello, could you quote this work?", [
       finding("1f0e9d8c-7b6a-4f5e-8d4c-3b2a1f0e9d8c", 2, "wooden_fence", "Put a metal panel where the fence meets the house."),
       finding("2a1b0c9d-8e7f-4a6b-9c5d-4e3f2a1b0c9d", 1, "wood_pile", "Move the wood pile more than 30 feet from the house."),
-    ]);
-    expect(body.split("\n\n")[1].split("\n")).toEqual([
+    ], "95370");
+    expect(body.split("\n\n")[1]).toBe("ZIP: 95370");
+    expect(body.split("\n\n")[2].split("\n")).toEqual([
       WORK_HEADING,
       "1. Wood pile (Photo 1): Move the wood pile more than 30 feet from the house.",
       "2. Wooden fence (Photo 2): Put a metal panel where the fence meets the house.",

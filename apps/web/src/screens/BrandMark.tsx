@@ -1,7 +1,9 @@
+import { copy } from "../copy.ts";
+
 const SHIELD = "M60 8 L100 22 V58 C100 84 82 102 60 112 C38 102 20 84 20 58 V22 Z";
 
 export const BrandMark = () => (
-  <svg className="brand-mark" viewBox="0 0 120 138" role="img" aria-label="EmberWalk, Wildfire Home Check">
+  <svg className="brand-mark" viewBox="0 0 120 138" role="img" aria-label={copy.app.mark}>
     <path d={SHIELD} fill="none" stroke="#3d5a40" strokeWidth="3.2" strokeLinejoin="round" />
     <path d={SHIELD} transform="translate(60 61) scale(0.86) translate(-60 -61)" fill="#5d6f4a" />
     <path d={SHIELD} transform="translate(60 61) scale(0.74) translate(-60 -61)" fill="#3d5a40" />

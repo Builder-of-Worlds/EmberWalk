@@ -2,19 +2,22 @@ import { useEffect, useState } from "react";
 import { shortDay } from "../copy.ts";
 import { useDeps } from "../deps.ts";
 import type { Deps } from "../deps.ts";
-import { deleteEverythingWords as words, draftWordsShown } from "../draft-words.ts";
+import { accountLeftBehind, crewWords, deleteEverythingWords as words, markAccountLeft } from "../draft-words.ts";
+import { SIGN_IN_FIRST } from "../erase-api.ts";
+import { JUDGE } from "../judge.ts";
 import { ROUTES } from "../router.ts";
 import { SAMPLES } from "../samples.ts";
 
-type Phase = "idle" | "confirm" | "working" | "done" | "busy" | "offline" | "failed";
+type Phase = "idle" | "confirm" | "working" | "done" | "doneAccountKept" | "busy" | "offline" | "failed" | "signIn";
 
-const SAID: Partial<Record<Phase, string>> = { working: words.working, done: words.done, busy: words.busy, offline: words.offline, failed: words.failed };
+const saidFor = (phase: Phase): string | undefined =>
+  ({ signIn: words.signInFirst, working: words.working, done: words.done, doneAccountKept: words.doneAccountKept, busy: words.busy, offline: words.offline, failed: words.failed })[phase as "signIn"];
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-const deleteEverythingShown = (deps: Deps): boolean => deps.limits.deleteEverythingOn && draftWordsShown();
+const deleteEverythingShown = (deps: Deps): boolean => deps.limits.deleteEverythingOn;
 
-export const About = () => (draftWordsShown() ? <AboutScreen /> : null);
+export const About = () => <AboutScreen />;
 
 const rulesRead = async (deps: Deps): Promise<string | null> => {
   const samples = await Promise.all(SAMPLES.map((sample) => deps.results(sample.id).catch(() => null)));
@@ -31,16 +34,20 @@ const rulesRead = async (deps: Deps): Promise<string | null> => {
 
 const eraseAll = async (deps: Deps): Promise<Phase> => {
   let left = Number.POSITIVE_INFINITY;
+  let kept = accountLeftBehind();
   for (;;) {
     const answer = await deps.erase.everything();
-    if (answer.value === undefined) return answer.code === "offline" ? "offline" : answer.code === "conflict" ? "busy" : "failed";
+    if (answer.value === undefined) return answer.code === SIGN_IN_FIRST ? "signIn" : answer.code === "offline" ? "offline" : answer.code === "conflict" ? "busy" : "failed";
+    kept ||= answer.value.accountKept === true;
     if (answer.value.left === 0) break;
     if (answer.value.left >= left) return "failed";
     left = answer.value.left;
   }
   try {
     await deps.forgetSent();
-    return "done";
+    if (!kept) return "done";
+    markAccountLeft();
+    return "doneAccountKept";
   } catch {
     return "failed";
   }
@@ -66,7 +73,7 @@ const AboutScreen = () => {
     setPhase(await eraseAll(deps));
   };
 
-  const said = SAID[phase];
+  const said = saidFor(phase);
   return (
     <main className="screen about" data-phase={phase}>
       <h1>{words.title}</h1>
@@ -87,6 +94,10 @@ const AboutScreen = () => {
                 {words.no}
               </button>
             </>
+          ) : phase === "doneAccountKept" || phase === "signIn" ? (
+            <a className="button" href={ROUTES.signIn}>
+              {words.signIn}
+            </a>
           ) : phase === "working" || phase === "done" ? null : (
             <button type="button" className="button" onClick={() => setPhase("confirm")}>
               {words.start}
@@ -94,6 +105,11 @@ const AboutScreen = () => {
           )}
         </section>
       ) : null}
+      {JUDGE ? null : (
+        <a className="button" data-part="list-your-crew" href={ROUTES.crews}>
+          {crewWords.entry}
+        </a>
+      )}
       <a className="button" href={ROUTES.home}>
         {words.back}
       </a>

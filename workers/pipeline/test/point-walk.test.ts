@@ -98,13 +98,19 @@ describe("a walk whose dry brush and fence are pointed at", () => {
     expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
   });
 
-  it("fails the walk on real footage while on free credits and asks Muse Spark nothing", async () => {
+  it("points at real footage while on free credits and ends done", async () => {
     const walkId = await walkWithBothClips({ synthetic: false });
     stageRecorded();
 
     await using instance = await run(walkId);
 
-    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "real_footage_not_allowed" } });
-    expect(harness.requests.filter((r) => r.path === "/responses")).toHaveLength(0);
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(harness.requests.filter((r) => r.path === "/responses").length).toBeGreaterThan(0);
+    const [loop] = await clipsForWalk(env.DB, walkId);
+    const onLoop = await detectionsForClip(env.DB, loop!.id);
+    expect(onLoop.tracks.map((t) => [t.concept, t.frames.map((f) => f.frame)])).toEqual([
+      ["dry_brush", framesOf(BRUSH[0])],
+      ["wooden_fence", framesOf(FENCE[1])],
+    ]);
   });
 });

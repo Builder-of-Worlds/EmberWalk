@@ -12,6 +12,8 @@ import bpy
 
 from ewscene import output, paths
 
+paths.relink(bpy.data)
+
 
 def main():
     parser = argparse.ArgumentParser(prog="render_walk.py", description="Render the opened scene's walk to an H.264 MP4, or one frame to a PNG.")

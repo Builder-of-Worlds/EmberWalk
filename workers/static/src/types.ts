@@ -14,6 +14,7 @@ export interface Message {
   subject: string;
   body: string;
   unsubscribeUrl: string;
+  language?: "es";
 }
 
 export interface Mailer {

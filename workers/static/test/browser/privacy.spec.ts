@@ -46,10 +46,33 @@ test("says word for word what Turnstile sees, who does not track, and that it is
   expect(text).toContain("EmberWalk is not meant for children under 13. If you tell us a child signed up, we delete it.");
 });
 
+test("says each thing about accounts, the sign in cookie, Turnstile and the crew page once", async ({ page }) => {
+  await page.goto("/privacy");
+  const text = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+  for (const words of [
+    "Signing in is optional",
+    "we keep your email address, the phones you signed in on",
+    "stores a scrambled form of your network address",
+    "We delete your account and its sign in records 12 months after",
+    "keeps you signed in for up to 30 days",
+    "using the sign up form or asking for a sign in link",
+    "EmberWalk makes a private page for it",
+  ]) {
+    expect(text.split(words).length - 1, words).toBe(1);
+  }
+});
+
+test("says under Delete Everything what happens to an account, signed in or not", async ({ page }) => {
+  await page.goto("/privacy");
+  const section = page.locator("main p", { hasText: "It is refused while a walk is still being checked." });
+  await expect(section).toContainText("If you are signed in, it also deletes your account and its sign in records");
+  await expect(section).toContainText("if you are not signed in, your account stays");
+});
+
 test("describes the unsubscribe link under how to be removed", async ({ page }) => {
   await page.goto("/privacy");
   const section = page.locator("main p", { hasText: "ask to be removed" });
-  await expect(section).toContainText("Every email we send has an unsubscribe link. Using it removes you straight away");
+  await expect(section).toContainText("Every email we send to the sign up list has an unsubscribe link.");
 });
 
 test("has no sideways scroll, and its headings are centered with the paragraphs in a centered column", async ({ page }, info) => {

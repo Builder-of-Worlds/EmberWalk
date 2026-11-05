@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
@@ -10,6 +11,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUTH = path.join(HERE, "../../fixtures/synthetic/hero-before/truth.json");
 
 export const heroPath = (variable: string, fallback: string): string => process.env[variable] || fallback;
+
+export const rendersRoot = (): string => {
+  if (process.env["EMBERWALK_RENDERS"]) return process.env["EMBERWALK_RENDERS"];
+  const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: HERE }).toString().trim();
+  return path.join(path.dirname(path.dirname(common)), "emberwalk-renders");
+};
 
 const sha256Of = async (file: string): Promise<string> => {
   const hash = createHash("sha256");

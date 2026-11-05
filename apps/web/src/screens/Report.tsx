@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { shortDay } from "../copy.ts";
 import { useDeps } from "../deps.ts";
-import { draftWordsShown, reportWords } from "../draft-words.ts";
+import { reportWords } from "../draft-words.ts";
+import { localDay } from "../mark-sync.ts";
 import type { ReportApi, ReportApproval, ReportCode, ReportPage, ReportPdf, ReportShare } from "../report-api.ts";
 import { resultsFor } from "../router.ts";
-import { isSample } from "../samples.ts";
+import { JUDGE } from "../judge.ts";
+import { SignInAgain } from "./SignInAgain.tsx";
+import { heldSample } from "../samples.ts";
 
 type Page = { kind: "loading" } | { kind: "ready"; html: string; seen: string } | { kind: "failed"; code: ReportCode };
 
@@ -22,7 +25,7 @@ const settled = <T,>(asked: () => Promise<T>, fallback: T): Promise<T> => {
 
 export const Report = ({ reportId }: { reportId: string | null }) => {
   const deps = useDeps();
-  return deps.report !== undefined && draftWordsShown() && reportId !== null && !isSample(reportId) ? <ReportScreen api={deps.report} walkId={reportId} /> : null;
+  return deps.report !== undefined && reportId !== null && !heldSample(reportId) ? <ReportScreen api={deps.report} walkId={reportId} /> : null;
 };
 
 type Share = { link: string | null | undefined; busy: "make" | "stop" | null; note: string | null };
@@ -146,13 +149,18 @@ const ReportScreen = ({ api, walkId }: { api: ReportApi; walkId: string }) => {
     const answer = await settled<ReportPdf>(() => api.pdf(walkId, removed()), { code: "server_error" });
     if (answer.code === "conflict") return changed();
     if (answer.pdf === undefined) return setPdf({ kind: "failed", code: answer.code });
-    api.save(answer.pdf, answer.name);
+    try {
+      api.save(answer.pdf, answer.name);
+    } catch {
+      return setPdf({ kind: "failed", code: "server_error" });
+    }
     setPdf({ kind: "idle" });
   };
 
   return (
     <main className="screen report" data-phase={page.kind}>
       <h1>{reportWords.title}</h1>
+      <SignInAgain />
       <p className="lead">{reportWords.lead}</p>
       {page.kind === "loading" ? <p role="status">{reportWords.loading}</p> : null}
       {page.kind === "failed" ? <p role="status">{reportWords.failed[page.code]}</p> : null}
@@ -160,7 +168,7 @@ const ReportScreen = ({ api, walkId }: { api: ReportApi; walkId: string }) => {
         <>
           {approval.kind === "approved" ? (
             <>
-              <p data-part="approved">{reportWords.approved(shortDay(approval.at.slice(0, 10)))}</p>
+              <p data-part="approved">{reportWords.approved(shortDay(localDay(Date.parse(approval.at))))}</p>
               <button type="button" className="button primary" data-part="download" disabled={pdf.kind === "making"} onClick={() => void download()}>
                 {reportWords.download}
               </button>
@@ -179,7 +187,7 @@ const ReportScreen = ({ api, walkId }: { api: ReportApi; walkId: string }) => {
           )}
         </>
       ) : null}
-      {approval.kind === "approved" && page.kind !== "failed" ? <ShareLink api={api} walkId={walkId} removed={removed} relink={relink} onChanged={changed} /> : null}
+      {!JUDGE && approval.kind === "approved" && page.kind !== "failed" ? <ShareLink api={api} walkId={walkId} removed={removed} relink={relink} onChanged={changed} /> : null}
       {page.kind === "ready" ? <iframe className="report-preview" title={reportWords.preview} sandbox="" srcDoc={page.html} /> : null}
       <a className="button" data-part="back" href={resultsFor(walkId)}>
         {reportWords.back}

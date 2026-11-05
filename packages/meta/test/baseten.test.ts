@@ -85,10 +85,11 @@ describe("sparkOpenToolCall", () => {
     expect(() => sparkOpenToolCall(base, [])).toThrow(/at least one tool/);
   });
 
-  it("refuses real content on free credits like every Meta call", async () => {
-    const { client, transport } = setup({ answer: () => ok(called("{}")) });
-    expect(await client.call(sparkOpenToolCall({ ...base, content: "real" }, [tool])).catch(reason)).toBe("real_content_on_free_credits");
-    expect(transport.requests).toHaveLength(0);
+  it("sends real content on free credits like every Meta call", async () => {
+    const { client, transport } = setup({ answer: () => ok(called('{"verdict":"agrees","reason":"The wood touches the wall."}')) });
+    const a = await client.call(sparkOpenToolCall({ ...base, content: "real" }, [tool]));
+    expect(a.value.uses.map((u) => u.args)).toEqual([{ verdict: "agrees", reason: "The wood touches the wall." }]);
+    expect(transport.requests).toHaveLength(1);
   });
 });
 
@@ -167,7 +168,7 @@ describe("withRetries", () => {
     ["an unusable answer", new MetaRefused("invalid_answer", ""), true],
     ["bad arguments", new MetaRefused("invalid_tool_arguments", ""), true],
     ["the daily cap", new MetaRefused("daily_cap_reached", ""), false],
-    ["real content", new MetaRefused("real_content_on_free_credits", ""), false],
+    ["a model outside Standard mode", new MetaRefused("non_standard_model", ""), false],
     ["a plain error", new Error("x"), false],
   ])("retries %s: %s", (_name, err, again) => {
     expect(retryable(err)).toBe(again);

@@ -1,10 +1,11 @@
 import { isPending, rowsForClip } from "@emberwalk/catalog";
-import { SAM_PHRASES } from "@emberwalk/meta";
+import { MetaRefused, SAM_PHRASES } from "@emberwalk/meta";
 import { LOOP_CONCEPTS, PAN_CONCEPTS } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { POINT_CONCEPTS, POINT_LOOKS } from "../src/point.ts";
-import { dropUpload, segmentClip, uploadClip } from "../src/segment.ts";
+import { dropUpload, refusalOutcome, segmentClip, uploadClip } from "../src/segment.ts";
+import { stuck } from "../src/workflow.ts";
 import { detectionsKey, maskKey } from "../src/storage.ts";
 import { costRows, freshWalkId, resetAll, seedClip, seedWalk, spentNano } from "./fixtures.ts";
 import { FRAME_HEIGHT, FRAME_WIDTH, harness, testDeps } from "./harness.ts";
@@ -163,13 +164,14 @@ describe("segmentClip", () => {
     expect(await env.MEDIA.head(detectionsKey(walkId, clip.id))).toBeNull();
   });
 
-  it("refuses real footage while the run is on free credits", async () => {
+  it("segments real footage while the run is on free credits", async () => {
     const { walkId, clip } = await setup({ synthetic: false });
+    harness.answers["wood pile"] = [{ found: sightings }];
 
     const result = await segmentClip(deps(), walkId, clip, "file-1");
 
-    expect(result).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
-    expect(requestsTo("/responses")).toHaveLength(0);
+    expect(result).toMatchObject({ ok: true, value: { found: 1 } });
+    expect(requestsTo("/responses").length).toBeGreaterThan(0);
   });
 
   it("serves a second run on the same file from the cache at no cost", async () => {
@@ -240,11 +242,11 @@ describe("uploadClip and dropUpload", () => {
     expect(form.get("expires_after[seconds]")).toBe("3600");
   });
 
-  it("refuses real footage on free credits before anything is sent", async () => {
+  it("sends real footage on free credits", async () => {
     const { walkId, clip } = await setup({ synthetic: false });
 
-    expect(await uploadClip(deps(), walkId, clip)).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
-    expect(requestsTo("/files")).toHaveLength(0);
+    expect(await uploadClip(deps(), walkId, clip)).toEqual({ ok: true, value: "file-1" });
+    expect(requestsTo("/files")).toHaveLength(1);
   });
 
   it("sends real footage when the run is paid", async () => {
@@ -278,5 +280,12 @@ describe("uploadClip and dropUpload", () => {
     const broken = { ...deps(), meta: () => { throw new Error("no key"); } };
 
     await expect(dropUpload(broken, "file-1")).resolves.toBeUndefined();
+  });
+});
+
+describe("refusalOutcome", () => {
+  it("ends the walk on the daily limit's own words, and on the general failure for any other refusal, never saying real footage is refused", () => {
+    expect(refusalOutcome(new MetaRefused("daily_cap_reached", ""))).toMatchObject({ ok: false, failure: { code: "spend_limit" } });
+    expect(refusalOutcome(new MetaRefused("non_standard_model", ""))).toEqual({ ok: false, failure: stuck("segment") });
   });
 });

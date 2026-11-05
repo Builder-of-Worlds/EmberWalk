@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { approveMessage, followUpsForJob, markSent, messagesForJob, saveDraft, saveJobCrews, stepsForJob, takeUse } from "@emberwalk/db";
-import { MetaHttpError, MetaNetworkError, type MetaRefused } from "@emberwalk/meta";
+import { MetaHttpError, MetaNetworkError } from "@emberwalk/meta";
 import type { OutgoingMessage } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WORK_HEADING } from "../src/drafts.ts";
@@ -14,7 +14,6 @@ const OTHER_JOB = uuid("ba000000", 2);
 const messageId = (n: number) => uuid("da000000", n);
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
 const CREWS = [crew(1), crew(2), crew(3, { email: null, phone: "+15305550103" }), crew(4, { trade: "fencing" })];
-const reason = (e: unknown) => (e as MetaRefused).reason;
 
 const setup = async (o: { synthetic?: boolean } = {}) => {
   await seedWalk({ synthetic: o.synthetic ?? true, findings: [{}] });
@@ -182,13 +181,13 @@ describe("runFollowUps refusals", () => {
     expect(await followUpsForJob(env.DB, JOB)).toEqual([]);
   });
 
-  it("refuses a real walk on free credits before any request", async () => {
+  it("runs follow ups for a real walk on free credits", async () => {
     await setup({ synthetic: false });
     await sent(1, 1, daysAgo(4));
-    const { deps, requests } = agentDeps({ answers: [followUpTurn(followUpUse(messageId(1)))], crews: CREWS });
-    expect(await runFollowUps(deps, JOB).catch(reason)).toBe("real_content_on_free_credits");
-    expect(requests).toEqual([]);
-    expect(await followUpsForJob(env.DB, JOB)).toEqual([]);
+    const { deps, requests } = agentDeps({ answers: [followUpTurn(followUpUse(messageId(1))), followUpsDone], crews: CREWS });
+    expect(await runFollowUps(deps, JOB)).toEqual({ jobId: JOB, ended: "finished", requests: 2, followUps: 1 });
+    expect(requests.length).toBeGreaterThan(0);
+    expect(await followUpsForJob(env.DB, JOB)).toHaveLength(1);
   });
 
   it("keeps schedule_follow_up out of the job tools, and no offered tool can send, approve or edit", () => {

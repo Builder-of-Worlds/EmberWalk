@@ -102,6 +102,20 @@ describe("See It Fixed", () => {
   });
 });
 
+describe("the sides a finding names", () => {
+  it("says which sides dry grass was seen on, under the sentence, and nothing for a finding with none", async () => {
+    const grass = await open(finding("g", { ...feet(2), band: "zone_0", concept: "dry_grass", sides: ["left", "back"] }));
+    expect(grass.host.querySelector(".sides")?.textContent).toBe(copy.finding.sides(["left", "back"]));
+    expect(copy.finding.sides(["left", "back"])).not.toBe(copy.finding.sides(["left"]));
+    expect(copy.finding.sides(["front", "right", "back", "left"])).toBe(copy.finding.sides(["left", "back", "right", "front"]));
+    expect(copy.finding.sides(["front", "right", "back", "left"])).not.toContain("left");
+    await grass.unmount();
+    const pile = await open(finding("p", { ...feet(2), band: "zone_0" }));
+    expect(pile.host.querySelector(".sides")).toBeNull();
+    await pile.unmount();
+  });
+});
+
 describe("the second check note", () => {
   it("shows a flag's reason under the sentence and changes nothing else", async () => {
     const f = finding("c", { ...feet(2), band: "zone_0", secondCheck: FLAG });
@@ -114,11 +128,19 @@ describe("the second check note", () => {
     await view.unmount();
   });
 
-  it("shows nothing when the second check agrees or did not run", async () => {
-    for (const secondCheck of [{ verdict: "agrees" as const, reason: "Fits the rule." }, null, undefined]) {
+  it("shows one quiet line, without the reason, when the second check agrees", async () => {
+    const view = await open(finding("d", { secondCheck: { verdict: "agrees" as const, reason: "Fits the rule." } }));
+    expect(view.host.querySelector(".second-check-agrees")?.textContent).toBe("Second check agrees.");
+    expect(view.host.querySelector(".second-check")).toBeNull();
+    expect(view.text()).not.toContain("Fits the rule.");
+    await view.unmount();
+  });
+
+  it("shows nothing when the second check did not run", async () => {
+    for (const secondCheck of [null, undefined]) {
       const view = await open(finding("d", secondCheck === undefined ? {} : { secondCheck }));
       expect(view.host.querySelector(".second-check")).toBeNull();
-      expect(view.text()).not.toContain("Fits the rule.");
+      expect(view.host.querySelector(".second-check-agrees")).toBeNull();
       await view.unmount();
     }
   });

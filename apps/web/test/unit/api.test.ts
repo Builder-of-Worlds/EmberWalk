@@ -56,6 +56,25 @@ describe("the upload API client", () => {
     const api = uploadApi("https://a.test", () => Promise.reject(new TypeError("Failed to fetch")));
     expect(await api.part("u", 1)).toEqual({ code: "offline" });
   });
+
+  it("names a redirect to a sign-in page apart from no signal, and never follows it to another site", async () => {
+    const seen: Request[] = [];
+    const opaque = new Response(null);
+    Object.defineProperty(opaque, "type", { value: "opaqueredirect" });
+    Object.defineProperty(opaque, "status", { value: 0 });
+    Object.defineProperty(opaque, "ok", { value: false });
+    const login = "https://team.cloudflareaccess.com/cdn-cgi/access/login/go.emberwalk.app";
+    for (const answer of [() => opaque, () => Response.redirect(login, 302)]) {
+      const redirected: Fetch = async (request) => {
+        seen.push(request);
+        return answer();
+      };
+      expect(await uploadApi("https://a.test", redirected).part("u", 1)).toEqual({ code: "sign_in_needed" });
+      expect(await walkApi("https://a.test", redirected).tags("w", [])).toEqual({ code: "sign_in_needed" });
+      expect(await walkApi("https://a.test", redirected).status("w")).toEqual({ code: "sign_in_needed" });
+    }
+    expect(seen.map((request) => request.redirect)).toEqual(Array(6).fill("manual"));
+  });
 });
 
 describe("the walk API client's tags", () => {

@@ -1,5 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { sweepRecords } from "../../api/src/record-sweep.ts";
+import { sweepAccounts, sweepRecords } from "../../api/src/record-sweep.ts";
 import { depsFrom } from "./deps.ts";
 import type { Env } from "./env.ts";
 import { type RecheckOutcome, recheckOutcome } from "./recheck-step.ts";
@@ -26,7 +26,7 @@ export default {
   },
   async scheduled(controller, env): Promise<void> {
     const at = new Date(controller.scheduledTime);
-    const outcomes = await Promise.allSettled([sweepVideos(env, at), sweepRecords(env, at)]);
+    const outcomes = await Promise.allSettled([sweepVideos(env, at), sweepRecords(env, at).then(() => sweepAccounts(env, at))]);
     for (const outcome of outcomes) if (outcome.status === "rejected") throw outcome.reason;
   },
 } satisfies ExportedHandler<Env>;

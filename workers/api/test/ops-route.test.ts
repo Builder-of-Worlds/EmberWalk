@@ -84,6 +84,7 @@ const refusedWith = async (response: Response, status: number): Promise<void> =>
   const body = await response.text();
   expect(response.headers.get("content-type") ?? "").not.toContain("text/html");
   for (const secret of SECRETS) expect(body).not.toContain(secret);
+  expect(body).not.toMatch(/cloudflare|\baccess\b/i);
 };
 
 beforeEach(async () => {

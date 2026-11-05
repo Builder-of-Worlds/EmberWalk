@@ -1,5 +1,8 @@
 import { type Corner, cornerLabel, type Device, isCorner, type StartWalkRequest, type Tag } from "@emberwalk/shared";
 import type { Failure, Fetch, UploadApi, WalkApi } from "./api.ts";
+import { rememberTenantWalk } from "./walk-claim.ts";
+import { language } from "./language.ts";
+import { localDay } from "./mark-sync.ts";
 import type { Jurisdiction } from "./location.ts";
 import { partsOf } from "./parts.ts";
 import { IDEAL_SIZE, UNKNOWN_CAMERA } from "./recorder.ts";
@@ -25,12 +28,15 @@ const UNKNOWN_DEVICE: Device = { camera: UNKNOWN_CAMERA, ...IDEAL_SIZE };
 
 export const walkRequest = (take: Take, visitorId: string): StartWalkRequest => ({
   partOf: take.partOf ?? null,
-  language: "en",
+  language: language(),
   jurisdiction: take.jurisdiction ?? FALLBACK_RULES,
   device: take.device ?? UNKNOWN_DEVICE,
   synthetic: false,
   visitorId,
   startKey: take.id,
+  walkedOn: localDay(take.createdAt),
+  ...((take.partOf ?? null) !== null || take.inviteCode === undefined ? {} : { inviteCode: take.inviteCode }),
+  ...((take.partOf ?? null) !== null || take.propertyId === undefined ? {} : { propertyId: take.propertyId }),
 });
 
 type Stretch = { kind: Tag["kind"]; side: string | null; startSeconds: number; endSeconds: number; last: boolean };
@@ -113,6 +119,7 @@ export const startWalk = async (
   }
   if (started.code !== undefined) return { code: started.code };
   const { walkId } = started.value;
+  if (take.inviteCode !== undefined) rememberTenantWalk(walkId);
   await takes.saveUpload(takeId, walkOnly(walkId));
   return { walkId };
 };

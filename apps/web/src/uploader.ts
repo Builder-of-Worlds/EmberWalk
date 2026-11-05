@@ -46,7 +46,7 @@ export const sentBytes = (upload: UploadState, totalBytes: number): number =>
 
 export const isDeadUpload = (code: Failure): boolean => DEAD_UPLOAD.has(code);
 
-const ABORT_LATER: ReadonlySet<Failure> = new Set(["offline", "server_error", "rate_limited"]);
+const ABORT_LATER: ReadonlySet<Failure> = new Set(["offline", "sign_in_needed", "server_error", "rate_limited"]);
 
 export const pendingAborts = (storage: () => Storage, abort: (uploadId: string) => Promise<Answer<unknown>>) => {
   const read = (): string[] => {
@@ -95,9 +95,10 @@ export const sendPart = async (
   partNumber: number,
   signal?: AbortSignal,
 ): Promise<{ etag: string } | { code: Failure }> => {
+  const stopped = () => signal?.aborted === true;
   for (let retry = 0; ; retry += 1) {
     if (retry > 0) await (deps.pause ?? wait)(RETRY_MS * retry);
-    if (signal?.aborted === true) return { code: "offline" };
+    if (stopped()) return { code: "offline" };
     const link = await deps.api.part(uploadId, partNumber, body.size > 0 ? body.size : undefined);
     if (link.code !== undefined) return { code: link.code };
     let response: Response;
@@ -106,7 +107,7 @@ export const sendPart = async (
       const headers = length === undefined ? {} : { "content-length": length };
       response = await deps.put(new Request(link.value.url, { method: "PUT", headers, body, ...(signal === undefined ? {} : { signal }) }));
     } catch {
-      return { code: "offline" };
+      return { code: stopped() ? "offline" : "storage_blocked" };
     }
     if (!response.ok) continue;
     const etag = response.headers.get("etag")?.replaceAll('"', "") ?? "";

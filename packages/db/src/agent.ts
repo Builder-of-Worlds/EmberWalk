@@ -126,6 +126,13 @@ export const setJobStatus = async (db: D1Database, jobId: string, status: AgentJ
   requireOne(result.meta.changes, `job ${jobId} does not exist`);
 };
 
+export const moveJobWithNoCrews = async (db: D1Database, jobId: string, zip: string, at: string): Promise<void> => {
+  await db
+    .prepare("UPDATE agent_jobs SET zip = ?, updated_at = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM agent_job_crews WHERE job_id = agent_jobs.id)")
+    .bind(Zip.parse(zip), Timestamp.parse(at), Id.parse(jobId))
+    .run();
+};
+
 export const saveJobCrews = async (db: D1Database, jobId: string, input: Crew[]): Promise<void> => {
   const crews = z.array(Crew).parse(input);
   if (crews.length > MAX_JOB_CREWS) throw new DbRefused(`a job keeps at most ${MAX_JOB_CREWS} crews`);
@@ -186,8 +193,10 @@ export const editDraft = async (db: D1Database, messageId: string, change: { sub
 export const Approval = z.strictObject({ visitorId: z.string().regex(/^[0-9a-f]{64}$/), photoKeys: z.array(z.string().min(1).max(420)).min(1).max(50) });
 export type Approval = z.infer<typeof Approval>;
 
-const UNDER_EMAIL_CAP =
-  "WHERE (SELECT channel FROM agent_messages WHERE id = ?) <> 'email' OR (SELECT count(*) FROM message_approvals a JOIN agent_messages m ON m.id = a.message_id WHERE a.visitor_id = ? AND m.channel = 'email' AND substr(a.approved_at, 1, 10) = ?) < ?";
+export const EMAILS_APPROVED_TODAY =
+  "((SELECT count(*) FROM message_approvals a JOIN agent_messages m ON m.id = a.message_id WHERE a.visitor_id = ? AND m.channel = 'email' AND substr(a.approved_at, 1, 10) = ?) + (SELECT count(*) FROM inspection_approvals WHERE visitor_id = ? AND substr(approved_at, 1, 10) = ?))";
+
+const UNDER_EMAIL_CAP = `WHERE (SELECT channel FROM agent_messages WHERE id = ?) <> 'email' OR ${EMAILS_APPROVED_TODAY} < ?`;
 
 export const approveMessage = async (db: D1Database, messageId: string, at: string, approval: Approval, emailsPerDay = Number.MAX_SAFE_INTEGER): Promise<void> => {
   const by = Approval.parse(approval);
@@ -197,7 +206,7 @@ export const approveMessage = async (db: D1Database, messageId: string, at: stri
     .batch([
       db
         .prepare(`INSERT INTO message_approvals (message_id, visitor_id, approved_at, photo_keys) SELECT ?, ?, ?, ? ${UNDER_EMAIL_CAP}`)
-        .bind(id, by.visitorId, when, JSON.stringify(by.photoKeys), id, by.visitorId, when.slice(0, 10), z.int().min(1).parse(emailsPerDay)),
+        .bind(id, by.visitorId, when, JSON.stringify(by.photoKeys), id, by.visitorId, when.slice(0, 10), by.visitorId, when.slice(0, 10), z.int().min(1).parse(emailsPerDay)),
       db.prepare("UPDATE agent_messages SET status = 'approved', approved_at = ? WHERE id = ? AND status = 'draft' AND EXISTS (SELECT 1 FROM message_approvals WHERE message_id = ?)").bind(when, id, id),
     ])
     .catch((error: unknown) => {

@@ -1,7 +1,7 @@
 import { DbRefused, findingsForWalk, followUpsForJob, getJob, getWalk, jobCrews, messagesForJob, scheduleFollowUp, takeUse } from "@emberwalk/db";
 import type { ToolUse } from "@emberwalk/meta";
 import type { Crew, OutgoingMessage } from "@emberwalk/shared";
-import { lengthRefusal, missingReason, missingStills, withWork } from "./drafts.ts";
+import { bodyRefusal, missingReason, missingStills, withWork } from "./drafts.ts";
 import { type AgentDeps, AgentOff, giveBackOnOutage, RateLimited, refuse, runTurns, stepLog, type TurnsEnd, type UseResult, userText } from "./loop.ts";
 import { FOLLOW_UP_TOOLS, type ScheduleFollowUpArgs } from "./tools.ts";
 
@@ -66,10 +66,10 @@ export async function runFollowUps(deps: FollowUpDeps, jobId: string): Promise<F
     if (w.message.channel === "text" && args.subject !== null) return refuse("a text has no subject");
     const missing = await missingStills(deps.photos, findings);
     if (missing.length > 0) return refuse(`${missingReason(missing)}; no reminder can be drafted yet`);
-    const tooLong = lengthRefusal(args.body, findings);
-    if (tooLong !== null) return refuse(tooLong);
+    const bad = bodyRefusal(args.body, findings);
+    if (bad !== null) return refuse(bad);
     const draftId = deps.newId();
-    const reminder = { id: draftId, jobId: job.id, crewId: w.crew.id, channel: w.message.channel, subject: args.subject, body: withWork(args.body, findings), createdAt: at() };
+    const reminder = { id: draftId, jobId: job.id, crewId: w.crew.id, channel: w.message.channel, subject: args.subject, body: withWork(args.body, findings, job.zip), createdAt: at() };
     await scheduleFollowUp(db, { id: deps.newId(), jobId: job.id, forMessageId: w.message.id, dueAt: at(), note: args.note, draftMessageId: draftId, createdAt: at() }, reminder);
     followed.add(w.message.id);
     return { ran: true, output: { draftId, status: "draft" }, detail: `drafted a ${w.message.channel} reminder to crew ${w.crew.id} for message ${w.message.id}` };

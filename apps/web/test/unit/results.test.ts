@@ -20,32 +20,21 @@ describe("verdictOf", () => {
         expect(verdictOf(walk([], [{ side, kind, hint: HINTS_FOR[kind][0]! }])).kind, `${side} ${kind}`).toBe("incomplete");
   });
 
-  it("lists only side gaps while the corner words are drafts, and never shows green with a corner gap", () => {
-    const side: Gap = { side: "left", kind: "dark", hint: "more_light" };
-    const corner: Gap = { side: "back_left", kind: "missing", hint: "pan_corner" };
-    expect(verdictOf(walk([], [corner, side]))).toEqual({ kind: "incomplete", gaps: [side] });
-    expect(verdictOf(walk([], [corner]))).toEqual({ kind: "so_far" });
-    expect(verdictOf(walk([finding("a")], [corner])).kind).toBe("fix");
-    expect(verdictOf(walk([], []))).toEqual({ kind: "ready" });
-  });
-
-  it("lists corner gaps too when the corner words are shown, sides first, and asks for each part once in order", () => {
+  it("lists corner gaps with the side gaps, sides first, and asks for each part once in order", () => {
     const side: Gap = { side: "left", kind: "dark", hint: "more_light" };
     const right: Gap = { side: "front_right", kind: "missing", hint: "pan_corner" };
     const back: Gap = { side: "back_left", kind: "missing", hint: "pan_corner" };
-    expect(verdictOf(walk([], [right]), undefined, true)).toEqual({ kind: "incomplete", gaps: [right] });
-    expect(verdictOf(walk([finding("a")], [back, side, right]), () => true, true)).toEqual({ kind: "incomplete", gaps: [side, back, right] });
+    expect(verdictOf(walk([], [right]))).toEqual({ kind: "incomplete", gaps: [right] });
+    expect(verdictOf(walk([finding("a")], [back, side, right]), () => true)).toEqual({ kind: "incomplete", gaps: [side, back, right] });
     expect(partsToWalk([back, side, right, back])).toEqual(["left", "front_right", "back_left"]);
-    expect(verdictOf(walk([], []), undefined, true)).toEqual({ kind: "ready" });
+    expect(verdictOf(walk([], []))).toEqual({ kind: "ready" });
   });
 
   it("keeps green blocked while a part the check could not finish is open, side or corner, until its recheck clears it", () => {
     for (const side of PARTS) {
       const open: Gap = { side, kind: "not_checked", hint: "again" };
-      for (const corners of [false, true]) {
-        expect(verdictOf(walk([], [open]), undefined, corners).kind, `${side} ${corners}`).not.toBe("ready");
-        expect(verdictOf(walk([finding("a")], [open]), () => true, corners).kind, `${side} ${corners} cleared`).not.toBe("ready");
-      }
+      expect(verdictOf(walk([], [open])).kind, side).not.toBe("ready");
+      expect(verdictOf(walk([finding("a")], [open]), () => true).kind, `${side} cleared`).not.toBe("ready");
     }
     expect(verdictOf(walk([finding("a")], []), () => true)).toEqual({ kind: "ready" });
   });

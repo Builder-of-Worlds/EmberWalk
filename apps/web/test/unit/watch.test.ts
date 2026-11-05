@@ -111,6 +111,14 @@ describe("watchWalk", () => {
     expect(w.time.pending()).toBe(0);
   });
 
+  it("says this phone must sign in when the ask is sent to a sign-in page, and asks again after 30 seconds", async () => {
+    const w = await watching([{ code: "sign_in_needed" }, at({ name: "done" })], true);
+    expect(w.seen).toEqual([{ kind: "waiting", signIn: true }]);
+    await w.tick(SIGNAL_RETRY_MS);
+    expect(w.asked).toHaveLength(2);
+    expect(w.seen.at(-1)).toEqual({ kind: "done" });
+  });
+
   it("asks once when signal returns before the 30 second retry, and never twice", async () => {
     const w = await watching([{ code: "offline" }, at({ name: "done" })], true);
     w.net.fire();

@@ -1,9 +1,11 @@
 import { conceptLabel, copy, draft, shortDay } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { deleteEverythingWords } from "../draft-words.ts";
 import type { HistoryMark, HistoryWalk } from "../fixed-api.ts";
 import { localDay } from "../mark-sync.ts";
 import { dayOf } from "../results.ts";
 import { ROUTES } from "../router.ts";
+import { isSample } from "../samples.ts";
 import { useLoad } from "../use-load.ts";
 import { Failed, Loading } from "./Failed.tsx";
 
@@ -16,6 +18,7 @@ const Walk = ({ walk }: { walk: HistoryWalk }) => (
     <h2>
       <time dateTime={walk.walkedOn}>{copy.results.walked(dayOf(walk.walkedOn))}</time>
     </h2>
+    {isSample(walk.walkId) ? <p>{draft.history.sample}</p> : null}
     {walk.marks.length === 0 ? (
       <p>{draft.history.noMarks}</p>
     ) : (
@@ -44,7 +47,7 @@ export const History = () => {
       {loaded.state === "ready" && loaded.value.walks.length === 0 ? <p>{draft.history.empty}</p> : null}
       {loaded.state === "ready" ? newestFirst(loaded.value.walks).map((walk) => <Walk key={walk.walkId} walk={walk} />) : null}
       <a className="button" href={ROUTES.home}>
-        {copy.app.name}
+        {deleteEverythingWords.back}
       </a>
     </main>
   );

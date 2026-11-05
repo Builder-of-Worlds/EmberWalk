@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { recheckPhotoKey } from "@emberwalk/shared";
 import { copy } from "../../src/copy.ts";
-import { DRAFT_WORDS_KEY, recheckWords } from "../../src/draft-words.ts";
+import { recheckWords } from "../../src/draft-words.ts";
 import { marksKey } from "../../src/finding-marks.ts";
 import { recheckFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBody, liveFindingId } from "../unit/result-fakes.ts";
@@ -18,11 +18,10 @@ type Seen = { link: unknown; put: { type: string | null; bytes: number } | null;
 const serve = async (page: Page): Promise<Seen> => {
   const seen: Seen = { link: null, put: null, judged: null };
   await page.addInitScript(
-    ({ draftKey, marks, item }) => {
-      window.localStorage.setItem(draftKey, "on");
+    ({ marks, item }) => {
       window.localStorage.setItem(marks, JSON.stringify({ removed: {}, status: { [item]: { kind: "done", note: "", recheck: null } } }));
     },
-    { draftKey: DRAFT_WORDS_KEY, marks: marksKey(LIVE_WALK), item: ITEM },
+    { marks: marksKey(LIVE_WALK), item: ITEM },
   );
   await page.route("**/*", async (route) => {
     const request = route.request();
@@ -73,6 +72,7 @@ test("a Done item is rechecked from its row at 390 px: the old photo faint over 
   const old = page.locator("main img[data-part=old-photo]");
   await expect(old).toBeVisible();
   expect(Number(await old.evaluate((img) => getComputedStyle(img).opacity))).toBeCloseTo(0.35, 2);
+  await page.locator("main").evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   const [videoBox, oldBox] = [(await video.boundingBox())!, (await old.boundingBox())!];
   expect(oldBox.x).toBeCloseTo(videoBox.x, 0);
   expect(oldBox.y).toBeCloseTo(videoBox.y, 0);

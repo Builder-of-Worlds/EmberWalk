@@ -1,0 +1,1 @@
+ALTER TABLE walks ADD COLUMN walk_day TEXT;

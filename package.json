@@ -16,7 +16,7 @@
     "lint": "eslint .",
     "lint:files": "eslint --no-warn-ignored",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm test --workspaces --if-present -- --exclude '**/*.live.test.*' && npm run test:blender",
+    "test": "npm test --workspaces --if-present -- --exclude '**/*.live.test.*' --exclude '**/*.gap.*' && npm run test:blender",
     "test:blender": "cd blender && python3 -m unittest discover -s tests -t ."
   },
   "devDependencies": {

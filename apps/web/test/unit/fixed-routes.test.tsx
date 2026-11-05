@@ -46,20 +46,19 @@ describe("the Get It Fixed button on Results", () => {
     await view.unmount();
   });
 
-  it("is not offered on a bundled sample house, which the server does not hold", async () => {
+  it("is offered on a bundled sample house, which runs to the demo inbox", async () => {
     for (const sample of SAMPLES) {
       const view = await mount(resultsFor(sample.id), standIn(), { results: async () => sample });
-      await until(() => view.host.querySelector("li.finding") !== null);
-      expect(view.host.querySelector("[data-part=get-it-fixed]")).toBeNull();
+      await until(() => view.host.querySelector("[data-part=get-it-fixed]") !== null);
+      expect(view.host.querySelector("[data-part=get-it-fixed]")?.getAttribute("href")).toBe(fixFor(sample.id));
       await view.unmount();
     }
   });
 
-  it("is not offered on a synthetic walk the server holds", async () => {
+  it("is offered on a synthetic walk the server holds", async () => {
     const synthetic = { ...RESULTS, synthetic: true };
     const view = await mount(resultsFor(WALK), standIn(), { results: async () => synthetic });
-    await until(() => view.host.querySelector("li.finding") !== null);
-    expect(view.host.querySelector("[data-part=get-it-fixed]")).toBeNull();
+    await until(() => view.host.querySelector("[data-part=get-it-fixed]") !== null);
     await view.unmount();
   });
 
@@ -73,28 +72,20 @@ describe("the Get It Fixed button on Results", () => {
 });
 
 describe("the Fix address of a bundled sample house", () => {
-  it("opens that house's results, never Get It Fixed, and asks the server nothing", async () => {
+  it("opens Get It Fixed for that house and stays on its address", async () => {
     for (const sample of SAMPLES) {
-      const state = standIn();
-      const view = await mount(fixFor(sample.id), state, { results: async () => sample });
-      await until(() => window.location.hash === resultsFor(sample.id));
-      await until(() => view.host.querySelector("li.finding") !== null);
-      expect(view.host.querySelector("main.fix")).toBeNull();
-      expect(view.host.querySelector("[data-part=get-it-fixed]")).toBeNull();
-      expect(state.calls).toEqual([]);
+      const view = await mount(fixFor(sample.id), standIn(), { results: async () => sample });
+      await until(() => view.host.querySelector("main.fix") !== null);
+      expect(window.location.hash).toBe(fixFor(sample.id));
       await view.unmount();
     }
   });
 
-  it("opens the results of a synthetic walk the server holds, never Get It Fixed, and asks the server nothing about it", async () => {
+  it("opens Get It Fixed for a synthetic walk the server holds", async () => {
     const synthetic = { ...RESULTS, synthetic: true };
-    const state = standIn();
-    const view = await mount(fixFor(WALK), state, { results: async () => synthetic });
-    await until(() => window.location.hash === resultsFor(WALK));
-    await until(() => view.host.querySelector("li.finding") !== null);
-    expect(view.host.querySelector("main.fix")).toBeNull();
-    expect(view.host.querySelector("[data-part=get-it-fixed]")).toBeNull();
-    expect(state.calls).toEqual([]);
+    const view = await mount(fixFor(WALK), standIn(), { results: async () => synthetic });
+    await until(() => view.host.querySelector("main.fix") !== null);
+    expect(window.location.hash).toBe(fixFor(WALK));
     await view.unmount();
   });
 
@@ -107,10 +98,10 @@ describe("the Fix address of a bundled sample house", () => {
 });
 
 describe("the Record link on Home", () => {
-  it("is on Home and goes to the record", async () => {
+  it("on a first open the bar's Fixes tab goes to the record, and Home does not repeat it", async () => {
     const view = await mount(ROUTES.home, standIn());
-    const link = [...view.host.querySelectorAll("a.button")].find((a) => a.textContent === copy.history.title);
-    expect(link?.getAttribute("href")).toBe(ROUTES.history);
+    expect(view.host.querySelector(`.tabs a[href='${ROUTES.history}']`)).not.toBeNull();
+    expect([...view.host.querySelectorAll("main a.button")].find((a) => a.textContent === copy.history.title)).toBeUndefined();
     await view.unmount();
   });
 });

@@ -41,10 +41,11 @@ describe("museImageEditCall", () => {
     expect(transport.requests).toHaveLength(0);
   });
 
-  it("refuses real content on free credits", async () => {
+  it("sends real content on free credits", async () => {
     const { client, transport } = setup({ answer: () => ok(made()) });
-    expect(await client.call(museImageEditCall({ ...base, content: "real" })).catch(reason)).toBe("real_content_on_free_credits");
-    expect(transport.requests).toHaveLength(0);
+    const a = await client.call(museImageEditCall({ ...base, content: "real" }));
+    expect(a.value).toEqual({ base64: "/9j/2wBDAA==", mimeType: "image/jpeg" });
+    expect(transport.requests).toHaveLength(1);
   });
 
   it.each([
@@ -72,6 +73,11 @@ describe("museImageEditCall", () => {
   it("accepts an https link and a png", () => {
     expect(() => museImageEditCall({ ...base, image: "https://r2.example/stills/a.jpg?X-Amz-Signature=1" })).not.toThrow();
     expect(() => museImageEditCall({ ...base, image: "data:image/png;base64,iVBORw0K" })).not.toThrow();
+  });
+
+  it("accepts an http link only from a local rehearsal host", () => {
+    expect(() => museImageEditCall({ ...base, image: "http://host.docker.internal:8788/emberwalk-media/stills/a.jpg?X-Amz-Signature=1" })).not.toThrow();
+    expect(() => museImageEditCall({ ...base, image: "http://127.0.0.1.example.com:8788/stills/a.jpg" })).toThrow(TypeError);
   });
 });
 

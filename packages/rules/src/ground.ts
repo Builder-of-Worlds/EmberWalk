@@ -43,8 +43,8 @@ export const groundFeet = ({ y, ...view }: View & { y: number }): FeetRange | nu
   return spread(corners(view).map((corner) => depthFeet(y, corner)));
 };
 
-export const verticalFov = (clip: Pick<Clip, "width" | "height">): number =>
-  (2 * Math.atan(Math.tan(radians(LONG_SIDE_FOV_DEGREES) / 2) * Math.min(1, clip.height / clip.width)) * 180) / Math.PI;
+export const verticalFov = (clip: Pick<Clip, "width" | "height">, longSideDegrees = LONG_SIDE_FOV_DEGREES): number =>
+  (2 * Math.atan(Math.tan(radians(longSideDegrees) / 2) * Math.min(1, clip.height / clip.width)) * 180) / Math.PI;
 
 export const sampleNear = (samples: readonly MotionSample[], t: number): MotionSample | null => {
   let best: MotionSample | null = null;

@@ -146,9 +146,16 @@ describe("cleanNotes", () => {
     expect(sparkCalls()).toBe(3);
   });
 
-  it("makes no Spark call for real content on free credits and stores the raw words", async () => {
-    expect(await cleanNotes(deps(), idFor(50), raw, "real")).toEqual(raw);
-    expect(sparkCalls()).toBe(0);
+  it("cleans real content on free credits with a Spark call", async () => {
+    stage([
+      { id: "1", text: "The wood pile is right up against the garage wall." },
+      { id: "2", text: "That juniper has lots of dead branches in it." },
+    ]);
+    expect(await cleanNotes(deps(), idFor(50), raw, "real")).toEqual([
+      { findingId: idFor(1), text: "The wood pile is right up against the garage wall." },
+      { findingId: idFor(2), text: "That juniper has lots of dead branches in it." },
+    ]);
+    expect(sparkCalls()).toBe(1);
   });
 
   it("makes no call when there are no notes", async () => {

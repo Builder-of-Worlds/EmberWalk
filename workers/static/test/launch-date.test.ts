@@ -24,7 +24,7 @@ describe("launch date flag", () => {
     expect(html).not.toMatch(DATE);
     expect(html).not.toContain("data-launch-date");
     expect(metas(html)).toEqual([["description", REST], ["og:description", REST], ["twitter:description", REST]]);
-    expect(html).toContain("<span>Be first in line.</span>");
+    expect(html).toContain("<span>Preparation starts here:</span>");
     expect(html).toContain('<form id="signup"');
   });
 
@@ -32,7 +32,7 @@ describe("launch date flag", () => {
     const html = await (await get("/", "on")).text();
     const full = `${SENTENCE} ${REST}`;
     expect(metas(html)).toEqual([["description", full], ["og:description", full], ["twitter:description", full]]);
-    expect(html).toContain(`<p class="lead"><span>${SENTENCE}</span><span>Be first in line.</span></p>`);
+    expect(html).toContain(`<p class="lead"><span>${SENTENCE}</span><span>Preparation starts here:</span></p>`);
     expect(html).not.toContain("data-launch-date");
   });
 

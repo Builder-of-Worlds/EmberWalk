@@ -98,7 +98,7 @@ describe("every bundled sample", () => {
       for (const chosen of [copy.results.detailed, copy.results.simple]) {
         const button = [...results.host.querySelectorAll("button")].find((b) => b.textContent === chosen);
         await settle(() => button?.click());
-        expect(results.host.querySelector("h1")?.textContent).toBe(copy.results.incomplete);
+        expect(results.host.querySelector("h1")?.textContent).toBe(copy.sample.partial);
         expect(results.text()).not.toMatch(NEVER_LABELLED);
       }
       await results.unmount();

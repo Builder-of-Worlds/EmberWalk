@@ -8,5 +8,6 @@ declare namespace Cloudflare {
   }
   interface Env extends AppEnv {
     TEST_MIGRATIONS: import("@cloudflare/vitest-plugin").D1Migration[];
+    DEPLOYED_LIMITS: string;
   }
 }

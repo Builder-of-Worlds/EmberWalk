@@ -96,6 +96,8 @@ export const testDeps = (e: Env = env as unknown as Env): Deps => {
 export const resetDb = async (): Promise<void> => {
   const tables = [
     "get_it_fixed_uses",
+    "crew_signups",
+    "crew_signup_mail_days",
     "finding_marks",
     "crew_replies",
     "outbox",

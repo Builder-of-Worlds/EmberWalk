@@ -1,11 +1,11 @@
-import { getWalk, historyFor, jobCrews, jobsForWalk } from "@emberwalk/db";
+import { getWalk, historyFor, jobCrews, jobsForWalk, walkedDay } from "@emberwalk/db";
 import type { WalkRecord } from "@emberwalk/db";
 import { RULES, templateInstruction } from "@emberwalk/rules";
 import { Id, Recheck } from "@emberwalk/shared";
 import type { Finding } from "@emberwalk/shared";
 import { type BrowserBinding, pdfOf } from "./browser-run.ts";
 import { type Mark, type MarkStatus, type RecheckAnswer, reportHtml, STILL_DATA } from "./report.ts";
-import { type Approval, approvalOf, digestOf, pdfStamp, SEEN_DIGEST, SEEN_HEADER, type Seen, sameSeen, type Shown, shownOf } from "./report-approval.ts";
+import { type Approval, approvalOf, approvedDay, DAY_HEADER, digestOf, pdfStamp, phoneDay, SEEN_DIGEST, SEEN_HEADER, type Seen, sameSeen, type Shown, shownOf, stampedFor } from "./report-approval.ts";
 import { approvalKey, pdfKey } from "./report-keys.ts";
 import { makeShare, shareBody, shareOf, shareOffOf, stopShare } from "./report-share.ts";
 import { ownWalk } from "./walk-read.ts";
@@ -22,10 +22,11 @@ export const MAX_REMOVED = 500;
 
 export { approvalKey, pdfKey };
 
-type Code = "invalid_request" | "unknown_walk" | "not_found" | "method_not_allowed" | "walk_not_done" | "conflict" | "body_too_large" | "server_error";
+type Code = "invalid_request" | "sign_in_again" | "unknown_walk" | "not_found" | "method_not_allowed" | "walk_not_done" | "conflict" | "body_too_large" | "server_error";
 
 const STATUS: Record<Code, number> = {
   invalid_request: 400,
+  sign_in_again: 401,
   unknown_walk: 404,
   not_found: 404,
   method_not_allowed: 405,
@@ -37,17 +38,18 @@ const STATUS: Record<Code, number> = {
 
 const MESSAGE: Record<Code, string> = {
   invalid_request: "The request is not valid.",
+  sign_in_again: "Sign in again to see this walk.",
   unknown_walk: "That walk does not exist.",
-  not_found: "No such endpoint.",
-  method_not_allowed: "Use GET.",
+  not_found: "That page is not here.",
+  method_not_allowed: "That is not available here.",
   walk_not_done: "This walk is still being checked.",
   conflict: "Approve the blurred report first.",
   body_too_large: "This report has more photos than one file can hold.",
-  server_error: "The report could not be made. Try again.",
+  server_error: "The report is not ready yet. Try again.",
 };
 
 const fail = (code: Code, status = STATUS[code], allow = "GET"): Response =>
-  Response.json({ error: { code, message: code === "method_not_allowed" ? `Use ${allow}.` : MESSAGE[code] } }, { status, ...(code === "method_not_allowed" ? { headers: { allow } } : {}) });
+  Response.json({ error: { code: code === "sign_in_again" ? "unknown_walk" : code, message: code === "method_not_allowed" ? `Use ${allow}.` : MESSAGE[code] } }, { status, ...(code === "method_not_allowed" ? { headers: { allow } } : {}) });
 
 class TooLarge extends Error {}
 
@@ -64,7 +66,7 @@ const embeddedBytes = (raw: number): number => 4 * Math.ceil(raw / 3);
 const stillOf = async (media: R2Bucket, finding: Finding, room: number): Promise<Uint8Array | null> => {
   const { clipId, frame, still } = finding.proofFrame;
   if (still !== `stills/${finding.walkId}/${clipId}/${frame}.jpg`) return null;
-  const stored = await media.get(still);
+  const stored = (await media.get(`stills/${finding.walkId}/${clipId}/${frame}.small.jpg`)) ?? (await media.get(still));
   if (stored === null) return null;
   if (embeddedBytes(stored.size) > room) {
     await stored.body.cancel();
@@ -74,7 +76,7 @@ const stillOf = async (media: R2Bucket, finding: Finding, room: number): Promise
   return isJpeg(bytes) ? bytes : null;
 };
 
-const answersOf = async (media: R2Bucket, finding: Finding): Promise<RecheckAnswer[]> => {
+export const answersOf = async (media: R2Bucket, finding: Pick<Finding, "id" | "walkId">): Promise<RecheckAnswer[]> => {
   const answers: RecheckAnswer[] = [];
   let cursor: string | undefined;
   do {
@@ -95,7 +97,7 @@ const personalOf = async (db: D1Database, walkIds: string[]): Promise<string[]> 
   return [...jobs.map((job) => job.zip), ...crews.flatMap((c) => [c.name, c.zip, c.email ?? "", c.phone ?? ""])].filter((value) => value.trim().length > 0);
 };
 
-const htmlOf = async (db: D1Database, media: R2Bucket, walk: WalkRecord, shown: Shown, approvedAt: string | null): Promise<string> => {
+const htmlOf = async (db: D1Database, media: R2Bucket, walk: WalkRecord, shown: Shown, approval: Approval | null): Promise<string> => {
   const history = (await historyFor(db, walk.visitorId)).filter((h) => shown.walkIds.includes(h.walkId));
   const marks: Mark[] = history.flatMap((h) => h.marks).map((m) => ({ findingId: m.findingId, status: m.status as MarkStatus, doneOn: m.doneOn, markedAt: m.markedAt }));
   const stills = new Map<string, string>();
@@ -115,7 +117,9 @@ const htmlOf = async (db: D1Database, media: R2Bucket, walk: WalkRecord, shown: 
     }),
   );
   const personal = await personalOf(db, shown.walkIds);
-  return reportHtml({ results: shown.results, statuses, marks, rechecks, stills, removed: shown.removed, approvedAt, templates, personal });
+  const approvedAt = approval?.approvedAt ?? null;
+  const day = approval === null ? {} : { approvedDay: approvedDay(approval) };
+  return reportHtml({ results: shown.results, statuses, marks, rechecks, stills, removed: shown.removed, approvedAt, ...day, templates, personal, language: walk.language });
 };
 
 const removedIn = (url: URL): Set<string> | null => {
@@ -139,7 +143,9 @@ const approve = async (request: Request, media: R2Bucket, walkId: string, seen: 
   if (!SEEN_DIGEST.test(asked)) return fail("invalid_request");
   if (asked !== (await digestOf(seen))) return fail("conflict");
   if (held.current) return answer();
-  const made: Approval = { walkId, approvedAt: now().toISOString(), ...seen };
+  const approvedAt = now().toISOString();
+  const day = phoneDay(request.headers.get(DAY_HEADER), approvedAt);
+  const made: Approval = { walkId, approvedAt, ...(day === undefined ? {} : { day }), ...seen };
   await media.delete(pdfKey(walkId));
   await media.put(approvalKey(walkId), JSON.stringify(made), { httpMetadata: { contentType: "application/json" } });
   return Response.json({ approvedAt: made.approvedAt, changed: false }, { headers: HEADERS });
@@ -150,7 +156,7 @@ export type ReportDeps = { print?: PrintPdf; now?: () => Date };
 const liveWalk = async (db: D1Database, walkId: string): Promise<boolean> => (await getWalk(db, walkId)) !== null;
 
 const printed = async (env: ReportEnv, walk: WalkRecord, shown: Shown, approval: Approval, deps: ReportDeps): Promise<Uint8Array<ArrayBuffer> | Response> => {
-  const html = await htmlOf(env.DB, env.MEDIA, walk, shown, approval.approvedAt);
+  const html = await htmlOf(env.DB, env.MEDIA, walk, shown, approval);
   if (env.BROWSER === undefined) return fail("server_error", 503);
   const print = deps.print ?? pdfOf;
   const bytes = await print(env.BROWSER, html).catch((error: unknown) => {
@@ -160,10 +166,19 @@ const printed = async (env: ReportEnv, walk: WalkRecord, shown: Shown, approval:
   if (bytes === null) return fail("server_error", 503);
   const after = await approvalOf(env.MEDIA, walk.id);
   if (after === null || after.approvedAt !== approval.approvedAt || !sameSeen(after, approval)) return fail("conflict");
-  await env.MEDIA.put(pdfKey(walk.id), bytes, { httpMetadata: { contentType: "application/pdf" }, customMetadata: await pdfStamp(approval) });
+  const stamp = { ...(await pdfStamp(approval)), language: String(walk.language) };
+  await env.MEDIA.put(pdfKey(walk.id), bytes, { httpMetadata: { contentType: "application/pdf" }, customMetadata: stamp });
   if (await liveWalk(env.DB, walk.id)) return bytes;
   await env.MEDIA.delete(pdfKey(walk.id));
   return fail("unknown_walk");
+};
+
+const kept = async (media: R2Bucket, walk: WalkRecord, approval: Approval): Promise<ArrayBuffer | null> => {
+  const stored = await media.get(pdfKey(walk.id));
+  if (stored === null) return null;
+  if (stored.customMetadata?.language === String(walk.language) && (await stampedFor(stored.customMetadata, approval))) return stored.arrayBuffer();
+  await stored.body.cancel();
+  return null;
 };
 
 const ALLOW: Record<string, string> = { "/approval": "GET, POST", "/share": "GET, POST, DELETE" };
@@ -186,7 +201,7 @@ export const handleReport = async (request: Request, env: ReportEnv, match: RegE
     const now = deps.now ?? (() => new Date());
     if (end === "/approval") return await approve(request, env.MEDIA, walk.id, shown.seen, held, now);
     if (end === undefined) {
-      const html = await htmlOf(env.DB, env.MEDIA, walk, shown, held.current ? (approval?.approvedAt ?? null) : null);
+      const html = await htmlOf(env.DB, env.MEDIA, walk, shown, held.current ? approval : null);
       return new Response(html, { headers: { ...HEADERS, "content-type": "text/html; charset=utf-8", [SEEN_HEADER]: await digestOf(shown.seen) } });
     }
     if (approval === null) return fail("conflict");
@@ -194,13 +209,13 @@ export const handleReport = async (request: Request, env: ReportEnv, match: RegE
     if (end === "/share" && request.method !== "POST") return Response.json(shareBody(await shareOf(env.MEDIA, walk.id)), { headers: HEADERS });
     if (!held.current) return fail("conflict");
     const off = end === "/share" ? await shareOffOf(env.MEDIA, walk.id) : null;
-    const bytes = await printed(env, walk, shown, approval, deps);
+    const bytes = (end === ".pdf" ? await kept(env.MEDIA, walk, approval) : null) ?? (await printed(env, walk, shown, approval, deps));
     if (bytes instanceof Response) return bytes;
     if (end === "/share") {
       const made = await makeShare(env.MEDIA, walk.id, now(), { off, live: () => liveWalk(env.DB, walk.id) });
       return Response.json(shareBody(made), { headers: HEADERS });
     }
-    const name = `emberwalk-record-${fileDay(walk.createdAt.slice(0, 10))}.pdf`;
+    const name = `emberwalk-record-${fileDay(walkedDay(walk))}.pdf`;
     return new Response(bytes, { headers: { ...HEADERS, "content-type": "application/pdf", "content-disposition": `attachment; filename="${name}"` } });
   } catch (error) {
     if (error instanceof TooLarge) return fail("body_too_large");

@@ -22,6 +22,8 @@
   ],
   "vars": {
     "TURNSTILE_SITE_KEY": "0x4AAAAAAFnemk3q3LrVawvK",
-    "LAUNCH_DATE_SHOWN": "off"
+    "LAUNCH_DATE_SHOWN": "off",
+    "APP_LINK_SHOWN": "on",
+    "FILM_SHOWN": "on"
   }
 }

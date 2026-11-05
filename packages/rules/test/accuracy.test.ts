@@ -129,6 +129,46 @@ describe("matching findings to truth items", () => {
     expect(matchItems([truth[0]!], [foundItem("h", "wood_pile", 5, "zone_1", { side: "back" })])).toEqual([]);
   });
 
+  it("lets one dry grass finding answer every dry grass truth item in its band on a side it names, as one mowing does", () => {
+    const truth = [
+      truthItem("left", "dry_grass", 0, "zone_0", { side: "left" }),
+      truthItem("back", "dry_grass", 0, "zone_0", { side: "back" }),
+      truthItem("right", "dry_grass", 0, "zone_0", { side: "right" }),
+      truthItem("tall", "dry_grass", 50, "zone_2", { side: "back" }),
+    ];
+    const found = [foundItem("near", "dry_grass", 0, "zone_0", { feet: { low: 0, high: 3 }, sides: ["left", "back"] }), foundItem("far", "dry_grass", 40, "zone_2", { feet: { low: 40, high: 60 }, sides: ["back"] })];
+    const pairs = matchItems(truth, found).map((m) => [m.truth.id, m.found.id]);
+    expect(pairs.sort()).toEqual([["back", "near"], ["left", "near"], ["tall", "far"]]);
+    const house = scoreHouse(truth, found);
+    expect(house.falseAlarms).toEqual([]);
+    expect(house.missed).toEqual(["right"]);
+  });
+
+  it("counts dry grass once per band in the truth's top three, as the app lists it, so one per-band finding can score it in order", () => {
+    const truth = [
+      truthItem("left", "dry_grass", 0, "zone_0", { side: "left" }),
+      truthItem("back", "dry_grass", 0, "zone_0", { side: "back" }),
+      truthItem("right", "dry_grass", 0, "zone_0", { side: "right" }),
+      truthItem("pile", "wood_pile", 1, "zone_0"),
+    ];
+    expect(topThreeFromTruth(truth)).toEqual(["back", "pile"]);
+    const found = [foundItem("grass", "dry_grass", 0, "zone_0", { sides: ["left", "back", "right"], confidence: 0.9 }), foundItem("p", "wood_pile", 1, "zone_0", { confidence: 0.9 })];
+    expect(scoreHouse(truth, found, { topThree: topThreeFromTruth(truth) }).order).toMatchObject({ inOrder: 2, inSet: 2, of: 2 });
+  });
+
+  it("never lets a per-band dry grass finding hide a wrong band: an item with none in its band pairs with the nearest band on its side", () => {
+    const truth = [truthItem("left", "dry_grass", 0, "zone_0", { side: "left" }), truthItem("back", "dry_grass", 0, "zone_0", { side: "back" })];
+    const found = [foundItem("mid", "dry_grass", 8, "zone_1", { feet: { low: 8, high: 20 }, sides: ["left", "back"] })];
+    const house = scoreHouse(truth, found);
+    expect(house.missed).toEqual([]);
+    expect(house.findings).toBe(1);
+    const grass = house.concepts.find((c) => c.concept === "dry_grass")!;
+    expect(grass.matched).toBe(2);
+    expect(grass.bandRight).toBe(0);
+    expect(grass.zoneZeroFarther).toBe(2);
+    expect(grass.measures.right.share).toBe(1);
+  });
+
   it("pairs one finding with one truth item, the nearest first, and leaves the other a false alarm", () => {
     const house = scoreHouse([truthItem("t", "wood_pile", 10, "zone_1")], [foundItem("far", "wood_pile", 14, "zone_1"), foundItem("near", "wood_pile", 11, "zone_1")]);
     expect(house.placements.map((p) => p.finding)).toEqual(["near"]);

@@ -25,9 +25,13 @@
     { "binding": "GET_FIXED", "service": "emberwalk-getfixed", "entrypoint": "GetFixed" }
   ],
   "browser": { "binding": "BROWSER" },
+  "triggers": { "crons": ["41 15-23 * * *"] },
   "vars": {
     "R2_HOST": "755646338ba02dbe2d3409c5a557fa15.r2.cloudflarestorage.com",
     "R2_BUCKET_NAME": "emberwalk-media",
-    "REPORT": "off"
+    "REPORT": "on",
+    "APP_ORIGIN": "https://go.emberwalk.app",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFnemk3q3LrVawvK",
+    "EMBERWALK_LIMITS": "{\"paymentsOn\":true}"
   }
 }

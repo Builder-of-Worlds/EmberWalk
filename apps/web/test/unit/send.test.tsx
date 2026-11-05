@@ -1,12 +1,13 @@
 import type { FaultReportRequest, Part, WalkState, WalkStatusResponse } from "@emberwalk/shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Answer, Failure } from "../../src/api.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Answer, ApiFailure } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
-import { copy, draft, unbacked } from "../../src/copy.ts";
+import { copy, draft, unbacked, unbackedEn } from "../../src/copy.ts";
+import { unbackedEs } from "../../src/copy-es.ts";
 import { DepsContext } from "../../src/deps.ts";
 import type { Deps } from "../../src/deps.ts";
-import { DRAFT_WORDS_KEY } from "../../src/draft-words.ts";
-import { recordPartFor, resultsFor, ROUTES, sendFor } from "../../src/router.ts";
+import { billingWords } from "../../src/draft-words.ts";
+import { recordPartFor, resultsFor, ROUTES, sendFor, SIGN_IN_PATH } from "../../src/router.ts";
 import { OPENS_IN_MS, Send } from "../../src/screens/Send.tsx";
 import type { Sender } from "../../src/sender.ts";
 import type { Progress, SendResult } from "../../src/uploader.ts";
@@ -26,6 +27,10 @@ const withTake = async (deps: Deps, endedBy: "stopped" | "time_limit" = "stopped
 
 const goOnline = () => settle(() => window.dispatchEvent(new Event("online")));
 
+const noSignal = () => {
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+};
+
 const waitingFor = async (durationMs: number | null, code: SendResult["code"] = "offline") => {
   const sender = controlled();
   const view = await show(await withTake(testDeps({ send: sender.send }), "stopped", durationMs));
@@ -38,6 +43,21 @@ const until = async (check: () => boolean) => {
   for (let i = 0; i < 50 && !check(); i++) await settle(() => new Promise((r) => setTimeout(r, 5)));
   if (!check()) throw new Error("condition never became true");
 };
+
+describe("the walk gate on sending", () => {
+  it.each([
+    ["plan_needed", () => billingWords.choosePlan],
+    ["walks_used", () => billingWords.seePlan],
+  ] as const)("%s says the walk is kept, leads to the plan screen and offers no send that would fail again", async (code, label) => {
+    const { view } = await waitingFor(1000, code);
+    expect(view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.refused[code]);
+    expect(view.text()).toContain(copy.send.saved);
+    const links = [...view.host.querySelectorAll("a.button")];
+    expect(links.find((a) => a.textContent === label())?.getAttribute("href")).toBe(ROUTES.plan);
+    expect(button(view.host)).toBeUndefined();
+    await view.unmount();
+  });
+});
 
 const show = async (deps: Deps) => {
   const view = await render(
@@ -101,6 +121,14 @@ describe("What Leaves Your Phone", () => {
     }
   });
 
+  it("says location is only read for the rule area, in both languages, and names no map provider", () => {
+    for (const line of [unbackedEn.leaves.location, unbackedEs.leaves.location]) {
+      expect(line).not.toMatch(/esri|aerial|aérea|map point|mapa|nearby|cercana/i);
+    }
+    expect(unbackedEn.leaves.location).toContain("Only the rule area is kept and sent, never your coordinates.");
+    expect(unbackedEs.leaves.location).toContain("Solo se guarda y se envía el área de las reglas, nunca sus coordenadas.");
+  });
+
   it("never says what is kept, or that the original video is deleted", async () => {
     const view = await show(await withTake(testDeps()));
     expect(view.text()).not.toMatch(/Kept|original video/);
@@ -155,6 +183,7 @@ describe("Send Your Walk", () => {
   });
 
   it("explains a refusal in plain words and lets the walk be sent again, or later", async () => {
+    noSignal();
     const sender = controlled();
     const view = await show(await withTake(testDeps({ send: sender.send })));
     await settle(() => button(view.host)?.click());
@@ -169,6 +198,8 @@ describe("Send Your Walk", () => {
   });
 
   describe("when signal is lost", () => {
+    beforeEach(noSignal);
+
     it("says it is waiting with the saved minutes, then sends by itself when signal returns", async () => {
       const { sender, view } = await waitingFor(130_000);
       expect(view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.refused.offline);
@@ -249,7 +280,7 @@ describe("Send Your Walk", () => {
       await settle(() => time.advance(1));
       expect(sender.calls).toHaveLength(2);
       await settle(() => sender.finish({ code: "offline" }));
-      expect(view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.refused.offline);
+      expect(view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.unreachable);
       await settle(() => time.advance(SIGNAL_RETRY_MS));
       expect(sender.calls).toHaveLength(3);
       await settle(() => sender.finish({ walkId: "w" }));
@@ -286,6 +317,42 @@ describe("Send Your Walk", () => {
       await settle(() => time.advance(SIGNAL_RETRY_MS * 3));
       expect(sender.calls).toHaveLength(1);
       expect(time.pending()).toBe(0);
+    });
+
+    it.each([
+      ["offline", "unreachable"],
+      ["storage_blocked", "storage_blocked"],
+      ["sign_in_needed", "sign_in_needed"],
+    ] as const)("never says Waiting for Signal after %s, and says what failed with the walk kept", async (code, key) => {
+      const { view } = await stuck(code);
+      const alert = view.host.querySelector("[role=alert]")?.textContent;
+      expect(alert).toBe(key === "unreachable" ? copy.send.unreachable : copy.send.refused[key]);
+      expect(alert).not.toBe(copy.send.refused.offline);
+      expect(view.text()).toContain(copy.send.saved);
+      expect(button(view.host)).toBeDefined();
+    });
+
+    it("tries storage again by itself, as for a server that did not answer", async () => {
+      const { time, sender } = await stuck("storage_blocked");
+      await settle(() => time.advance(SIGNAL_RETRY_MS));
+      expect(sender.calls).toHaveLength(2);
+    });
+
+    it("offers Sign In past the saved app, back to this walk, and tries nothing by itself until the phone is signed in", async () => {
+      window.location.hash = "#/send/take-1";
+      const { time, sender, view } = await stuck("sign_in_needed");
+      const signIn = [...view.host.querySelectorAll("a.button")].find((a) => a.textContent === copy.send.signIn);
+      expect(signIn?.getAttribute("href")).toBe(`${SIGN_IN_PATH}#/send/take-1`);
+      expect(signIn?.className).toContain("primary");
+      expect(button(view.host)?.className).toBe("button");
+      await settle(() => time.advance(SIGNAL_RETRY_MS * 3));
+      expect(sender.calls).toHaveLength(1);
+    });
+
+    it("says Waiting for Signal for a storage failure only while the phone has no signal", async () => {
+      noSignal();
+      const { view } = await stuck("storage_blocked");
+      expect(view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.refused.offline);
     });
   });
 
@@ -395,6 +462,7 @@ describe("after the walk is sent", () => {
     });
 
     it("keeps the last stage reached, still, with the offline line while waiting for signal", async () => {
+      noSignal();
       const { view, tick } = await sentWith([state({ name: "processing", step: "segment" }), { code: "offline" }]);
       await tick();
       expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
@@ -438,6 +506,7 @@ describe("after the walk is sent", () => {
     });
 
     it("keeps the count still with the offline line while waiting for signal", async () => {
+      noSignal();
       const { view, tick } = await sentWith([state({ name: "processing", step: "score", progress: { done: 9, total: 14 } }), { code: "offline" }]);
       await tick();
       expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
@@ -585,7 +654,7 @@ describe("after the walk is sent", () => {
       return { reports, overrides: { reportFault, build: BUILD_ID } };
     };
 
-    const heldTimes = async (n: number, code: Failure) => {
+    const heldTimes = async (n: number, code: ApiFailure) => {
       const sent = reporter();
       const flow = await sentWith(Array.from({ length: n }, () => ({ code })), sent.overrides);
       for (let i = 1; i < n; i += 1) await settle(() => flow.time.advance(HELD_RETRY_MS));
@@ -672,7 +741,7 @@ describe("after the walk is sent", () => {
     });
   });
 
-  it.each(["not_mp4", "too_long", "no_frames", "real_footage_not_allowed", "media_invalid_media", "media_no_video", "media_media_too_long", "media_input_too_large"])(
+  it.each(["not_mp4", "too_long", "no_frames", "media_invalid_media", "media_no_video", "media_media_too_long", "media_input_too_large"])(
     "never offers Send My Walk after a %s failure, which the same video would meet again: its message and Back, and the video let go",
     async (code) => {
       const message = "The video could not be read.";
@@ -714,8 +783,6 @@ describe("after the walk is sent", () => {
     });
     const links = (view: Awaited<ReturnType<typeof sentWith>>["view"]) => [...view.host.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
 
-    afterEach(() => window.localStorage.removeItem(DRAFT_WORDS_KEY));
-
     it("offers that side alone with its hint, beside Send My Walk, never a whole walk", async () => {
       const { view, kept } = await sentWith([failedAt("back")]);
       await offersTheSameWalk(view, kept);
@@ -732,13 +799,7 @@ describe("after the walk is sent", () => {
       await view.unmount();
     });
 
-    it("keeps a corner's words off the screen until the draft words are on, as Results does", async () => {
-      const off = await sentWith([failedAt("front_left")]);
-      await offersTheSameWalk(off.view, off.kept);
-      expect(links(off.view)).toEqual([]);
-      await off.view.unmount();
-
-      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
+    it("offers a corner too, with its words, as Results does", async () => {
       const on = await sentWith([failedAt("front_left")]);
       await offersTheSameWalk(on.view, on.kept);
       expect(links(on.view)).toEqual([[draft.corners.panCorner("front_left"), recordPartFor(WALK, "front_left")]]);
@@ -747,7 +808,18 @@ describe("after the walk is sent", () => {
     });
   });
 
+  it("never says Waiting for Signal while checking when the phone has signal: a silent server, or a sign-in with its button", async () => {
+    const silent = await sentWith([{ code: "offline" }]);
+    expect(silent.view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.checkUnreachable);
+    window.location.hash = "#/checking/w";
+    const locked = await sentWith([{ code: "sign_in_needed" }]);
+    expect(locked.view.host.querySelector("[role=alert]")?.textContent).toBe(copy.send.checkSignIn);
+    const signIn = [...locked.view.host.querySelectorAll("a.button")].find((a) => a.textContent === copy.send.signIn);
+    expect(signIn?.getAttribute("href")).toBe(`${SIGN_IN_PATH}#/checking/w`);
+  });
+
   it("waits for signal while checking, then carries on when signal returns", async () => {
+    noSignal();
     const { view, asked, tick } = await sentWith([{ code: "offline" }, state({ name: "processing", step: "segment" })]);
     expect(view.host.querySelector("[role=alert]")?.textContent).toBe("Waiting for Signal.");
     await tick();

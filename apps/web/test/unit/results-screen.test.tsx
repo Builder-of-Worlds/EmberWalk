@@ -7,7 +7,7 @@ import { apiResults, samplesThenApi } from "../../src/live-api.ts";
 import { marksKey } from "../../src/finding-marks.ts";
 import { storagePrefs, VIEW_KEY } from "../../src/prefs.ts";
 import type { WalkResults } from "../../src/results.ts";
-import { DRAFT_WORDS_KEY, recheckWords } from "../../src/draft-words.ts";
+import { recheckWords } from "../../src/draft-words.ts";
 import { findingFor, recheckFor, recordPartFor, resultsFor, ROUTES } from "../../src/router.ts";
 import { SAMPLES, sampleResults } from "../../src/samples.ts";
 import { fakeClock, memoryMarks, memoryPrefs, memoryStorage, refusingStorage, testDeps } from "./fakes.ts";
@@ -54,7 +54,7 @@ const seenPrefs = () => {
   return prefs;
 };
 
-const buttons = (host: HTMLElement) => [...host.querySelectorAll("a.button:not([data-part=get-it-fixed])")].map((a) => [a.textContent, a.getAttribute("href")]);
+const buttons = (host: HTMLElement) => [...host.querySelectorAll("a.button:not([data-part=get-it-fixed]):not([data-part=map])")].map((a) => [a.textContent, a.getAttribute("href")]);
 
 afterEach(() => {
   window.location.hash = "";
@@ -66,7 +66,7 @@ describe("Results, step 9", () => {
     const view = await open(results);
     for (const chosen of [copy.results.detailed, copy.results.simple]) {
       await pick(view.host, chosen);
-      const allowed = new Set([...SETTLED_RESULTS, ...SETTLED_DISTANCE, ...SETTLED_STATUS, copy.results.walked(new Date(Date.UTC(2026, 9, 26, 12))), ...results.findings.flatMap((f) => [f.instruction, ...f.sources.map((s) => s.citation)])]);
+      const allowed = new Set([copy.map.button, copy.map.noPins, ...SETTLED_RESULTS, ...SETTLED_DISTANCE, ...SETTLED_STATUS, copy.results.walked(new Date(Date.UTC(2026, 9, 26, 12))), ...results.findings.flatMap((f) => [f.instruction, ...f.sources.map((s) => s.citation)])]);
       for (const line of shownLines(view.host)) expect(allowed, line).toContain(line);
       for (const word of NEVER_SAID) expect(view.text().toLowerCase()).not.toContain(word);
       for (const line of Object.values(draft.results)) expect(view.text()).not.toContain(line(5));
@@ -74,14 +74,13 @@ describe("Results, step 9", () => {
     await view.unmount();
   });
 
-  it("keeps the draft corner words off screen: a corner gap is not listed and gets no reshoot button", async () => {
+  it("lists a corner gap after the side gaps and gives it a reshoot button", async () => {
     const corner = { side: "back_left", kind: "missing", hint: "pan_corner" } as const;
     const view = await open(walk([finding("a")], [GAP, corner]));
     expect(view.h1()).toBe(copy.results.incomplete);
-    expect([...view.host.querySelectorAll("ul.lines li > span")].map((span) => span.textContent)).toEqual([copy.results.gap(GAP)]);
-    for (const line of [...Object.values(draft.corners.gap), draft.corners.hint, draft.corners.panCorner, draft.corners.pan, draft.corners.oneCorner])
-      expect(view.text()).not.toContain(line("back_left"));
-    expect(buttons(view.host).map(([, href]) => href)).not.toContain(expect.stringContaining("back_left"));
+    expect([...view.host.querySelectorAll("ul.lines li > span")].map((span) => span.textContent)).toEqual([copy.results.gap(GAP), draft.corners.gap.missing("back_left")]);
+    expect(view.text()).toContain(draft.corners.hint("back_left"));
+    expect(buttons(view.host)).toContainEqual([draft.corners.panCorner("back_left"), recordPartFor("walk-1", "back_left")]);
     await view.unmount();
   });
 
@@ -93,7 +92,7 @@ describe("Results, step 9", () => {
     expect(view.host.querySelector(".green")).toBeNull();
     for (const line of [copy.results.ready, copy.results.allClear, copy.results.insurance, FIVE_FEET_LINE]) expect(view.text()).not.toContain(line);
     expect(view.host.querySelector("h2")?.textContent).toBe(copy.results.soFar);
-    expect([...view.host.querySelectorAll("h3")].map((h) => h.textContent)).toEqual([copy.results.bands.zone_1]);
+    expect([...view.host.querySelectorAll("h3")].map((h) => h.textContent)).toEqual([copy.results.fixFirst(1)]);
     expect(view.host.querySelectorAll("li.finding")).toHaveLength(1);
     await view.unmount();
   });
@@ -114,6 +113,15 @@ describe("Results, step 9", () => {
       [SETTLED_SIDE.walk.back, recordPartFor(LIVE_WALK, "back")],
       [SETTLED_SIDE.walk.left, recordPartFor(LIVE_WALK, "left")],
     ]);
+    await view.unmount();
+  });
+
+  it("lists each finding once: the ones to fix first, then only the rest by distance", async () => {
+    const results = walk([finding("a", feet(2)), finding("b", feet(12)), finding("c", { ...feet(60), label: "recommended", band: "zone_2" })]);
+    const view = await open(results);
+    const ids = [...view.host.querySelectorAll("li.finding")].map((li) => li.getAttribute("data-finding"));
+    expect(ids.sort()).toEqual(["a", "b", "c"]);
+    expect([...view.host.querySelectorAll("section.band")].map((s) => s.getAttribute("data-band"))).toEqual(["zone_2"]);
     await view.unmount();
   });
 
@@ -170,7 +178,7 @@ describe("Results, step 9", () => {
     expect(buttons(own.host)).toEqual(SIDES.map((side) => [copy.results.walkSide(side), recordPartFor(LIVE_WALK, side)]));
     await own.unmount();
     const sample = await open(walk([], everySide, { synthetic: true }));
-    expect(sample.host.querySelectorAll("ul.lines li")).toHaveLength(4);
+    expect(sample.host.querySelectorAll("ul.lines li")).toHaveLength(0);
     expect(sample.host.querySelector("p.hint")).toBeNull();
     for (const side of SIDES) expect(sample.text()).not.toContain(copy.results.hint.more_light(side));
     await sample.unmount();
@@ -196,11 +204,7 @@ describe("Results, step 9", () => {
     const first = view.host.querySelector("main > ul.findings")!;
     expect([...first.querySelectorAll("li.finding")].map((li) => li.getAttribute("data-finding"))).toEqual(["rec-near", "req-near", "req-mid"]);
     const bands = [...view.host.querySelectorAll("section.band")].map((s) => [s.querySelector("h2")?.textContent, [...s.querySelectorAll("li.finding")].map((li) => li.getAttribute("data-finding"))]);
-    expect(bands).toEqual([
-      ["First 5 Feet", ["rec-near"]],
-      ["5 to 30 Feet", ["req-near", "req-mid"]],
-      ["30 to 100 Feet", ["req-far"]],
-    ]);
+    expect(bands).toEqual([["30 to 100 Feet", ["req-far"]]]);
     await view.unmount();
   });
 
@@ -211,8 +215,7 @@ describe("Results, step 9", () => {
     const lead = view.host.querySelector("main > p.lead");
     expect(lead?.textContent).toBe(SETTLED_LEAD);
     expect(lead?.nextElementSibling?.matches("p.count")).toBe(true);
-    expect(lead?.nextElementSibling?.nextElementSibling?.nextElementSibling?.matches("figure.house-map")).toBe(true);
-    expect(lead?.nextElementSibling?.nextElementSibling?.nextElementSibling?.nextElementSibling?.matches("ul.findings")).toBe(true);
+    expect(lead?.nextElementSibling?.nextElementSibling?.nextElementSibling?.matches("ul.findings")).toBe(true);
     expect([...view.host.querySelectorAll("main > ul.findings li.finding")].map((li) => li.getAttribute("data-finding"))).toEqual(["rec-near", "req-far"]);
     expect(view.text()).not.toContain(FIVE_FEET_LINE);
     expect(Object.values(copy.results)).not.toContain(FIVE_FEET_LINE);
@@ -259,12 +262,15 @@ describe("Results, step 9", () => {
     for (const chosen of [copy.results.simple, copy.results.detailed]) {
       await pick(view.host, chosen);
       expect(counts(view.host)).toEqual(["Inside 5 feet: 2 things to clear.", "From 5 to 30 feet: 1 thing to clear."]);
-      expect(view.host.querySelector("main > p.count + p.count + figure.house-map + ul.findings")).not.toBeNull();
+      expect(view.host.querySelector("main > ul.findings")).not.toBeNull();
     }
     await view.unmount();
     const outer = await open(walk([finding("a", feet(6)), finding("b", { label: "recommended", ...feet(12, 19) }), finding("c", feet(25, 28))]));
     expect(counts(outer.host)).toEqual(["Inside 5 feet: nothing found.", "From 5 to 30 feet: 3 things to clear."]);
     await outer.unmount();
+    const crossing = await open(walk([finding("sure", { band: "zone_0", ...feet(0, 4) }), finding("crosses", { band: "zone_0", ...feet(3, 13) }), finding("also", { band: "zone_0", ...feet(0, 14) })]));
+    expect(counts(crossing.host)).toEqual(["Inside 5 feet: 1 thing to clear.", "Close to the house: 2 things to clear.", "From 5 to 30 feet: nothing found."]);
+    await crossing.unmount();
     const fallback = await open(walk([finding("req-40", { band: "zone_2", ...feet(40) })]));
     expect(counts(fallback.host)).toEqual(["Inside 5 feet: nothing found.", "From 5 to 30 feet: nothing found."]);
     await fallback.unmount();
@@ -335,7 +341,7 @@ describe("Results, step 9", () => {
         expect(view.host.querySelector("main")?.dataset.verdict).toBe("so_far");
         expect(view.host.querySelector(".green")).toBeNull();
         for (const line of [copy.results.ready, copy.results.allClear, copy.results.insurance]) expect(view.text()).not.toContain(line);
-        for (const line of shownLines(view.host)) expect([...SETTLED_RESULTS, ...SETTLED_STATUS, SETTLED_NOT_CHECKED.roof_debris, far.instruction, ...far.sources.map((s) => s.citation), copy.results.walked(new Date(Date.UTC(2026, 9, 26, 12)))], line).toContain(line);
+        for (const line of shownLines(view.host)) expect([copy.map.button, copy.map.noPins, ...SETTLED_RESULTS, ...SETTLED_STATUS, SETTLED_NOT_CHECKED.roof_debris, far.instruction, ...far.sources.map((s) => s.citation), copy.results.walked(new Date(Date.UTC(2026, 9, 26, 12)))], line).toContain(line);
       }
       expect(view.host.querySelectorAll("li.finding")).toHaveLength(findings.length);
       await view.unmount();
@@ -358,6 +364,25 @@ describe("Results, step 9", () => {
     const view = await open(walk([], [], { coverage: "not_checked", notChecked: ["roof_debris", "wood_pile"] }));
     expect([...view.host.querySelectorAll("main > ul.not-checked li")].map((li) => li.textContent)).toEqual([SETTLED_NOT_CHECKED.roof_debris, SETTLED_NOT_CHECKED.wood_pile]);
     expect(view.host.querySelector("main > h1 ~ ul.not-checked")).not.toBeNull();
+    await view.unmount();
+  });
+
+  it("says what the walk could not measure in one line per side, in walking order, then one line for the rest, after the concepts it did not check", async () => {
+    const unplaced = [
+      { concept: "shrub" as const, side: "right" as const },
+      { concept: "wood_pile" as const, side: null },
+      { concept: "doormat" as const, side: "right" as const },
+      { concept: "wooden_fence" as const, side: "front" as const },
+    ];
+    const view = await open(walk([], [], { coverage: "not_checked", notChecked: ["roof_debris"], unplaced }));
+    expect([...view.host.querySelectorAll("main > ul.not-checked li")].map((li) => li.textContent)).toEqual([
+      SETTLED_NOT_CHECKED.roof_debris,
+      copy.results.unplaced("front", ["wooden_fence"]),
+      copy.results.unplaced("right", ["shrub", "doormat"]),
+      copy.results.unplaced(null, ["wood_pile"]),
+    ]);
+    expect(copy.results.unplaced("right", ["shrub", "doormat"])).not.toBe(copy.results.unplaced("right", ["shrub"]));
+    expect(copy.results.unplaced("right", ["shrub"])).not.toBe(copy.results.unplaced("left", ["shrub"]));
     await view.unmount();
   });
 
@@ -418,7 +443,7 @@ describe("Simple and Detailed", () => {
   it("remembers the chosen view on this phone", async () => {
     const storage = memoryStorage();
     const first = await open(walk([finding("a")]), { prefs: memoryPrefs(storage) });
-    const pressed = () => [...first.host.querySelectorAll("[aria-pressed=true]")].map((b) => b.textContent);
+    const pressed = () => [...first.host.querySelectorAll("main [aria-pressed=true]")].map((b) => b.textContent);
     expect(pressed()).toEqual([copy.results.simple]);
     await pick(first.host, copy.results.detailed);
     expect(pressed()).toEqual([copy.results.detailed]);
@@ -426,7 +451,7 @@ describe("Simple and Detailed", () => {
     await first.unmount();
     const again = await open(walk([finding("a")]), { prefs: memoryPrefs(storage) });
     expect(again.host.querySelector("main")?.dataset.view).toBe("detailed");
-    expect(parts(again.host)).toEqual([LISTED_DETAILED, DETAILED_PARTS]);
+    expect(parts(again.host)).toEqual([LISTED_DETAILED]);
     await again.unmount();
   });
 
@@ -526,34 +551,26 @@ describe("status and green", () => {
         }),
       );
     const MARKS = { req: { kind: "done", recheck: RECHECK }, close: { kind: "done" }, far: { kind: "fix_planned" } };
-    afterEach(() => window.localStorage.removeItem(DRAFT_WORDS_KEY));
 
     it("offers a recheck on a Done item not rechecked yet, and on no other row", async () => {
-      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
       const view = await open(walk([required, close, far, finding("open")]), { limits: ON, marks: marked(MARKS) });
       expect(links(view.host)).toEqual({ req: null, close: [recheckWords.entry, recheckFor("walk-1", "close")], far: null, open: null });
       await view.unmount();
     });
 
     it("offers a still there or unsure item another recheck", async () => {
-      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
       const view = await open(walk([required]), { limits: ON, marks: marked({ req: { kind: "done", recheck: { ...RECHECK, result: "unsure" } } }) });
       expect(links(view.host)).toEqual({ req: [recheckWords.entry, recheckFor("walk-1", "req")] });
       await view.unmount();
     });
 
-    it("offers none while the recheck flag or the draft words are off", async () => {
-      for (const [limits, draft] of [[DEFAULT_LIMITS, "on"], [ON, null]] as const) {
-        if (draft === null) window.localStorage.removeItem(DRAFT_WORDS_KEY);
-        else window.localStorage.setItem(DRAFT_WORDS_KEY, draft);
-        const view = await open(walk([required, close]), { limits, marks: marked(MARKS) });
-        expect(links(view.host), String(limits.recheckOn)).toEqual({ req: null, close: null });
-        await view.unmount();
-      }
+    it("offers none while the recheck flag is off", async () => {
+      const view = await open(walk([required, close]), { limits: { ...DEFAULT_LIMITS, recheckOn: false }, marks: marked(MARKS) });
+      expect(links(view.host)).toEqual({ req: null, close: null });
+      await view.unmount();
     });
 
     it("offers none on a sample walk", async () => {
-      window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
       const sample = SAMPLES[0]!;
       const marks = memoryMarks();
       for (const f of sample.findings) marks.setStatus(sample.id, f.id, "done");
@@ -576,14 +593,21 @@ describe("the sample house", () => {
   it("opens from its own results", async () => {
     const sample = SAMPLES[0]!;
     const view = await open(sample);
-    expect(view.h1()).toBe(copy.results.incomplete);
+    expect(view.h1()).toBe(copy.sample.partial);
     expect(view.text()).not.toMatch(NEVER_LABELLED);
     expect(view.host.querySelectorAll("li.finding")).toHaveLength(sample.findings.length);
     await view.unmount();
   });
 });
 
+const openSimple = open;
+
 describe("the drawing of the house on the results", () => {
+  const open = async (results: WalkResults) => {
+    const view = await openSimple(results);
+    await pick(view.host, copy.results.detailed);
+    return view;
+  };
   const near = finding("near", { band: "zone_0", ...feet(2, 3) });
   const mid = finding("mid", feet(12, 19));
   const edge = finding("edge", { label: "recommended", ...feet(28, 40) });
@@ -602,7 +626,7 @@ describe("the drawing of the house on the results", () => {
     const expected = [["near", "1"], ["mid", "2"], ["edge", "3"], ["out", "4"]];
     expect(pinsOf(view.host)).toEqual(expected);
     expect(numbersOf(view.host, "main > ul.findings")).toEqual([["near", "1"], ["mid", "2"], ["unsided", null], ["edge", "3"]]);
-    expect(numbersOf(view.host, "section.band")).toEqual([["near", "1"], ["mid", "2"], ["unsided", null], ["edge", "3"], ["out", "4"]]);
+    expect(numbersOf(view.host, "section.band")).toEqual([["out", "4"]]);
     for (const a of view.host.querySelectorAll("figure.house-map a.pin")) {
       const id = a.getAttribute("data-finding");
       expect(a.getAttribute("href")).toBe(findingFor("walk-1", id!));
@@ -614,19 +638,20 @@ describe("the drawing of the house on the results", () => {
     const view = await open(walk([near, mid], [], { pins: [pin("near", { band: "zone_0", feet: 2 }), pin("mid")] }));
     for (const chosen of [copy.results.detailed, copy.results.simple]) {
       await pick(view.host, chosen);
-      expect(pinsOf(view.host)).toEqual([["near", "1"], ["mid", "2"]]);
+      if (chosen === copy.results.detailed) expect(pinsOf(view.host)).toEqual([["near", "1"], ["mid", "2"]]);
+      else expect(view.host.querySelector("figure.house-map")).toBeNull();
+      expect(numbersOf(view.host, "main > ul.findings")).toEqual([["near", "1"], ["mid", "2"]]);
       expect(parts(view.host).slice(0, 2)).toEqual(Array(2).fill(chosen === copy.results.detailed ? LISTED_DETAILED : LISTED_SIMPLE));
       expect(view.host.querySelector("li.finding .number")?.getAttribute("aria-hidden")).toBe("true");
     }
     await view.unmount();
   });
 
-  it("draws the house and the rows as today when the results carry no pins", async () => {
+  it("says why and draws no empty house, with the rows as today, when the results carry no pins", async () => {
     for (const pins of [undefined, []]) {
       const view = await open(walk([near, mid], [], pins === undefined ? {} : { pins }));
-      expect(view.host.querySelectorAll("main > figure.house-map")).toHaveLength(1);
-      expect(view.host.querySelector("figure.house-map rect.house")).not.toBeNull();
-      expect(view.host.querySelectorAll("a.pin")).toHaveLength(0);
+      expect(view.host.querySelector("figure.house-map")).toBeNull();
+      expect(view.text()).toContain(copy.map.noPins);
       expect(view.host.querySelectorAll(".number")).toHaveLength(0);
       expect(view.host.querySelectorAll("main > ul.findings li.finding")).toHaveLength(2);
       await view.unmount();
@@ -654,9 +679,9 @@ describe("the drawing of the house on the results", () => {
     const pins = [pin("near", { band: "zone_0", feet: 2 }), pin("mid"), pin("edge", { side: "right" })];
     const incomplete = await open(walk(found, [GAP], { pins }));
     expect(incomplete.h1()).toBe(copy.results.incomplete);
-    expect(incomplete.host.querySelector("section.so-far > h2 + figure.house-map")).not.toBeNull();
+    expect(incomplete.host.querySelector("section.so-far > figure.house-map")).not.toBeNull();
     expect(pinsOf(incomplete.host)).toEqual([["near", "1"], ["mid", "2"], ["edge", "3"]]);
-    expect(numbersOf(incomplete.host, "section.band")).toEqual([["near", "1"], ["mid", "2"], ["edge", "3"]]);
+    expect(numbersOf(incomplete.host, "section.so-far")).toEqual([["near", "1"], ["mid", "2"], ["edge", "3"]]);
     await incomplete.unmount();
     const far = [finding("far-60", { label: "recommended", band: "zone_2", ...feet(60) }), finding("far-40", { label: "recommended", band: "zone_2", ...feet(40) })];
     const soFar = await open(walk(far, [], { coverage: "not_checked", notChecked: ["roof_debris"], pins: [pin("far-60", { band: "zone_2", feet: 60 }), pin("far-40", { band: "zone_2", feet: 40 })] }));

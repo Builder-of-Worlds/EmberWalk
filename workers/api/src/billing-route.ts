@@ -8,13 +8,16 @@ import {
   offerOf,
   PLAN_KINDS,
   PlanResponse,
+  holdsPlan,
   StripeStatus,
   VISITOR_HEADER,
 } from "@emberwalk/shared";
 import type { BillingCode, Limits, PlanKind } from "@emberwalk/shared";
 import { z } from "zod";
-import { holdsLivePlan, type PlanChange, planByCustomer, planOf, recordEvent, refundedInFull } from "./plans.ts";
-import { createCheckout, createPortal, expireCheckout, EXTRA_WALKS_PURPOSE, hasLiveSubscription, openSubscriptionCheckouts, StripeFailure, subscriptionStatus, verifySignature } from "./stripe.ts";
+import { ownerThroughSession } from "./account.ts";
+import { eventSeen, holdsLivePlan, keepCustomer, type PlanChange, planByCustomer, planOf, recordEvent, refundedInFull, storedCustomer, walkLanguageOf, walksAllowed, walksThisPlanYear } from "./plans.ts";
+import { sendRenewalMail } from "./renewal-mail.ts";
+import { cancelSubscription, createCheckout, createCustomer, createPortal, expireCheckout, EXTRA_WALKS_PURPOSE, hasLiveSubscription, openSubscriptionCheckouts, StripeFailure, subscriptionEnds, subscriptionStatus, verifySignature } from "./stripe.ts";
 
 export const MAX_EVENT_BYTES = 512 * 1024;
 
@@ -25,7 +28,9 @@ export type StripeConfig = { secretKey?: string | undefined; webhookSecret?: str
 export const kindOfPrice = (prices: PriceIds, priceId: string | null): PlanKind | null =>
   priceId === null ? null : (PLAN_KINDS.find((kind) => prices[kind] === priceId) ?? null);
 
-export type BillingDeps = { db: D1Database; limits: Limits; fetch: typeof fetch; now: () => number; stripe: StripeConfig; log: (line: string) => void };
+export type MailConfig = { apiKey: string | undefined; portalLoginUrl: string | undefined; footer: string | undefined };
+
+export type BillingDeps = { db: D1Database; limits: Limits; fetch: typeof fetch; now: () => number; stripe: StripeConfig; log: (line: string) => void; mail?: MailConfig | undefined };
 
 const MESSAGE: Record<BillingCode, string> = {
   not_open: "Payments are not open yet.",
@@ -85,8 +90,15 @@ const expireRefused = (status: number): Response => (EXPIRE_REFUSALS.has(status)
 
 const ENDED: ReadonlySet<string> = new Set(["canceled", "incomplete_expired"]);
 
-const handlePlan = async (request: Request, deps: BillingDeps): Promise<Response> => {
+const payerOf = async (request: Request, db: D1Database): Promise<string | null> => {
   const visitor = visitorOf(request);
+  if (visitor === null) return null;
+  const owner = await ownerThroughSession(request, db);
+  return owner !== null && (await planOf(db, owner)) !== null ? owner : visitor;
+};
+
+const handlePlan = async (request: Request, deps: BillingDeps): Promise<Response> => {
+  const visitor = await payerOf(request, deps.db);
   if (visitor === null) return billingFail("invalid_request");
   const row = await planOf(deps.db, visitor);
   const kind = row === null ? null : kindOfPrice(deps.stripe.prices, row.priceId);
@@ -99,6 +111,21 @@ const handlePlan = async (request: Request, deps: BillingDeps): Promise<Response
   return Response.json(PlanResponse.parse({ plan, offers: OFFER_CONFIG.offers }), { headers: { "cache-control": "no-store" } });
 };
 
+export const WALKS_PATH = "/api/billing/walks";
+
+const handleWalks = async (request: Request, deps: BillingDeps): Promise<Response> => {
+  const phone = visitorOf(request);
+  const visitor = await payerOf(request, deps.db);
+  if (visitor === null || phone === null) return billingFail("invalid_request");
+  const row = await planOf(deps.db, visitor);
+  const kind = row === null ? null : kindOfPrice(deps.stripe.prices, row.priceId);
+  const headers = { "cache-control": "no-store" };
+  if (row === null || kind === null || !holdsLivePlan(row)) return Response.json({ walks: null }, { headers });
+  const allowed = await walksAllowed(deps.db, row, offerOf(kind).walksPerYear);
+  const used = await walksThisPlanYear(deps.db, row.visitorId ?? visitor, row.periodStart, phone);
+  return Response.json({ walks: { used, allowed, left: Math.max(0, allowed - used) } }, { headers });
+};
+
 const bodyOf = async <T>(request: Request, schema: z.ZodType<T>): Promise<T | null> => {
   try {
     const parsed = schema.safeParse(await request.json());
@@ -109,7 +136,7 @@ const bodyOf = async <T>(request: Request, schema: z.ZodType<T>): Promise<T | nu
 };
 
 const handleExtraWalks = async (request: Request, deps: BillingDeps): Promise<Response> => {
-  const visitor = visitorOf(request);
+  const visitor = await payerOf(request, deps.db);
   const asked = await bodyOf(request, ExtraWalksRequest);
   if (visitor === null || asked === null) return billingFail("invalid_request");
   const { secretKey } = deps.stripe;
@@ -140,7 +167,7 @@ const handleExtraWalks = async (request: Request, deps: BillingDeps): Promise<Re
 const REOPENS: ReadonlySet<string> = new Set(["canceled", "incomplete_expired", "incomplete"]);
 
 const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Response> => {
-  const visitor = visitorOf(request);
+  const visitor = await payerOf(request, deps.db);
   const kind = (await bodyOf(request, CheckoutRequest))?.kind ?? null;
   if (visitor === null || kind === null) return billingFail("invalid_request");
   const { secretKey } = deps.stripe;
@@ -150,10 +177,21 @@ const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Resp
   const row = await planOf(deps.db, visitor);
   if (row !== null && !REOPENS.has(row.status)) return billingFail("conflict");
   const client = { fetch: deps.fetch, secretKey };
-  if (row !== null) {
+  let customerId = row?.customerId ?? (await storedCustomer(deps.db, visitor));
+  let firstCheckout = false;
+  if (customerId === null) {
+    try {
+      const made = await keepCustomer(deps.db, visitor, await createCustomer(client, visitor));
+      customerId = made.customerId;
+      firstCheckout = made.kept;
+    } catch (error) {
+      return providerFailed(deps, error);
+    }
+  }
+  if (!firstCheckout) {
     let open: string[];
     try {
-      open = await openSubscriptionCheckouts(client, row.customerId, row.subscriptionId);
+      open = await openSubscriptionCheckouts(client, customerId, row?.subscriptionId ?? null);
     } catch (error) {
       return providerFailed(deps, error);
     }
@@ -164,7 +202,7 @@ const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Resp
         return providerFailed(deps, error, expireRefused);
       }
     }
-    if (row.status === "incomplete" && row.subscriptionId !== null) {
+    if (row !== null && row.status === "incomplete" && row.subscriptionId !== null) {
       let status: string;
       try {
         status = await subscriptionStatus(client, row.subscriptionId);
@@ -177,7 +215,7 @@ const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Resp
       }
     }
     try {
-      if (await hasLiveSubscription(client, row.customerId)) return billingFail("conflict");
+      if (await hasLiveSubscription(client, customerId)) return billingFail("conflict");
     } catch (error) {
       return providerFailed(deps, error);
     }
@@ -188,7 +226,7 @@ const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Resp
       {
         priceId,
         visitorId: visitor,
-        customerId: row?.customerId ?? null,
+        customerId,
         origin: new URL(request.url).origin,
         automaticTax: deps.stripe.automaticTax === "on",
         price: { cents: offer.amountCents, currency: offer.currency },
@@ -203,7 +241,7 @@ const handleCheckout = async (request: Request, deps: BillingDeps): Promise<Resp
 const handlePortal = async (request: Request, deps: BillingDeps): Promise<Response> => {
   const { secretKey } = deps.stripe;
   if (!secretKey) return billingFail("not_set_up");
-  const visitor = visitorOf(request);
+  const visitor = await payerOf(request, deps.db);
   if (visitor === null) return billingFail("invalid_request");
   const row = await planOf(deps.db, visitor);
   if (row === null) return billingFail("not_found", undefined, "There is no plan for this visitor.");
@@ -333,6 +371,76 @@ const changeOf = (event: z.infer<typeof Event>): PlanChange | null => {
   return null;
 };
 
+const UpcomingInvoice = z.looseObject({
+  customer: CustomerId.nullable(),
+  customer_email: z.string().nullable().optional(),
+  amount_due: Seconds,
+  currency: z.string().min(3).max(3),
+  next_payment_attempt: Seconds.nullable().optional(),
+  period_end: Seconds.optional(),
+  subscription: z.string().nullable().optional(),
+  parent: z.looseObject({ subscription_details: z.looseObject({ subscription: z.string().nullable().optional() }).nullable().optional() }).nullable().optional(),
+});
+
+class RenewalRetry extends Error {}
+
+const MIN_NOTICE_SECONDS = 15 * 86400;
+
+const noticeOfRenewal = async (deps: BillingDeps, object: unknown, eventAt: number): Promise<void> => {
+  const invoice = UpcomingInvoice.parse(object);
+  if (invoice.customer === null || !invoice.customer_email) return;
+  const row = await planByCustomer(deps.db, invoice.customer);
+  if (row === null || row.subscriptionId === null || !holdsPlan(row.status) || refundedInFull(row)) return;
+  const named = invoice.parent?.subscription_details?.subscription ?? invoice.subscription ?? null;
+  if (named !== null && named !== row.subscriptionId) return;
+  const due = invoice.next_payment_attempt ?? invoice.period_end;
+  const renewsAt = row.renewsAt ?? (due === undefined ? null : iso(due));
+  if (renewsAt === null) return;
+  const renewsOn = renewsAt.slice(0, 10);
+  const { secretKey } = deps.stripe;
+  if (secretKey) {
+    try {
+      if (await subscriptionEnds({ fetch: deps.fetch, secretKey }, row.subscriptionId)) return;
+    } catch (error) {
+      if (error instanceof StripeFailure && error.status !== null && error.status < 500) throw error;
+      throw new RenewalRetry(`renewal notice for ${row.subscriptionId} waits: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const secondsBefore = Math.floor(Date.parse(renewsAt) / 1000) - eventAt;
+  if (secondsBefore < MIN_NOTICE_SECONDS) {
+    deps.log(`billing: renewal notice for ${row.subscriptionId} comes only ${Math.max(0, Math.floor(secondsBefore / 86400))} days before ${renewsOn}; check the Upcoming renewal events setting in Stripe`);
+  }
+  const mail = deps.mail;
+  const language = row.visitorId === null ? "en" : await walkLanguageOf(deps.db, row.visitorId);
+  const sent = await sendRenewalMail({
+    apiKey: mail?.apiKey,
+    portalLoginUrl: mail?.portalLoginUrl,
+    footer: mail?.footer,
+    to: invoice.customer_email,
+    language,
+    renewsOn,
+    amountCents: invoice.amount_due,
+    currency: invoice.currency,
+    idempotencyKey: `renewal-${row.subscriptionId}-${renewsOn}`,
+    fetch: deps.fetch,
+  });
+  if (sent.ok) return;
+  if (sent.code === "down" || sent.code === "unreachable" || sent.code === "not_set_up" || sent.code === "key_rejected") throw new RenewalRetry(`renewal notice for ${row.subscriptionId} was not sent: ${sent.code}`);
+  deps.log(`billing: renewal notice for ${row.subscriptionId} was dropped and will not be tried again: ${sent.code}`);
+};
+
+const stopRefundedRenewal = async (deps: BillingDeps, customerId: string | null): Promise<void> => {
+  if (customerId === null) return;
+  const row = await planByCustomer(deps.db, customerId);
+  if (row === null || row.subscriptionId === null || !holdsPlan(row.status) || !refundedInFull(row)) return;
+  const { secretKey } = deps.stripe;
+  if (!secretKey) {
+    deps.log(`billing: ${row.subscriptionId} is refunded in full but there is no Stripe secret key to cancel its renewal`);
+    return;
+  }
+  await cancelSubscription({ fetch: deps.fetch, secretKey }, row.subscriptionId);
+};
+
 const handleWebhook = async (request: Request, deps: BillingDeps): Promise<Response> => {
   const { webhookSecret } = deps.stripe;
   if (!webhookSecret) return billingFail("not_set_up");
@@ -354,7 +462,20 @@ const handleWebhook = async (request: Request, deps: BillingDeps): Promise<Respo
     const kind = kindOfPrice(deps.stripe.prices, (await planByCustomer(deps.db, change.customerId))?.priceId ?? null);
     change = { ...change, rolloverCap: kind === null ? null : offerOf(kind).walksPerYear };
   }
+  if (event.type === "invoice.upcoming" && !(await eventSeen(deps.db, event.id))) {
+    try {
+      await noticeOfRenewal(deps, event.data.object, event.created);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (error instanceof RenewalRetry) {
+        deps.log(`billing: ${reason}`);
+        return billingFail("server_error");
+      }
+      deps.log(`billing: renewal notice in event ${event.id} was dropped and will not be tried again: ${reason}`);
+    }
+  }
   const recorded = await recordEvent(deps.db, event, change);
+  if (change !== null && change.kind !== "extra" && !(change.kind === "refunded" && change.purpose === "extra_walks")) await stopRefundedRenewal(deps, change.customerId);
   return Response.json({ received: true, duplicate: recorded === "duplicate" });
 };
 
@@ -364,6 +485,8 @@ export const handleBilling = async (request: Request, deps: BillingDeps, pathnam
     switch (pathname) {
       case BILLING_PATHS.plan:
         return only(request, "GET") ?? (await handlePlan(request, deps));
+      case WALKS_PATH:
+        return only(request, "GET") ?? (await handleWalks(request, deps));
       case BILLING_PATHS.checkout:
         return only(request, "POST") ?? (await handleCheckout(request, deps));
       case BILLING_PATHS.extraWalks:

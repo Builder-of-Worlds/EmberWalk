@@ -51,13 +51,13 @@ describe("previewWalk", () => {
     expect(await spentNano()).toBe(10_000_000);
   });
 
-  it("sends nothing from a real walk on free credits", async () => {
+  it("previews a real walk on free credits", async () => {
     const { walkId, findings } = await seedFindings(2, { synthetic: false });
     const fake = scripted(edited);
 
-    expect(await previewWalk(withMeta(() => clientOn(fake.transport)), walkId)).toEqual({ made: 0, failed: 2 });
-    expect(fake.requests).toEqual([]);
-    expect(await stored(previewKey(walkId, findings[0]!.id))).toBeNull();
+    expect(await previewWalk(withMeta(() => clientOn(fake.transport)), walkId)).toEqual({ made: 2, failed: 0 });
+    expect(fake.requests).toHaveLength(2);
+    expect(await stored(previewKey(walkId, findings[0]!.id))).toEqual({ bytes: EDITED, type: "image/jpeg" });
   });
 
   it("previews a real walk once billing is paid", async () => {

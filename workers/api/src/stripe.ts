@@ -27,16 +27,18 @@ export type CheckoutInput = {
 
 export const EXTRA_WALKS_PURPOSE = "extra_walks";
 
-const call = async (client: StripeClient, method: "GET" | "POST", path: string, form: Record<string, string>): Promise<Record<string, unknown>> => {
+const call = async (client: StripeClient, method: "GET" | "POST" | "DELETE", path: string, form: Record<string, string>, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> => {
   let response: Response;
   const params = new URLSearchParams(form).toString();
   try {
     response =
-      method === "GET"
+      method === "DELETE"
+        ? await client.fetch(`${STRIPE_API}${path}`, { method, headers: { authorization: `Bearer ${client.secretKey}` } })
+        : method === "GET"
         ? await client.fetch(`${STRIPE_API}${path}?${params}`, { method, headers: { authorization: `Bearer ${client.secretKey}` } })
         : await client.fetch(`${STRIPE_API}${path}`, {
             method,
-            headers: { authorization: `Bearer ${client.secretKey}`, "content-type": "application/x-www-form-urlencoded" },
+            headers: { authorization: `Bearer ${client.secretKey}`, "content-type": "application/x-www-form-urlencoded", ...extraHeaders },
             body: params,
           });
   } catch (error) {
@@ -56,6 +58,14 @@ const call = async (client: StripeClient, method: "GET" | "POST", path: string, 
 };
 
 const post = (client: StripeClient, path: string, form: Record<string, string>) => call(client, "POST", path, form);
+
+const NewCustomer = z.looseObject({ id: z.string().regex(/^cus_[A-Za-z0-9_]{1,250}$/) });
+
+export const createCustomer = async (client: StripeClient, visitorId: string): Promise<string> => {
+  const customer = NewCustomer.safeParse(await call(client, "POST", "/v1/customers", {}, { "idempotency-key": `emberwalk-customer-${visitorId}` }));
+  if (!customer.success) throw new StripeFailure("stripe customer carried no customer id", 200);
+  return customer.data.id;
+};
 
 const SessionId = z.string().regex(/^cs_[A-Za-z0-9_]{1,250}$/);
 
@@ -93,6 +103,26 @@ export const subscriptionStatus = async (client: StripeClient, subscriptionId: s
   const status = (await call(client, "GET", `/v1/subscriptions/${subscriptionId}`, {})).status;
   if (typeof status !== "string") throw new StripeFailure(`stripe subscription ${subscriptionId} carried no status`, 200);
   return status;
+};
+
+export const subscriptionEnds = async (client: StripeClient, subscriptionId: string): Promise<boolean> => {
+  if (!SubscriptionId.safeParse(subscriptionId).success) throw new StripeFailure("stripe subscription id is malformed", 200);
+  try {
+    const sub = await call(client, "GET", `/v1/subscriptions/${subscriptionId}`, {});
+    return sub.cancel_at_period_end === true || typeof sub.cancel_at === "number" || sub.status === "canceled";
+  } catch (error) {
+    if (error instanceof StripeFailure && error.status === 404) return true;
+    throw error;
+  }
+};
+
+export const cancelSubscription = async (client: StripeClient, subscriptionId: string): Promise<void> => {
+  if (!SubscriptionId.safeParse(subscriptionId).success) throw new StripeFailure("stripe subscription id is malformed", 200);
+  try {
+    await call(client, "DELETE", `/v1/subscriptions/${subscriptionId}`, {});
+  } catch (error) {
+    if (!(error instanceof StripeFailure && error.status === 404)) throw error;
+  }
 };
 
 const SubscriptionPage = z.object({

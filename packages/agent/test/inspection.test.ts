@@ -4,9 +4,9 @@ import { Concept, type Finding } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import truth from "../../../fixtures/synthetic/test-yard-2/truth.json";
 import { CONCEPT_NAMES } from "../src/drafts.ts";
-import { CALFIRE_LINKS, type InspectionRequest, InspectionRefused, inspectionRequest } from "../src/inspection.ts";
+import { CALFIRE_LINKS, type InspectionContact, type InspectionRequest, InspectionRefused, inspectionRequest } from "../src/inspection.ts";
 import { AgentOff } from "../src/loop.ts";
-import { resetDb, seedWalk, uuid, WALK } from "./support.ts";
+import { resetDb, seedJob, seedWalk, uuid, WALK, ZIP } from "./support.ts";
 
 const LABEL = "Synthetic sample house";
 const PROMISE = /accept|approv|guarant|discount/i;
@@ -101,6 +101,52 @@ describe("inspectionRequest when every Required Now item is Done", () => {
   it("never promises an outcome", async () => {
     await seedWalk({ synthetic: true, findings: doneYard() });
     expect(words(await inspectionRequest(deps, WALK))).not.toMatch(PROMISE);
+  });
+});
+
+const DEPARTMENT: InspectionContact = { agency: "Test Fire District", email: "inspect@fire.example", source: "https://fire.example/inspections", readOn: "2026-10-31" };
+
+const contactsFor = (rows: { [zip: string]: InspectionContact }) => {
+  const asked: string[] = [];
+  return { asked, contactFor: (zip: string): InspectionContact | null => (asked.push(zip), rows[zip] ?? null) };
+};
+
+describe("the department an inspection request goes to", () => {
+  it("is the row that covers the ZIP the walk's jobs were planned for, with its source and read date", async () => {
+    const findings = await seedWalk({ synthetic: false, findings: doneYard() });
+    await seedJob("brush_clearing", [findings[0]!.id]);
+    const contacts = contactsFor({ [ZIP]: DEPARTMENT });
+    const request = await inspectionRequest({ ...deps, contactFor: contacts.contactFor }, WALK);
+    expect(request.contact).toEqual(DEPARTMENT);
+    expect(contacts.asked).toEqual([ZIP]);
+  });
+
+  it("is none when no row covers that ZIP", async () => {
+    const findings = await seedWalk({ synthetic: false, findings: doneYard() });
+    await seedJob("brush_clearing", [findings[0]!.id]);
+    const request = await inspectionRequest({ ...deps, contactFor: contactsFor({ "95945": DEPARTMENT }).contactFor }, WALK);
+    expect(request.contact).toBeNull();
+  });
+
+  it("is none, without asking, before any job holds the walk's ZIP", async () => {
+    await seedWalk({ synthetic: false, findings: doneYard() });
+    const contacts = contactsFor({ [ZIP]: DEPARTMENT });
+    expect((await inspectionRequest({ ...deps, contactFor: contacts.contactFor }, WALK)).contact).toBeNull();
+    expect(contacts.asked).toEqual([]);
+  });
+
+  it("is never a real department for a sample walk", async () => {
+    const findings = await seedWalk({ synthetic: true, findings: doneYard() });
+    await seedJob("brush_clearing", [findings[0]!.id]);
+    const contacts = contactsFor({ [ZIP]: DEPARTMENT });
+    expect((await inspectionRequest({ ...deps, contactFor: contacts.contactFor }, WALK)).contact).toBeNull();
+    expect(contacts.asked).toEqual([]);
+  });
+
+  it("is none when no contact table is given", async () => {
+    const findings = await seedWalk({ synthetic: false, findings: doneYard() });
+    await seedJob("brush_clearing", [findings[0]!.id]);
+    expect((await inspectionRequest(deps, WALK)).contact).toBeNull();
   });
 });
 

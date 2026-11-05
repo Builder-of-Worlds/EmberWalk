@@ -105,9 +105,10 @@ describe("samVideoCall", () => {
     expect(cache.entries.size).toBe(0);
   });
 
-  it("refuses real footage on free credits", async () => {
-    const { client, transport } = setup({ answer: () => ok(answer("")) });
-    expect(await client.call(samVideoCall({ ...req, content: "real" })).catch((e: MetaRefused) => e.reason)).toBe("real_content_on_free_credits");
-    expect(transport.requests).toHaveLength(0);
+  it("sends real footage on free credits", async () => {
+    const { client, transport } = setup({ answer: () => ok(answer(`<0f>${rec(0, 211)}`)) });
+    const a = await client.call(samVideoCall({ ...req, content: "real" }));
+    expect(a.value.frames).toHaveLength(1);
+    expect(transport.requests).toHaveLength(1);
   });
 });

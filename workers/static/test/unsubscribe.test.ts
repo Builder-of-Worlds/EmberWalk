@@ -50,7 +50,7 @@ describe("GET /unsubscribe, normal", () => {
     const response = await visit(await linkFor("leaving@example.com"));
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect((response.headers.get("cache-control") ?? "").split(", ")).toEqual(["no-store", "no-transform"]);
     expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
     const page = await response.text();
     expect(page).toContain("You're unsubscribed");

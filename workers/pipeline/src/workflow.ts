@@ -37,7 +37,7 @@ const standingOf = async (db: D1Database, walkId: string, clips: Clip[]): Promis
   return clips.filter((c) => rows.has(c.id));
 };
 
-const blurWalk = async (deps: Deps, walkId: string, kept: Clip[]): Promise<Outcome<{ stills: number }>> => {
+export const blurWalk = async (deps: Deps, walkId: string, kept: Clip[]): Promise<Outcome<{ stills: number }>> => {
   const [findings, tags, clips] = await Promise.all([findingsForWalk(deps.db, walkId), tagsForWalk(deps.db, walkId), standingOf(deps.db, walkId, kept)]);
   const left = new Set<string>();
   let stills = 0;

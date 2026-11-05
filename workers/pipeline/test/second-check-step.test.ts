@@ -74,12 +74,12 @@ describe("secondCheckWalk", () => {
     expect(await secondCheckWalk(withBaseten(fake, true, "paid"), walkId)).toEqual({ checked: 2, failed: 0, skipped: null });
   });
 
-  it("still refuses a real walk on free credits with the switch on", async () => {
+  it("checks a real walk on free credits with the switch on", async () => {
     const { walkId } = await seedFindings(1, { synthetic: false });
     const fake = baseten(() => verdict(AGREES));
 
-    expect(await secondCheckWalk(withBaseten(fake, true), walkId)).toEqual({ checked: 0, failed: 1, skipped: null });
-    expect(chats(fake)).toEqual([]);
+    expect(await secondCheckWalk(withBaseten(fake, true), walkId)).toEqual({ checked: 1, failed: 0, skipped: null });
+    expect(chats(fake)).toHaveLength(1);
   });
 
   it("skips when Baseten is not set up or does not serve the model", async () => {

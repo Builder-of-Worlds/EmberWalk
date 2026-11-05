@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error the page script is plain JavaScript
-import { MESSAGES, setupSignup, startTurnstile } from "../public/site.js";
+import { MESSAGES, MESSAGES_ES, setupSignup, startTurnstile } from "../public/site.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -91,7 +91,7 @@ interface Rig extends ReturnType<typeof turnstileRig> {
   submit: () => Promise<{ prevented: boolean }>;
 }
 
-async function signupRig(answer: () => Promise<Response> = async () => Response.json({ ok: true }), withToken = true): Promise<Rig> {
+async function signupRig(answer: () => Promise<Response> = async () => Response.json({ ok: true }), withToken = true, lang = "en"): Promise<Rig> {
   const base = turnstileRig();
   const status = { textContent: "", dataset: {} as Record<string, string>, hidden: true };
   const button = { disabled: false };
@@ -109,7 +109,7 @@ async function signupRig(answer: () => Promise<Response> = async () => Response.
     },
   };
   const elements: Record<string, unknown> = { signup: form, "signup-status": status, "turnstile-box": {} };
-  const doc = { ...base.doc, getElementById: (id: string) => elements[id] ?? null };
+  const doc = { ...base.doc, documentElement: { lang }, getElementById: (id: string) => elements[id] ?? null };
   const fetchImpl = (url: string, init?: RequestInit) => {
     if (url === "/api/signup") {
       signups.push({ url, init: init!, disabledDuring: button.disabled });
@@ -202,6 +202,69 @@ describe("setupSignup", () => {
   });
 });
 
+describe("the signup form on the Spanish page", () => {
+  it("asks for the Spanish email and answers in Spanish", async () => {
+    const rig = await signupRig(undefined, true, "es");
+    await rig.submit();
+    expect(JSON.parse(String(rig.signups[0].init.body))).toEqual({ email: "neighbor@example.com", role: "homeowner", turnstileToken: "good-token", language: "es" });
+    expect(rig.status).toMatchObject({ textContent: MESSAGES_ES.success, dataset: { kind: "ok" }, hidden: false });
+  });
+
+  it("shows a refusal in Spanish", async () => {
+    const rig = await signupRig(async () => Response.json({ ok: false, error: "invalid_email" }, { status: 400 }), true, "es");
+    await rig.submit();
+    expect(rig.status.textContent).toBe(MESSAGES_ES.invalid_email);
+  });
+
+  it("says each of these words, the ones on the review list", () => {
+    expect(MESSAGES_ES).toEqual({
+      success: "Ya está en la lista. Le enviaremos un correo cuando EmberWalk salga.",
+      invalid_email: "Ese correo no parece correcto. Revíselo e intente de nuevo.",
+      invalid_role: "Elija la opción que mejor se ajuste a usted.",
+      no_token: "Espere un momento a que termine la verificación e intente de nuevo.",
+      turnstile_failed: "No pudimos confirmar que usted es una persona. Intente de nuevo.",
+      server: "Algo salió mal de nuestro lado. Intente de nuevo o escriba a hello@emberwalk.app.",
+      network: "No pudimos conectarnos con el servidor. Revise su conexión e intente de nuevo.",
+      film_failed: "Este video no se cargó. Intente de nuevo.",
+    });
+  });
+
+  it("shows every other failure in Spanish through the form itself", async () => {
+    const badEmail = await signupRig(undefined, true, "es");
+    badEmail.email.validity.valid = false;
+    await badEmail.submit();
+    expect(badEmail.status.textContent).toBe(MESSAGES_ES.invalid_email);
+
+    const noRole = await signupRig(undefined, true, "es");
+    noRole.role.value = "";
+    await noRole.submit();
+    expect(noRole.status.textContent).toBe(MESSAGES_ES.invalid_role);
+
+    const noToken = await signupRig(undefined, false, "es");
+    await noToken.submit();
+    expect(noToken.status.textContent).toBe(MESSAGES_ES.no_token);
+
+    const refused = await signupRig(async () => Response.json({ ok: false, error: "turnstile_failed" }, { status: 403 }), true, "es");
+    await refused.submit();
+    expect(refused.status.textContent).toBe(MESSAGES_ES.turnstile_failed);
+
+    const broken = await signupRig(async () => Response.json({ ok: false, error: "storage_failed" }, { status: 500 }), true, "es");
+    await broken.submit();
+    expect(broken.status.textContent).toBe(MESSAGES_ES.server);
+
+    const offline = await signupRig(async () => {
+      throw new TypeError("offline");
+    }, true, "es");
+    await offline.submit();
+    expect(offline.status.textContent).toBe(MESSAGES_ES.network);
+  });
+
+  it("has a Spanish message for every message, none the same as the English", () => {
+    expect(Object.keys(MESSAGES_ES).sort()).toEqual(Object.keys(MESSAGES).sort());
+    for (const [key, line] of Object.entries(MESSAGES_ES)) expect(line, key).not.toBe(MESSAGES[key as keyof typeof MESSAGES]);
+  });
+});
+
 describe("the messages", () => {
   it("are the approved ones", () => {
     expect(MESSAGES).toEqual({
@@ -212,6 +275,7 @@ describe("the messages", () => {
       turnstile_failed: "We couldn't confirm you're a person. Please try again.",
       server: "Something went wrong on our end. Please try again, or write to hello@emberwalk.app.",
       network: "We couldn't reach the server. Please check your connection and try again.",
+      film_failed: "This video did not load. Please try again.",
     });
   });
 });

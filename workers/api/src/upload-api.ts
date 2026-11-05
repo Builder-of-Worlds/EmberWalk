@@ -27,6 +27,7 @@ export type Signing = {
   bucketName: string;
   accessKeyId: string;
   secretAccessKey: string;
+  devHttp?: boolean;
 };
 
 export type UploadDeps = {
@@ -222,6 +223,7 @@ export const createUploadApi = (deps: UploadDeps) => {
       service: "s3",
       now: new Date(now),
       expiresSeconds,
+      devHttp: signing.devHttp === true,
     });
     return Response.json(
       PartLinkResponse.parse({

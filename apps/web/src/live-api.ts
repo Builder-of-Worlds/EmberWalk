@@ -24,7 +24,9 @@ export const toWalkResults = (body: WalkResultsResponse, base: string): WalkResu
     ...(secondCheck ? { secondCheck } : {}),
   })),
   notChecked: body.notChecked,
+  ...(body.unplaced === undefined ? {} : { unplaced: body.unplaced }),
   ...(body.pins === undefined ? {} : { pins: body.pins }),
+  ...(body.loop === undefined ? {} : { loop: body.loop }),
 });
 
 export const apiResults =
@@ -40,7 +42,7 @@ export const samplesThenApi =
   (samples: Load, api: Load): Load =>
   async (id) => {
     const sample = await samples(id);
-    return sample === null ? api(id) : { ...sample, coverage: "checked", notChecked: [] };
+    return sample === null ? api(id) : { ...sample, coverage: sample.coverage ?? "not_checked", notChecked: sample.notChecked ?? [] };
   };
 
 export const isLiveStill = (url: string): boolean => LIVE_STILL.test(new URL(url, "https://phone.invalid").pathname);

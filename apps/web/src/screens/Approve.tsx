@@ -5,6 +5,7 @@ import type { CrewCard, Message } from "../fixed-api.ts";
 import { useStill } from "../live-results.ts";
 import { shareWasCancelled, smsUrl } from "../phone.ts";
 import { fixFor, ROUTES } from "../router.ts";
+import { SignInAgain } from "./SignInAgain.tsx";
 import type { ApproveIds } from "../router.ts";
 import { useAction, useLoad } from "../use-load.ts";
 import { Failed, Loading, Problem } from "./Failed.tsx";
@@ -38,6 +39,17 @@ const OneRequest = ({ walkId, message, crew }: { walkId: string; message: Messag
       on = false;
     };
   }, [deps, message.id, message.channel]);
+
+  useEffect(() => {
+    if (message.channel !== "text" || message.status !== "approved") return;
+    let on = true;
+    void deps.fixed.approve(message.id).then((answer) => {
+      if (on && answer.value?.status === "approved") setApprovedTo({ phone: answer.value.phone, body: answer.value.body });
+    });
+    return () => {
+      on = false;
+    };
+  }, [deps, message.id, message.channel, message.status]);
 
   const markSent = async () => {
     const marked = await action.run(() => deps.fixed.sentByPhone(message.id));
@@ -79,6 +91,7 @@ const OneRequest = ({ walkId, message, crew }: { walkId: string; message: Messag
       <p data-part="channel">
         {message.channel === "email" ? draft.approve.byEmail(crew?.email ?? null) : draft.approve.byText(crew?.phone ?? "")}
       </p>
+      {message.channel === "text" ? <p data-part="text-link">{draft.approve.textLink}</p> : null}
       {message.subject === null ? null : <p data-part="subject">{draft.approve.subject(message.subject)}</p>}
       <p className="body" data-part="body">
         {message.body}
@@ -140,6 +153,7 @@ export const Approve = ({ approveIds }: { approveIds: ApproveIds | null }) => {
     return (
       <main className="screen approve">
         <h1>{draft.approve.title}</h1>
+        <SignInAgain />
         <Failed code={loaded.code} retry={retry} />
       </main>
     );

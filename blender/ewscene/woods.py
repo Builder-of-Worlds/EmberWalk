@@ -3,7 +3,7 @@ import random
 
 from . import house, meadow, route
 
-LOT_FORMS = "scripted:lot_tree"
+LOT_FORMS = house.LOT_TREE_ASSET
 EDGE_MARGIN_IN = 120
 FRONT_ARC_DEG = 50
 HAZARD_CLEAR_IN = 150

@@ -20,6 +20,7 @@ export default defineConfig(async () => {
                   TEST_MIGRATIONS: migrations,
                   R2_ACCESS_KEY_ID: "test-key-id",
                   R2_SECRET_ACCESS_KEY: "test-secret",
+                  EMBERWALK_LIMITS: "",
                 },
               },
             }),

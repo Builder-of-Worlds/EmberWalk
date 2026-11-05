@@ -1,14 +1,14 @@
 # About EmberWalk
 Description: What EmberWalk is, who it is for, what it is not and who sells it.
-Last updated: 2026-10-31
+Last updated: 2026-11-03
 
-EmberWalk is a phone web app that helps you get your home ready for wildfire season. One walk with your phone. A clear list of what to fix.
+EmberWalk is a mobile web app designed to help you prepare your home for wildfire season. Simply record a single walkaround using your phone to receive a straightforward action list for repairs.
 
 ## How a walk goes
 
 Open EmberWalk and film one slow loop around your home. It takes a few minutes, and you don't need to know anything about fire safety.
 
-EmberWalk checks what it sees against California's defensible space rules, zone by zone, and lists every problem with the rule behind it.
+EmberWalk checks what it sees against California's defensible space rules, zone by zone, and lists the problems it finds, with the rule behind each one.
 
 Each item is marked Required Now or Recommended, starting with what's closest to your home. Mark each one planned or done as you go.
 

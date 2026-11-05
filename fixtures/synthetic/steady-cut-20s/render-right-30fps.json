@@ -1,0 +1,25 @@
+{
+  "schema": "emberwalk.render/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-before-steady",
+  "file": "cut-20s-right/walk-30fps.mp4",
+  "size_bytes": 3844321,
+  "sha256": "62c9543965970772e66483e8ba9823295d158f3bc158237c6fe128ffc10cd2b4",
+  "codec": "h264",
+  "pix_fmt": "yuv420p",
+  "width": 1280,
+  "height": 720,
+  "fps": 30.0,
+  "duration_s": 20.0,
+  "frame_count": 600,
+  "made_from": {
+    "file": "steady-lap.mp4",
+    "sha256": "da105d22c128ee6684d8551487a33f4628d4c5102c7e52608b58ca8e674cdc95",
+    "size_bytes": 255464543,
+    "first_frame": 4951,
+    "last_frame": 5550
+  },
+  "made_with": "ffmpeg 9.0.2: steady lap frames 4951 to 5550, the window showing the most hazards, libx264 preset slow, 1500k, faststart",
+  "measured_with": "ffprobe -count_frames: 600 frames, 20.000000 s, 30/1 a second, 1537728 bits a second"
+}

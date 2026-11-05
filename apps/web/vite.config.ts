@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { brandFilesPlugin } from "./build/brand-files.ts";
+import { judgeResult } from "./build/hero-sample.ts";
 import { judgeWalkPlugin } from "./build/judge-walk.ts";
 import { precachePlugin, SW_FILE } from "./build/precache.ts";
 
@@ -21,8 +23,8 @@ export default defineConfig(({ mode }) => {
   const proxy = judge ? {} : { proxy: { "/api": API } };
   return {
     base: judge ? "./" : "/",
-    define: { __EMBERWALK_BUILD__: JSON.stringify(build()), __EMBERWALK_JUDGE__: JSON.stringify(judge) },
-    plugins: [react(), ...(judge ? [judgeWalkPlugin()] : []), precachePlugin(["manifest.webmanifest", "icon.svg"])],
+    define: { __EMBERWALK_BUILD__: JSON.stringify(build()), __EMBERWALK_JUDGE__: JSON.stringify(judge), __EMBERWALK_HERO__: JSON.stringify(judge ? judgeResult() : null) },
+    plugins: [react(), brandFilesPlugin(), ...(judge ? [judgeWalkPlugin()] : []), precachePlugin(["manifest.webmanifest", "icon.svg"])],
     server: proxy,
     preview: proxy,
     build: {

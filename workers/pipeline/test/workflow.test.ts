@@ -121,13 +121,16 @@ describe("the walk workflow", () => {
     expect(deleted()).toEqual(["/files/file-1"]);
   });
 
-  it("ends failed when real footage is not allowed", async () => {
+  it("runs real footage on free credits through to done", async () => {
     const walkId = await queuedWalk({ synthetic: false });
+    await seedTag(walkId, 1, "loop", 10, 40);
+    await seedTag(walkId, 2, "pan", 50, 80);
 
     await using instance = await run(walkId);
 
-    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "real_footage_not_allowed" } });
-    expect(harness.requests.filter((r) => r.path === "/responses")).toHaveLength(0);
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(harness.requests.filter((r) => r.path === "/responses").length).toBeGreaterThan(0);
+    expect((await getWalk(env.DB, walkId))?.state).toEqual({ name: "done" });
   });
 
   it("retries a failing step, then errors the instance and fails the walk", async () => {

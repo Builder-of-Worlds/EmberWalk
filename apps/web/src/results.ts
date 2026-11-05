@@ -2,6 +2,7 @@ import type { Band, Concept, Corner, Gap, Part } from "@emberwalk/shared";
 import { isCorner, PARTS, SIDES } from "@emberwalk/shared";
 import type { Side } from "@emberwalk/shared";
 import type { Removal } from "./finding-marks.ts";
+import { language } from "./language.ts";
 
 export { SIDES };
 export type { Gap, Side };
@@ -21,12 +22,15 @@ export type ResultFinding = {
   distanceFeet: { low: number; high: number };
   label: Label;
   instruction: string;
+  instructions?: { en: string; es: string } | undefined;
+  advice?: true | undefined;
   sources: Source[];
   confidence: number;
   proof: Proof;
   voiceNote?: string | null;
   preview?: string | null;
   secondCheck?: SecondCheck | null;
+  sides?: Side[] | undefined;
 };
 
 export type SecondCheck = { verdict: "agrees" | "flags"; reason: string };
@@ -43,12 +47,20 @@ export type WalkResults = {
   gaps: Gap[];
   findings: ResultFinding[];
   notChecked: Concept[];
+  unplaced?: { concept: Concept; side: Side | null }[];
   pins?: Pin[];
+  loop?: "closed" | "open" | "not_checked";
 };
+
+export const instructionOf = (finding: ResultFinding): string => finding.instructions?.[language()] ?? finding.instruction;
 
 export const BANDS: Band[] = ["zone_0", "zone_1", "zone_2"];
 
 export const FIX_FIRST_FEET = 30;
+
+const FIRST_BAND_FEET = 5;
+
+export const crossesFirstBand = (f: ResultFinding): boolean => f.band === "zone_0" && f.distanceFeet.high > FIRST_BAND_FEET;
 
 export const blocksGreen = (f: ResultFinding): boolean => f.label === "required_now" || f.band === "zone_0";
 
@@ -58,9 +70,11 @@ const byLabel = (a: ResultFinding, b: ResultFinding) => Number(a.label !== "requ
 
 const byDistance = (a: ResultFinding, b: ResultFinding) => a.distanceFeet.low - b.distanceFeet.low || a.distanceFeet.high - b.distanceFeet.high;
 
-export const fixOrder = (a: ResultFinding, b: ResultFinding): number => byLabel(a, b) || byDistance(a, b) || byId(a, b);
+const bySurer = (a: ResultFinding, b: ResultFinding) => b.confidence - a.confidence;
 
-const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, b) || byLabel(a, b) || byId(a, b);
+export const fixOrder = (a: ResultFinding, b: ResultFinding): number => byLabel(a, b) || byDistance(a, b) || bySurer(a, b) || byId(a, b);
+
+const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, b) || byLabel(a, b) || bySurer(a, b) || byId(a, b);
 
 export const fixFirstOf = (findings: ResultFinding[], cleared: (f: ResultFinding) => boolean): ResultFinding[] =>
   findings.filter((f) => !cleared(f) && f.distanceFeet.low < FIX_FIRST_FEET).sort(nearOrder);
@@ -81,8 +95,8 @@ export type Verdict =
   | { kind: "so_far" }
   | { kind: "ready" };
 
-export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => boolean = () => false, corners = false): Verdict => {
-  const gaps: ShownGap[] = [...sideGapsOf(results.gaps), ...(corners ? cornerGapsOf(results.gaps) : [])];
+export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => boolean = () => false): Verdict => {
+  const gaps: ShownGap[] = [...sideGapsOf(results.gaps), ...cornerGapsOf(results.gaps)];
   if (gaps.length > 0) return { kind: "incomplete", gaps };
   const blocking = results.findings.filter((f) => blocksGreen(f) && !cleared(f));
   if (blocking.length > 0) {
@@ -91,6 +105,18 @@ export const verdictOf = (results: WalkResults, cleared: (f: ResultFinding) => b
   }
   return results.coverage === "checked" && results.gaps.length === 0 ? { kind: "ready" } : { kind: "so_far" };
 };
+
+export const firstOf = (verdict: Verdict, findings: ResultFinding[], cleared: (f: ResultFinding) => boolean): ResultFinding[] => {
+  if (verdict.kind === "fix") return verdict.first;
+  return verdict.kind === "incomplete" ? fixFirstOf(findings, cleared) : [];
+};
+
+export const drawnOrder = (first: ResultFinding[], findings: ResultFinding[]): ResultFinding[] => [
+  ...first,
+  ...bandsOf(findings)
+    .flatMap((b) => b.findings)
+    .filter((f) => !first.includes(f)),
+];
 
 export const partsToWalk = (gaps: readonly Gap[]): Part[] => PARTS.filter((part) => gaps.some((gap) => gap.side === part));
 

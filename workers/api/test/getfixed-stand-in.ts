@@ -20,6 +20,11 @@ export class GetFixed extends WorkerEntrypoint {
   logReply(...a) { return echo("logReply", a); }
   followUps(...a) { return echo("followUps", a); }
   inspection(...a) { return echo("inspection", a); }
+  approveInspection(...a) { return echo("approveInspection", a); }
+  crewSignup(...a) { return echo("crewSignup", a); }
+  crewConfirm(token) { return token === "good.token" ? { value: { listed: true } } : { code: "not_found", message: "no" }; }
+  addCrew(...a) { return echo("addCrew", a); }
+  textDraft(...a) { return echo("textDraft", a); }
   optOut(token) { return token === "good.token" ? { value: { removed: true } } : token === "down.token" ? { code: "unavailable", message: "no" } : { code: "not_found", message: "no" }; }
 }
 export default { fetch() { return new Response("stand-in"); } };`,

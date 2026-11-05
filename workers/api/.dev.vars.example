@@ -1,4 +1,6 @@
 # Names only. Values live in .dev.vars (gitignored) locally and as Worker secrets or vars when deployed.
+# Sign in mail for landlords and property managers.
+RESEND_API_KEY=
 # Stripe: test mode values locally; live values only at the go-live deploy.
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
@@ -6,5 +8,5 @@ STRIPE_PRICE_INDIVIDUAL=
 STRIPE_PRICE_LANDLORD=
 STRIPE_PRICE_EXTRA_WALK=
 STRIPE_AUTOMATIC_TAX=
-# Payments stay off until paymentsOn is true in this JSON. Plan names, prices and walk counts live in packages/shared/src/billing.ts.
+# wrangler.jsonc turns payments on; a value here replaces it locally, and an empty one leaves every limit at its default, payments off. Plan names, prices and walk counts live in packages/shared/src/billing.ts.
 EMBERWALK_LIMITS=

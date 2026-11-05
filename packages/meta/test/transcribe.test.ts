@@ -175,10 +175,10 @@ describe("transcribe", () => {
     expect((await fault(transcribe(client, req()))).reason).toBe("invalid_answer");
   });
 
-  it("refuses real content on free credits before sending", async () => {
+  it("sends real content on free credits", async () => {
     const { client, transport } = setup({ answer: () => ok(answer) });
-    expect((await fault(transcribe(client, req({ content: "real" })))).reason).toBe("real_content_on_free_credits");
-    expect(transport.requests).toHaveLength(0);
+    await transcribe(client, req({ content: "real" }));
+    expect(transport.requests).toHaveLength(1);
   });
 
   it("sends real content on a paid run", async () => {

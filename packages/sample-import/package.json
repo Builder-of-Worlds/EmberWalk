@@ -19,6 +19,7 @@
   },
   "scripts": {
     "import": "node src/main.ts",
+    "proof": "node --experimental-transform-types --no-warnings src/replay/proof.ts",
     "test": "vitest run",
     "test:full-render": "vitest run --config vitest.full-render.config.ts",
     "test:hero": "vitest run --config vitest.hero.config.ts",

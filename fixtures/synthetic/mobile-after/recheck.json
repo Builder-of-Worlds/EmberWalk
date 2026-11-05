@@ -7,53 +7,53 @@
   "stills": [
     {
       "hazard_id": "dry-grass-skirting",
-      "before_frame": 1414,
+      "before_frame": 3468,
       "pose": {
         "pos_in": [
-          599.25,
-          -131.51,
-          53.72
+          649.25,
+          -132.06,
+          54.19
         ],
-        "heading_deg": 358.796,
-        "tilt_deg": 12.559,
-        "roll_deg": -0.272
+        "heading_deg": 1.552,
+        "tilt_deg": 11.41,
+        "roll_deg": -0.57
       },
       "file": "synthetic-recheck-dry-grass-skirting.png",
-      "sha256": "8ad501da6911af42b5ef3b315797342f38597ffffeebe4c06d0d380f2aa3812b",
+      "sha256": "285cdbabe3005c795673d4f2fa6ceffbf0d13d650421810313ad270f7dfabac3",
       "area_px": 0
     },
     {
       "hazard_id": "vent-debris-front",
-      "before_frame": 3564,
+      "before_frame": 3565,
       "pose": {
         "pos_in": [
-          457.25,
-          -131.51,
-          53.72
+          455.25,
+          -131.58,
+          53.32
         ],
-        "heading_deg": 358.35,
-        "tilt_deg": 10.799,
-        "roll_deg": 0.345
+        "heading_deg": 358.39,
+        "tilt_deg": 10.776,
+        "roll_deg": 0.35
       },
       "file": "synthetic-recheck-vent-debris-front.png",
-      "sha256": "86482b8748c103c74dcff1a5925e3e63d07ae0b0e7c6f19e85bbc4f842af2a04",
+      "sha256": "08a533b2539264152a15ae43c42d4b9106bd79508d604145bb66687fdf255642",
       "area_px": 0
     },
     {
       "hazard_id": "propane-tank-right",
-      "before_frame": 3206,
+      "before_frame": 3207,
       "pose": {
         "pos_in": [
           852.0,
           168.0,
           54.0
         ],
-        "heading_deg": 260.56,
-        "tilt_deg": 12.156,
-        "roll_deg": -0.683
+        "heading_deg": 264.179,
+        "tilt_deg": 12.332,
+        "roll_deg": -0.648
       },
       "file": "synthetic-recheck-propane-tank-right.png",
-      "sha256": "1c391c4c59a054575cc476c0ac9dc1ca1d287849f600b818f1b86cfcfad97232",
+      "sha256": "6f931ecc3a5f74c9a768f329115d0f99fdc9eea42d7cc3f971506d63a469af8f",
       "area_px": 0
     },
     {
@@ -70,7 +70,7 @@
         "roll_deg": 0.7
       },
       "file": "synthetic-recheck-wood-pile-back.png",
-      "sha256": "efb2701db9f59f450ae3b9b05908c25c80bfd6e113afc93422758318dd13d737",
+      "sha256": "1e2c65ef82fb8abe678b7b293de468bcf77ece6d78e9fa7696ebf5afdd2b1c82",
       "area_px": 0
     },
     {
@@ -87,7 +87,7 @@
         "roll_deg": 0.653
       },
       "file": "synthetic-recheck-branch-over-roof-back.png",
-      "sha256": "435e977ed4d131f82553c8b30a115a122a3d5ccb6a8308a6aa378945a1e52c46",
+      "sha256": "49c26a45dfd5472425ad62f9a0a948fcd549960e6ac72e40891652023930de49",
       "area_px": 0
     },
     {
@@ -104,7 +104,7 @@
         "roll_deg": 0.68
       },
       "file": "synthetic-recheck-dry-brush-right.png",
-      "sha256": "d15877b1e2672fb1592ddbdad802b2195022a237479b3d64ee46adfb5593cd9c",
+      "sha256": "d28b5fb5c817e0dff64f4e1dc545ef68b2117b7eb8f313a00bc2137bf635ba3e",
       "area_px": 0
     },
     {
@@ -121,8 +121,8 @@
         "roll_deg": 0.505
       },
       "file": "synthetic-recheck-shed-back.png",
-      "sha256": "d17b4ee99c3bdc911b236a52aa8af23c02e3ab75f4c576e4a8879c07590dc993",
-      "area_px": 63548,
+      "sha256": "9162b51a388bf9b41212cc3b53d7d4d03400cea034a64feb47fbcfc678804084",
+      "area_px": 63312,
       "box_px": [
         468,
         219,
@@ -132,25 +132,25 @@
     },
     {
       "hazard_id": "tall-grass-back",
-      "before_frame": 2567,
+      "before_frame": 2562,
       "pose": {
         "pos_in": [
           360.0,
           468.0,
           54.0
         ],
-        "heading_deg": 343.432,
-        "tilt_deg": 3.575,
-        "roll_deg": -0.7
+        "heading_deg": 337.57,
+        "tilt_deg": 3.039,
+        "roll_deg": -0.452
       },
       "file": "synthetic-recheck-tall-grass-back.png",
-      "sha256": "b3dede71d9efd130f94f510de526294fffc12a6333f506c7bbb340bf5e84c4b5",
-      "area_px": 8413,
+      "sha256": "04cce8ae7baecd30b047a95c715dd87f40e70516375dfc55fbdfc6d407b74b41",
+      "area_px": 2326,
       "box_px": [
-        567,
-        376,
-        1280,
-        450
+        682,
+        387,
+        1279,
+        454
       ]
     }
   ]

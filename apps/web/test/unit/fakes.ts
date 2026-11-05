@@ -11,6 +11,9 @@ import { storageSentWalks } from "../../src/sent-walks.ts";
 import type { Deps } from "../../src/deps.ts";
 import type { FixedApi } from "../../src/fixed-api.ts";
 import type { PhoneEnv } from "../../src/phone.ts";
+import { noAccount } from "../../src/account-api.ts";
+import { noBilling } from "../../src/billing-api.ts";
+import { noPortfolio } from "../../src/portfolio-api.ts";
 import type { PortfolioApi } from "../../src/portfolio-api.ts";
 import type { Locate } from "../../src/location.ts";
 import type { Bearing, MotionEnv } from "../../src/motion.ts";
@@ -145,7 +148,7 @@ export const refusingStorage = (): Storage => {
 
 export const offlineFixed = (): FixedApi => {
   const offline = async () => ({ code: "offline" as const, message: "" });
-  return { plan: offline, jobs: offline, draft: offline, addEmail: offline, approve: offline, sentByPhone: offline, logReply: offline, followUps: offline, inspection: offline, history: offline, mark: offline };
+  return { inspectionApprove: offline, crewSignup: offline, addCrew: offline, plan: offline, jobs: offline, draft: offline, addEmail: offline, textDraft: offline, approve: offline, sentByPhone: offline, logReply: offline, followUps: offline, inspection: offline, history: offline, mark: offline };
 };
 
 export const memoryMarks = (storage = memoryStorage()) => storageFindingMarks(() => storage);
@@ -203,6 +206,7 @@ export const fakePhone = (over: Partial<PhoneEnv> = {}) => {
 export const UNASKED_PORTFOLIO = "the portfolio was asked for homes, and no test gave it an answer";
 
 const unaskedPortfolio: PortfolioApi = {
+  ...noPortfolio,
   homes: () => {
     throw new Error(UNASKED_PORTFOLIO);
   },
@@ -236,9 +240,13 @@ export const testDeps = (overrides: Partial<Deps> = {}): Deps => {
     sync: storageMarkSync(() => memoryStorage(), fixed.mark),
     phone: fakePhone().phone,
     portfolio: unaskedPortfolio,
+    account: noAccount,
+    billing: noBilling,
     awake: { hold: () => () => undefined },
     limits: DEFAULT_LIMITS,
     rechecks: offlineRechecks,
+    sampleRechecks: {},
+    voice: { say: async () => "none", stop: () => undefined },
     ...overrides,
   };
 };

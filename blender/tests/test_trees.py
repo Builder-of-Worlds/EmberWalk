@@ -128,7 +128,9 @@ class TreesInTheScene(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.out = os.path.join(cls.tmp.name, "out")
-        cls.built = build(APARTMENT, cls.out)
+        scripted = spec()
+        scripted["look"]["photoscans"] = False
+        cls.built = build(write(cls.tmp.name, scripted), cls.out)
         cls.record = support.load_json(os.path.join(cls.out, "scene.json")) if cls.built.returncode == 0 else {}
         cls.dumped = {}
         if cls.built.returncode == 0:

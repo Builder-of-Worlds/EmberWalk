@@ -86,7 +86,7 @@ const render = (data: OpsData): string => {
 
 export const handleOps = async (request: Request, deps: OpsDeps): Promise<Response> => {
   if (deps.config === null) return plain("The ops page is not set up.", 503);
-  if (!(await deps.verifier.verify(request.headers.get(TOKEN_HEADER), deps.config))) return plain("Sign in through Cloudflare Access.", 401);
+  if (!(await deps.verifier.verify(request.headers.get(TOKEN_HEADER), deps.config))) return plain("This page is private.", 401);
   if (request.method !== "GET" && request.method !== "HEAD") return plain("Use GET.", 405, { allow: "GET, HEAD" });
   try {
     const data = await readOps(deps.db, new Date(deps.now()).toISOString().slice(0, 10), deps.limits);

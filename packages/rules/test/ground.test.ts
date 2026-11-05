@@ -201,6 +201,7 @@ describe("verticalFov and tiltAt", () => {
     expect(verticalFov({ width: 1080, height: 1920 })).toBe(LONG_SIDE_FOV_DEGREES);
     expect(verticalFov({ width: 1080, height: 1080 })).toBe(LONG_SIDE_FOV_DEGREES);
     expect(verticalFov(CAMERA)).toBeCloseTo(CAMERA.vfovDegrees, 2);
+    expect(verticalFov({ width: 1280, height: 720 }, 83.974)).toBeCloseTo(53.702, 2);
   });
 
   it("picks the nearest motion sample, and gives null rather than a guess when none is near", () => {

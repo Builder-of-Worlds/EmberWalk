@@ -18,8 +18,7 @@ export const StatusLine = ({ status, recheck }: { status: FindingStatus; recheck
   return (
     <>
       <div className={`status ${status.kind}`} data-part="status" data-status={status.kind}>
-        <p>{copy.status.kind[status.kind]}</p>
-        {status.kind === "done" && status.doneOn !== undefined ? <p data-part="done-on">{draft.status.doneOn(status.doneOn)}</p> : null}
+        {status.kind === "done" && status.doneOn !== undefined ? <p data-part="done-on">{draft.status.doneOn(status.doneOn)}</p> : <p>{copy.status.kind[status.kind]}</p>}
         {status.kind === "done" ? <p>{copy.status.notRechecked}</p> : null}
       </div>
       {status.kind === "done" && recheck !== undefined ? (

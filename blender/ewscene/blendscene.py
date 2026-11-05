@@ -507,6 +507,15 @@ MULCH_SLOPE = 1.6
 MULCH_LEAVES = 70
 MULCH_LEAF_IN = 2.0
 STEP_RISE_IN = 6
+OPEN_STAIR_TO = ("landing", "balcony")
+TREAD_IN = 2
+STRINGER_IN = 2
+STRINGER_DEEP_IN = 8
+POST_IN = 4
+ROOF_SLAB_IN = 4
+SLAB_IN = 3
+RAIL_IN = 36
+RAIL_POST_IN = 2
 HOUSE_EXPOSURE = 0.9
 SKY_ZENITH_Z = 0.6
 CLOUD_DETAIL = 6.0
@@ -548,6 +557,7 @@ ACCENTS = {
     "Vent grille": ("#2a2a2a", 0.5, 0.8),
     "Flue": ("#6f7173", 0.4, 0.8),
     "Window room": ("#cfc6b8", 0.9, 0.0),
+    "Window room dark": ("#6b5d4d", 0.9, 0.0),
     "Dry tufts": ("#bf9a5e", 0.9, 0.0),
     "Conifer needles": ("#2d4a33", 0.8, 0.0),
     "Oak leaves": ("#3f5232", 0.75, 0.0),
@@ -1098,6 +1108,30 @@ def _tall_dry_grass(size, rng):
     return {"main": bm}
 
 
+def _clumped_dry_grass(size, rng):
+    """Finish 2: the same blades, thinned into clumps with gaps so a patch has no ruler edge."""
+    w, d, h = size
+    bm = bmesh.new()
+    nx, ny = max(1, int(w // 7)), max(1, int(d // 7))
+    phase = [rng.uniform(0, 2 * math.pi) for _ in range(3)]
+    for i in range(nx):
+        for j in range(ny):
+            cx, cy = (i + rng.uniform(0.1, 0.9)) * w / nx, (j + rng.uniform(0.1, 0.9)) * d / ny
+            edge = max(abs(cx / w - 0.5), abs(cy / d - 0.5)) * 2.0
+            wave = 0.5 + 0.25 * math.sin(cx / 31.0 + phase[0]) + 0.25 * math.sin(cy / 23.0 + phase[1]) * math.sin((cx + cy) / 47.0 + phase[2])
+            fade = max(0.0, min(1.0, wave * 1.25 - min(1.0, edge) ** 2 * 0.7))
+            if fade < 0.2 and edge > 0.45:
+                continue
+            for _ in range(max(2, int(round(10 * fade * rng.uniform(0.7, 1.15))))):
+                tall = h * rng.uniform(0.5, 1.0) * (0.45 + 0.55 * fade)
+                lean, ang, face = rng.uniform(0, 0.35) * tall, rng.uniform(0, 2 * math.pi), rng.uniform(0, math.pi)
+                bx, by = cx + rng.uniform(-1.5, 1.5), cy + rng.uniform(-1.5, 1.5)
+                ox, oy = math.cos(face) * 0.5, math.sin(face) * 0.5
+                pts = ((bx - ox, by - oy, 0), (bx + ox, by + oy, 0), (bx + math.cos(ang) * lean, by + math.sin(ang) * lean, tall))
+                bm.faces.new([bm.verts.new(_v((min(max(x, 0), w), min(max(y, 0), d), z))) for x, y, z in pts])
+    return {"main": bm}
+
+
 def _fit_crown(bm, reach_in, top_in):
     far = max(math.hypot(v.co.x, v.co.y) for v in bm.verts)
     high = max(v.co.z for v in bm.verts)
@@ -1174,10 +1208,8 @@ def _oak(bark, leaves, tree, rng):
     _fit_crown(leaves, reach, h)
 
 
-def _lot_tree(tree, rng, joints=()):
-    bark, leaves = bmesh.new(), bmesh.new()
-    form = house_spec.tree_form(tree)
-    (_conifer if form == "conifer" else _oak)(bark, leaves, tree, rng)
+def _limbs(bark, tree, joints):
+    """One bent limb from the trunk to each branch root; joints are in the tree's own frame."""
     for joint in joints:
         end = Vector(joint)
         out = Vector((end.x, end.y, 0.0)).normalized()
@@ -1185,6 +1217,13 @@ def _lot_tree(tree, rng, joints=()):
         mid = start.lerp(end, 0.5) + Vector((0, 0, 8.0))
         _rod(bark, start, mid, 6.0, 4.5, 8)
         _rod(bark, mid, end, 4.5, 3.5, 8)
+
+
+def _lot_tree(tree, rng, joints=()):
+    bark, leaves = bmesh.new(), bmesh.new()
+    form = house_spec.tree_form(tree)
+    (_conifer if form == "conifer" else _oak)(bark, leaves, tree, rng)
+    _limbs(bark, tree, joints)
     return {"main": bark, "Conifer needles" if form == "conifer" else "Oak leaves": leaves}
 
 
@@ -1217,8 +1256,17 @@ def _photo_tree(tree, options, manifests):
 
 def place_tree(tree, entry, manifests, cache, joints, photo=False):
     options = photoscan.variants(entry, house_spec.tree_form(tree)) if photo else []
-    if options and not tree["branches"]:
-        return _photo_tree(tree, options, manifests)
+    if options:
+        root = _photo_tree(tree, options, manifests)
+        if joints:
+            bark = bmesh.new()
+            _limbs(bark, tree, joints)
+            limbs = _mesh_object(tree["id"] + " limbs", bark)
+            limbs.data.materials.append(_hazard_material(tree["asset"], entry, manifests, cache))
+            limbs.data.shade_smooth()
+            limbs.parent = root
+            limbs[TREE_TAG] = tree["id"]
+        return root
     rng = random.Random(tree["id"])
     root = _link(bpy.data.objects.new(tree["id"] + " root", None))
     root.location = _v((tree["at_in"][0], tree["at_in"][1], 0))
@@ -1264,6 +1312,12 @@ HOUSE_SCRIPTED = {
     "scripted:patio_set": _patio_set,
     "scripted:tall_dry_grass": _tall_dry_grass,
 }
+FINISH_2_SCRIPTED = {"scripted:tall_dry_grass": _clumped_dry_grass}
+
+
+def finish(spec):
+    """look.finish: 1 is the approved hero finish and the default; 2 adds dark window rooms, painted bins and clumped tall grass."""
+    return spec["look"].get("finish", 1)
 
 
 def _hazard_material(asset_id, entry, manifests, cache):
@@ -1284,8 +1338,10 @@ def _side_point(edge, along, out, z):
     return (sx + ux * along + nx * out, sy + uy * along + ny * out, z)
 
 
-def _photo_hazard(h, options, manifests):
+def _photo_hazard(h, options, manifests, level=1):
     variant = photoscan.choose(options, h["id"])
+    if level >= 2 and variant.get("paint_finish_2"):
+        variant = dict(variant, paint=variant["paint_finish_2"])
     root = _link(bpy.data.objects.new(h["id"] + " root", None))
     root[HAZARD_TAG] = h["id"]
     w, d, z = h["size_in"]
@@ -1303,19 +1359,20 @@ def _photo_hazard(h, options, manifests):
     return root
 
 
-def place_hazard(h, edge, catalog, manifests, cache, photo=False):
+def place_hazard(h, edge, catalog, manifests, cache, photo=False, level=1):
     rng = random.Random(h["id"])
     entry = catalog[h["asset"]]
     options = photoscan.variants(entry) if photo and entry["kind"] == "scripted" else []
     if options:
-        root = _photo_hazard(h, options, manifests)
+        root = _photo_hazard(h, options, manifests, level)
         root.rotation_euler = (0.0, 0.0, math.atan2(edge["u"][1], edge["u"][0]))
         root.location = _v(_side_point(edge, h["along_in"], h["distance_in"], h.get("elevation_in", 0)))
         bpy.context.view_layer.update()
         return root
     if entry["kind"] == "scripted":
         objs = []
-        for key, bm in HOUSE_SCRIPTED[h["asset"]](h["size_in"], rng).items():
+        shape = (FINISH_2_SCRIPTED if level >= 2 else {}).get(h["asset"], HOUSE_SCRIPTED[h["asset"]])
+        for key, bm in shape(h["size_in"], rng).items():
             obj = _mesh_object(h["id"] if key == "main" else "%s %s" % (h["id"], key.lower()), bm)
             obj.data.materials.append(_hazard_material(h["asset"], entry, manifests, cache) if key == "main" else plain_material(key, *ACCENTS[key]))
             objs.append(obj)
@@ -1642,7 +1699,8 @@ def _room(bm, e, a0, a1, z0, z1):
 
 def _windows(spec, by_side, trim):
     glass = glass_material()
-    room = plain_material("Window room", *ACCENTS["Window room"])
+    dark = finish(spec) >= 2
+    room = plain_material("Window room dark" if dark else "Window room", *ACCENTS["Window room dark" if dark else "Window room"])
     for k, w in enumerate(spec["house"]["features"].get("windows", []), 1):
         e, a0, z0 = by_side[w["side"]], w["along_in"], w["sill_in"]
         a1, z1, mid = a0 + w["width_in"], z0 + w["height_in"], a0 + w["width_in"] / 2.0
@@ -1744,17 +1802,20 @@ def _spaced(a, b, step):
     return [a + (b - a) * i / float(n) for i in range(n + 1)]
 
 
-def _steps(bm, s, structures):
+def _steps(bm, s, structures, open_frame=False):
     lo, hi, top = s["min_in"], s["max_in"], s["height_in"]
     axis, sign = 1, -1
+    led = None
     for t in structures:
         if t is s or t["kind"] not in house_spec.STEPS_LEAD_TO or not house_spec._abut(s, t):
             continue
+        led = t["kind"]
         for ax in (0, 1):
             if hi[ax] == t["min_in"][ax]:
                 axis, sign = ax, -1
             elif lo[ax] == t["max_in"][ax]:
                 axis, sign = ax, 1
+    open_frame = open_frame and led in OPEN_STAIR_TO
     n = max(1, int(round(top / float(STEP_RISE_IN))) - 1)
     depth = (hi[axis] - lo[axis]) / float(n)
     for k in range(n):
@@ -1765,14 +1826,51 @@ def _steps(bm, s, structures):
         else:
             b[axis] = hi[axis] - k * depth
             a[axis] = b[axis] - depth
-        _box(bm, (a[0], a[1], 0), (b[0], b[1], top * (n - k) / (n + 1.0)))
+        h = top * (n - k) / (n + 1.0)
+        if not open_frame:
+            _box(bm, (a[0], a[1], 0), (b[0], b[1], h))
+            continue
+        _box(bm, (a[0], a[1], h - TREAD_IN), (b[0], b[1], h))
+        side = 1 - axis
+        for edge in (lo[side], hi[side] - STRINGER_IN):
+            c, d = list(a), list(b)
+            c[side], d[side] = edge, edge + STRINGER_IN
+            _box(bm, (c[0], c[1], h - STRINGER_DEEP_IN), (d[0], d[1], h))
+
+
+def _frame_posts(bm, lo, hi, top):
+    for x in (lo[0] + POST_IN / 2.0, hi[0] - POST_IN / 2.0):
+        for y in (lo[1] + POST_IN / 2.0, hi[1] - POST_IN / 2.0):
+            _box(bm, (x - POST_IN / 2.0, y - POST_IN / 2.0, 0), (x + POST_IN / 2.0, y + POST_IN / 2.0, top))
+
+
+def _railing(bm, lo, hi, top):
+    """A 36 in rail round a slab: a top rail on four sides and a thin baluster every 30 in."""
+    r = RAIL_POST_IN
+    for (x0, y0), (x1, y1) in (((lo[0], lo[1]), (hi[0], lo[1] + r)), ((lo[0], hi[1] - r), (hi[0], hi[1])),
+                               ((lo[0], lo[1]), (lo[0] + r, hi[1])), ((hi[0] - r, lo[1]), (hi[0], hi[1]))):
+        _box(bm, (x0, y0, top + RAIL_IN - r), (x1, y1, top + RAIL_IN))
+    for x in _spaced(lo[0], hi[0] - r, 30):
+        for y in (lo[1], hi[1] - r):
+            _box(bm, (x, y, top), (x + r, y + r, top + RAIL_IN - r))
+    for y in _spaced(lo[1], hi[1] - r, 30):
+        for x in (lo[0], hi[0] - r):
+            _box(bm, (x, y, top), (x + r, y + r, top + RAIL_IN - r))
 
 
 def _structure(s, structures, paints=None, tagged=()):
     (x0, y0), (x1, y1), top = s["min_in"], s["max_in"], s["height_in"]
     bm = bmesh.new()
+    open_metal = s["material"] == "metal"
     if s["kind"] == "steps":
-        _steps(bm, s, structures)
+        _steps(bm, s, structures, open_metal)
+    elif s["kind"] == "carport" and open_metal:
+        _box(bm, (x0, y0, top - ROOF_SLAB_IN), (x1, y1, top))
+        _frame_posts(bm, (x0, y0), (x1, y1), top - ROOF_SLAB_IN)
+    elif s["kind"] in ("landing", "balcony") and open_metal:
+        _box(bm, (x0, y0, top - SLAB_IN), (x1, y1, top))
+        _frame_posts(bm, (x0, y0), (x1, y1), top - SLAB_IN)
+        _railing(bm, (x0, y0), (x1, y1), top)
     elif s["kind"] == "deck":
         _box(bm, (x0, y0, top - 2), (x1, y1, top))
         for x in _spaced(x0 + 2, x1 - 2, 96):
@@ -1944,7 +2042,7 @@ def build_house(spec, catalog, manifests, motion, samples=16, findings=()):
     eds = house_spec.edges(spec)
     by_side = {e["side"]: e for e in eds}
     prisms = house_spec.roof_prisms(spec)
-    lapped = bool(look.get("photoscans"))
+    lapped = laps.wanted(spec)
     siding = painted_material("Siding paint", manifests[look["siding"]["material"]], look["siding"]["colour"], look["siding"]["tint"],
                               SIDING_GRAIN, size_m=SIDING_TILE_M, normal=LAPPED_NORMAL if lapped else 1.0,
                               band_m=in_to_m(laps.pitch(prisms[0]["wall_in"])) if lapped else 0.0)
@@ -1986,7 +2084,7 @@ def build_house(spec, catalog, manifests, motion, samples=16, findings=()):
     carried = {b for t in trees for b in t["branches"]}
     placed = {h["id"]: h for h in spec["hazards"] + spec.get("fixed", [])}
     for h in placed.values():
-        place_hazard(h, by_side[h["side"]], catalog, manifests, cache, photo)
+        place_hazard(h, by_side[h["side"]], catalog, manifests, cache, photo, finish(spec))
         if h["asset"] == "scripted:overhanging_branch" and h["id"] not in carried:
             oaks = photoscan.variants(catalog.get("scripted:lot_tree", {}), "oak") if photo else []
             args = (h, by_side[h["side"]], standoff, cache[h["asset"]], random.Random(h["id"] + " support"))

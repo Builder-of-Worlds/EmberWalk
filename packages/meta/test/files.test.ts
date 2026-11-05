@@ -28,10 +28,10 @@ describe("uploadFile", () => {
     expect(transport.requests).toHaveLength(1);
   });
 
-  it("refuses real footage on free credits", async () => {
+  it("sends real footage on free credits", async () => {
     const { client, transport } = setup({ answer: () => ok({ id: "file-1" }) });
-    expect(await uploadFile(client, { ...upload, content: "real" }).catch(reason)).toBe("real_content_on_free_credits");
-    expect(transport.requests).toHaveLength(0);
+    expect(await uploadFile(client, { ...upload, content: "real" })).toBe("file-1");
+    expect(transport.requests).toHaveLength(1);
   });
 
   it("refuses an upload answer without an id", async () => {

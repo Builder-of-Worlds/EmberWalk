@@ -35,7 +35,7 @@ def main():
     except house.HouseError as e:
         print("EW_ERROR %s" % e, file=sys.stderr)
         sys.exit(3)
-    out = args.out or os.path.join(paths.renders_dir(), doc["id"])
+    out = args.out or os.path.join(paths.session_dir(), doc["id"])
     os.makedirs(out, exist_ok=True)
     for name, body in (("motion.json", motion_doc), ("parts.json", parts_doc)):
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:

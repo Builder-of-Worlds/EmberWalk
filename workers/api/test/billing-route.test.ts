@@ -3,7 +3,7 @@ import { BILLING_PATHS, limitsWith, OFFER_CONFIG, VISITOR_HEADER } from "@emberw
 import { beforeEach, describe, expect, it } from "vitest";
 import { type BillingDeps, handleBilling, MAX_EVENT_BYTES } from "../src/billing-route.ts";
 import { walkGate } from "../src/entitlements.ts";
-import { planByCustomer } from "../src/plans.ts";
+import { keepCustomer, planByCustomer, unlinkVisitor, walksThisPlanYear } from "../src/plans.ts";
 import { clearWalks, seedWalk } from "./seed.ts";
 import {
   charge,
@@ -46,11 +46,35 @@ const STRIPE = { secretKey: SECRET_KEY, webhookSecret: WEBHOOK_SECRET, prices: P
 const OFFERS = OFFER_CONFIG.offers;
 const buy = (kind: string = "individual", visitor: string | null = VISITOR) => ask(BILLING_PATHS.checkout, "POST", visitor, { body: JSON.stringify({ kind }) });
 
-const setup = (answers: (Response | Error)[] = [], over: Partial<BillingDeps> = {}) => {
+const canceled = () => Response.json({ id: SUBSCRIPTION, object: "subscription", status: "canceled", cancel_at_period_end: false, customer: CUSTOMER });
+
+const setup = (
+  answers: (Response | Error)[] = [],
+  over: Partial<BillingDeps> = {},
+  customer: () => Response | Error = () => Response.json({ id: CUSTOMER, object: "customer" }),
+  cancel: () => Response | Error = canceled,
+) => {
   const stripe = fakeStripe(answers);
   const logs: string[] = [];
-  const deps: BillingDeps = { db: env.DB, limits: ON, fetch: stripe.fetch, now: () => T0 * 1000, stripe: STRIPE, log: (l) => logs.push(l), ...over };
-  return { deps, sent: stripe.sent, logs };
+  const customers: { key: string | null; body: string }[] = [];
+  const cancels: string[] = [];
+  const fetchFn: typeof fetch = async (input, init) => {
+    if (init?.method === "DELETE" && /\/v1\/subscriptions\/[^/]+$/.test(String(input))) {
+      cancels.push(new URL(String(input)).pathname);
+      const reply = cancel();
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }
+    if (String(input).endsWith("/v1/customers")) {
+      customers.push({ key: new Headers(init?.headers).get("idempotency-key"), body: String(init?.body ?? "") });
+      const reply = customer();
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }
+    return stripe.fetch(input, init);
+  };
+  const deps: BillingDeps = { db: env.DB, limits: ON, fetch: fetchFn, now: () => T0 * 1000, stripe: STRIPE, log: (l) => logs.push(l), ...over };
+  return { deps, sent: stripe.sent, logs, customers, cancels };
 };
 
 const ask = (path: string, method = "POST", visitor: string | null = VISITOR, init: RequestInit = {}) =>
@@ -75,13 +99,153 @@ const events = async () => (await env.DB.prepare("SELECT count(*) AS n FROM stri
 
 beforeEach(async () => {
   await clearWalks();
-  await env.DB.batch(["plans", "stripe_events", "extra_walks", "refunded_charges"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["plans", "stripe_events", "extra_walks", "refunded_charges", "stripe_customers"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 
 const seedPlan = (status: string, visitor: string | null = VISITOR, priceId: string | null = PRICE) =>
   env.DB.prepare("INSERT INTO plans (customer_id, visitor_id, subscription_id, status, price_id, event_at) VALUES (?, ?, ?, ?, ?, 1)")
     .bind(CUSTOMER, visitor, SUBSCRIPTION, status, priceId)
     .run();
+
+describe("the Stripe customer before a first Checkout", () => {
+  const stored = async () => (await env.DB.prepare("SELECT customer_id AS id FROM stripe_customers WHERE visitor_id = ?").bind(VISITOR).first<{ id: string }>())?.id ?? null;
+
+  it("creates one customer keyed by the visitor, keeps it, and opens Checkout on it", async () => {
+    const { deps, sent, customers } = setup([Response.json(checkoutSession())]);
+    expect((await answer(deps, buy())).status).toBe(200);
+    expect(customers).toHaveLength(1);
+    expect(customers[0]?.key).toContain(VISITOR);
+    expect(await stored()).toBe(CUSTOMER);
+    expect(calls(sent)).toEqual(["POST /v1/checkout/sessions"]);
+    expect(sent[0]?.form.customer).toBe(CUSTOMER);
+  });
+
+  it("a second tab reuses the customer and expires the first tab's session before opening", async () => {
+    const { deps, sent, customers } = setup([
+      Response.json(checkoutSession()),
+      Response.json(sessionList([openSession(OPEN_A)])),
+      Response.json(expiredSession(OPEN_A)),
+      Response.json(subscriptionList([])),
+      Response.json(checkoutSession()),
+    ]);
+    await answer(deps, buy());
+    expect((await answer(deps, buy())).status).toBe(200);
+    expect(customers).toHaveLength(1);
+    expect(calls(sent).slice(1)).toEqual(["GET /v1/checkout/sessions", `POST /v1/checkout/sessions/${OPEN_A}/expire`, "GET /v1/subscriptions", "POST /v1/checkout/sessions"]);
+    expect(sent[4]?.form.customer).toBe(CUSTOMER);
+  });
+
+  it("refuses a second tab when the first has paid and no webhook has come yet, so nobody pays twice", async () => {
+    const { deps, sent } = setup([Response.json(checkoutSession()), Response.json(sessionList([])), Response.json(subscriptionList([subscription("active", T0 + YEAR)]))]);
+    await answer(deps, buy());
+    expect((await answer(deps, buy())).body.error?.code).toBe("conflict");
+    expect(calls(sent).filter((c) => c === "POST /v1/checkout/sessions")).toHaveLength(1);
+  });
+
+  it("keeps the customer already stored when two first requests race", async () => {
+    await keepCustomer(env.DB, VISITOR, CUSTOMER);
+    expect(await keepCustomer(env.DB, VISITOR, "cus_LosesTheRace")).toEqual({ customerId: CUSTOMER, kept: false });
+    expect(await stored()).toBe(CUSTOMER);
+  });
+
+  it("opens nothing and keeps nothing when the customer cannot be made", async () => {
+    for (const [reply, code] of [
+      [new Error("down"), "provider_error"],
+      [Response.json(stripeError("bad"), { status: 400 }), "not_set_up"],
+      [Response.json({ id: "not_a_customer" }), "not_set_up"],
+    ] as const) {
+      const { deps, sent } = setup([], {}, () => reply);
+      expect((await answer(deps, buy())).body.error?.code).toBe(code);
+      expect(sent).toHaveLength(0);
+      expect(await stored()).toBeNull();
+    }
+  });
+
+  it("uses the plan's own customer for a returning visitor and makes no new one", async () => {
+    await seedPlan("canceled");
+    const { deps, customers } = setup([Response.json(sessionList([])), Response.json(sessionList([])), Response.json(subscriptionList([])), Response.json(checkoutSession())]);
+    expect((await answer(deps, buy())).status).toBe(200);
+    expect(customers).toHaveLength(0);
+  });
+
+  it("D1 refuses a malformed customer or visitor", async () => {
+    await expect(keepCustomer(env.DB, VISITOR, "nope")).rejects.toThrow();
+    await expect(keepCustomer(env.DB, "short", CUSTOMER)).rejects.toThrow();
+  });
+
+  it("forgets the visitor's customer link when the visitor is unlinked", async () => {
+    await keepCustomer(env.DB, VISITOR, CUSTOMER);
+    await unlinkVisitor(env.DB, VISITOR);
+    expect(await stored()).toBeNull();
+  });
+});
+
+describe("walks used and left", () => {
+  const WALKS = "/api/billing/walks";
+  const addWalk = async (n: number, over: { failed?: boolean; synthetic?: boolean; visitor?: string } = {}) => {
+    const id = `1f2e3d4c-5b6a-4978-8a9b-${String(n).padStart(12, "0")}`;
+    await seedWalk(id, over.failed ? "failed" : "done", over.failed ? "segment" : null);
+    await env.DB.prepare("UPDATE walks SET synthetic = ?, visitor_id = ? WHERE id = ?").bind(over.synthetic ? 1 : 0, over.visitor ?? VISITOR, id).run();
+  };
+  const counts = async (deps: BillingDeps) => (await answer(deps, ask(WALKS, "GET"))).body;
+
+  it("answers not open while payments are off", async () => {
+    const { deps } = setup([], { limits: limitsWith({ paymentsOn: false }) });
+    expect((await answer(deps, ask(WALKS, "GET"))).body.error?.code).toBe("not_open");
+  });
+
+  it("has nothing to count without a plan that holds, or with a price it does not know", async () => {
+    const { deps } = setup();
+    expect(await counts(deps)).toEqual({ walks: null });
+    await seedPlan("canceled");
+    expect(await counts(deps)).toEqual({ walks: null });
+    await env.DB.prepare("DELETE FROM plans").run();
+    await seedPlan("active", VISITOR, "price_unknown");
+    expect(await counts(deps)).toEqual({ walks: null });
+  });
+
+  it("counts real walks, never a failed or sample walk or another visitor's, and agrees with the gate", async () => {
+    const { deps } = setup();
+    await seedPlan("active");
+    expect(await counts(deps)).toEqual({ walks: { used: 0, allowed: 4, left: 4 } });
+    await addWalk(1);
+    await addWalk(2, { failed: true });
+    await addWalk(3, { synthetic: true });
+    await addWalk(4, { visitor: "b".repeat(64) });
+    expect(await counts(deps)).toEqual({ walks: { used: 1, allowed: 4, left: 3 } });
+    for (const n of [5, 6, 7]) await addWalk(n);
+    expect(await counts(deps)).toEqual({ walks: { used: 4, allowed: 4, left: 0 } });
+    expect(await gateCode()).toBe("walks_used");
+  });
+
+  it("counts a walk under the asking phone as the gate does, when the plan belongs to another id", async () => {
+    const { deps } = setup();
+    await seedPlan("active", "b".repeat(64));
+    await addWalk(1, { visitor: VISITOR });
+    expect(await walksThisPlanYear(env.DB, "b".repeat(64), null)).toBe(0);
+    expect(await walksThisPlanYear(env.DB, "b".repeat(64), null, VISITOR)).toBe(1);
+    await env.DB.prepare("UPDATE plans SET visitor_id = ?").bind(VISITOR).run();
+    expect(await counts(deps)).toEqual({ walks: { used: 1, allowed: 4, left: 3 } });
+  });
+
+  it("adds bought extra walks and leaves out refunded ones", async () => {
+    const { deps } = setup();
+    await seedPlan("active");
+    const add = (id: string, walks: number, refundedAt: string | null) =>
+      env.DB.prepare("INSERT INTO extra_walks (session_id, customer_id, payment_intent, walks, paid_at, refunded_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(`cs_${id}`, CUSTOMER, `pi_${id}`, walks, "2026-11-01T00:00:00.000Z", refundedAt)
+        .run();
+    await add("a", 3, null);
+    await add("b", 2, "2026-11-01T01:00:00.000Z");
+    expect(await counts(deps)).toEqual({ walks: { used: 0, allowed: 7, left: 7 } });
+  });
+
+  it("refuses no visitor and a wrong method", async () => {
+    const { deps } = setup();
+    expect((await answer(deps, ask(WALKS, "GET", null))).body.error?.code).toBe("invalid_request");
+    expect((await answer(deps, ask(WALKS, "POST"))).status).toBe(405);
+  });
+});
 
 describe("the kill switch", () => {
   it("answers not open yet on every billing path and method through the Worker with default limits, and writes nothing", async () => {
@@ -135,6 +299,7 @@ describe("plan, checkout and portal", () => {
     const { deps, sent } = setup([Response.json(checkoutSession()), Response.json(landlord), Response.json(sessionList([])), Response.json(sessionList([])), Response.json(subscriptionList([])), Response.json(checkoutSession())]);
     expect(await answer(deps, buy())).toEqual({ status: 200, body: { url: checkoutSession().url } });
     expect(sent[0]?.form).toMatchObject({ "line_items[0][price]": PRICE, success_url: "https://go.emberwalk.app/?checkout=done", client_reference_id: VISITOR });
+    await env.DB.prepare("DELETE FROM stripe_customers").run();
     expect((await answer(deps, buy("landlord"))).status).toBe(200);
     expect(sent[1]?.form["line_items[0][price]"]).toBe(LANDLORD_PRICE);
     expect(calls(sent)).toEqual(["POST /v1/checkout/sessions", "POST /v1/checkout/sessions"]);
@@ -644,7 +809,7 @@ describe("the webhook", () => {
     const next = subscription("active", start + YEAR, { id: NEXT, created: start, items: { data: [{ current_period_start: start, current_period_end: start + YEAR, price: { id: PRICE } }] } });
     const paidInvoice = { id: "in_1MtHbELkdIwHu7ixNextOne1", object: "invoice", customer: CUSTOMER, status: "paid", parent: { type: "subscription_details", subscription_details: { subscription: NEXT } } };
     for (const refundFirst of [false, true]) {
-      await env.DB.batch(["plans", "stripe_events", "extra_walks", "refunded_charges"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+      await env.DB.batch(["plans", "stripe_events", "extra_walks", "refunded_charges", "stripe_customers"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
       const { deps } = setup();
       const created = JSON.stringify(event("evt_c", "customer.subscription.created", T0, subscription("active", T0 + YEAR)));
       const refund = JSON.stringify(event("evt_ref", "charge.refunded", T0 + 600, charge()));
@@ -784,5 +949,114 @@ describe("the webhook", () => {
     const body = JSON.stringify(event("evt_ns", "invoice.paid", T0, {}));
     expect((await deliver(setup([], { stripe: { secretKey: SECRET_KEY, prices: PRICES } }).deps, body)).body.error?.code).toBe("not_set_up");
     expect((await answer(setup().deps, ask(BILLING_PATHS.webhook, "GET"))).status).toBe(405);
+  });
+});
+
+describe("a refund in full of a plan also cancels its renewal at Stripe", () => {
+  const ev = (id: string, type: string, at: number, object: Record<string, unknown>) => JSON.stringify(event(id, type, at, object));
+  const created = ev("evt_c", "customer.subscription.created", T0, subscription("active", T0 + YEAR));
+  const refund = (id = "evt_ref", over: Record<string, unknown> = {}) => ev(id, "charge.refunded", T0 + 600, charge(over));
+  const CANCEL_PATH = `/v1/subscriptions/${SUBSCRIPTION}`;
+
+  it("cancels the plan's subscription once its charge is refunded in full", async () => {
+    const { deps, cancels } = setup();
+    await deliver(deps, created);
+    expect(cancels).toEqual([]);
+    expect((await deliver(deps, refund())).status).toBe(200);
+    expect(cancels).toEqual([CANCEL_PATH]);
+    expect(await gateCode()).toBe("plan_needed");
+  });
+
+  it("cancels with the secret key as a bearer token, by DELETE on the subscription and nothing else", async () => {
+    const seen: { method: string | undefined; auth: string | null; body: unknown }[] = [];
+    const { deps } = setup([], {
+      fetch: async (input, init) => {
+        seen.push({ method: init?.method, auth: new Headers(init?.headers).get("authorization"), body: init?.body ?? null });
+        return canceled();
+      },
+    });
+    await deliver(deps, created);
+    await deliver(deps, refund());
+    expect(seen).toEqual([{ method: "DELETE", auth: `Bearer ${SECRET_KEY}`, body: null }]);
+  });
+
+  it("does not cancel for a partial refund, a refund of extra walks or an older year's charge", async () => {
+    const { deps, cancels } = setup();
+    await deliver(deps, created);
+    await deliver(deps, refund("evt_part", { amount_refunded: 500, refunded: false }));
+    await deliver(deps, ev("evt_extra", "charge.refunded", T0 + 60, extraCharge(2)));
+    const renewed = { ...subscription("active", T0 + 2 * YEAR), items: { data: [{ current_period_start: T0 + YEAR, current_period_end: T0 + 2 * YEAR, price: { id: PRICE } }] } };
+    await deliver(deps, ev("evt_renew", "customer.subscription.updated", T0 + YEAR, renewed));
+    await deliver(deps, ev("evt_old", "charge.refunded", T0 + YEAR + 100, charge({ created: T0 - 3 })));
+    expect(cancels).toEqual([]);
+    const thisYear = charge({ id: "ch_3MmlLrLkdIwHu7ix0ThisYear", payment_intent: "pi_3MmlLrLkdIwHu7ix0ThisYear", created: T0 + YEAR + 3600 });
+    await deliver(deps, ev("evt_new", "charge.refunded", T0 + YEAR + 200, thisYear));
+    expect(cancels).toEqual([CANCEL_PATH]);
+  });
+
+  it("does not cancel a subscription that has already ended", async () => {
+    const { deps, cancels } = setup();
+    await deliver(deps, created);
+    await deliver(deps, ev("evt_d", "customer.subscription.deleted", T0 + 700, subscription("canceled", T0 + YEAR)));
+    await deliver(deps, refund());
+    expect(cancels).toEqual([]);
+  });
+
+  it("cancels when the refund came before the subscription's own events", async () => {
+    const { deps, cancels } = setup();
+    await deliver(deps, refund());
+    expect(cancels).toEqual([]);
+    await deliver(deps, created);
+    expect(cancels).toEqual([CANCEL_PATH]);
+  });
+
+  it("answers an error while Stripe cannot be reached, so Stripe sends the event again, and cancels on the retry", async () => {
+    let up = false;
+    const { deps, cancels, logs } = setup([], {}, undefined, () => (up ? canceled() : new Error("network down")));
+    await deliver(deps, created);
+    const first = await deliver(deps, refund());
+    expect(first.status).toBe(500);
+    expect(logs.join("\n")).toContain("network down");
+    up = true;
+    const retry = await deliver(deps, refund());
+    expect(retry.status).toBe(200);
+    expect(cancels).toEqual([CANCEL_PATH, CANCEL_PATH]);
+    expect(await gateCode()).toBe("plan_needed");
+  });
+
+  it("records the refund and warns, cancelling nothing, when there is no Stripe secret key to cancel with", async () => {
+    const { deps, cancels, logs } = setup([], { stripe: { webhookSecret: WEBHOOK_SECRET, prices: PRICES } });
+    await deliver(deps, created);
+    expect((await deliver(deps, refund())).status).toBe(200);
+    expect(cancels).toEqual([]);
+    expect(logs.join("\n")).toContain("no Stripe secret key");
+    expect(await gateCode()).toBe("plan_needed");
+  });
+
+  it("answers a repeat delivery after a successful cancel without an error, whatever Stripe now says of the ended subscription", async () => {
+    let first = true;
+    const { deps, cancels } = setup([], {}, undefined, () => {
+      if (first) {
+        first = false;
+        return canceled();
+      }
+      return Response.json(stripeError("No such subscription", "resource_missing"), { status: 404 });
+    });
+    await deliver(deps, created);
+    expect((await deliver(deps, refund())).body).toEqual({ received: true, duplicate: false });
+    expect((await deliver(deps, refund())).body).toEqual({ received: true, duplicate: true });
+    expect(cancels).toEqual([CANCEL_PATH, CANCEL_PATH]);
+  });
+
+  it("treats a subscription Stripe no longer has as already cancelled", async () => {
+    const { deps } = setup([], {}, undefined, () => Response.json(stripeError("No such subscription", "resource_missing"), { status: 404 }));
+    await deliver(deps, created);
+    expect((await deliver(deps, refund())).status).toBe(200);
+  });
+
+  it("answers an error for any other Stripe refusal", async () => {
+    const { deps } = setup([], {}, undefined, () => Response.json(stripeError("Invalid API Key provided", "api_key_invalid"), { status: 401 }));
+    await deliver(deps, created);
+    expect((await deliver(deps, refund())).status).toBe(500);
   });
 });

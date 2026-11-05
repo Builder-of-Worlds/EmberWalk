@@ -1,5 +1,6 @@
 import { addTag, type ConceptRun, findingsForWalk, saveClip, saveFindings, storeDetections } from "@emberwalk/db";
 import { decodeSam, type Mask } from "@emberwalk/meta";
+import { unplacedOf } from "@emberwalk/rules";
 import type { Concept, Finding, Track } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -29,7 +30,7 @@ const cells = (height: number, width: number, payload: string): Mask => ({ encod
 const inFrames = (mask: Mask) => JSON.stringify({ 0: mask, 1: mask, 2: mask });
 const WALL_MASK = inFrames(cells(1, 32, "1".repeat(32)));
 
-const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = LOOP, masks: Record<number, string> = {}) => {
+const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = LOOP, masks: Record<number, string> = {}, label = "front left corner") => {
   const walkId = freshWalkId();
   const n = Number(walkId.slice(-4));
   await env.DB.prepare(
@@ -40,7 +41,7 @@ const seedScoredWalk = async (jurisdiction: string, objects: [Concept, Box][] = 
   const id = clipId(n);
   await saveClip(env.DB, { id, walkId, kind: "loop", file: clipKey(walkId, "loop"), fps: 2, frameCount: 10, width: 1280, height: 720 });
   const samples = Array.from({ length: 11 }, (_, i) => ({ t: i * 0.5, tiltDegrees: 25, headingDegrees: 0 }));
-  await addTag(env.DB, { id: idFor(7000 + n), walkId, kind: "loop", startSeconds: 0, endSeconds: 5, label: "front left corner", samples, propertyLine: null });
+  await addTag(env.DB, { id: idFor(7000 + n), walkId, kind: "loop", startSeconds: 0, endSeconds: 5, label, samples, propertyLine: null });
   const tracks: Track[] = objects.map(([concept, box], i) => ({
     id: trackId(n, i),
     clipId: id,
@@ -78,9 +79,46 @@ const tapped = (walkId: string, clip: string, rank: number): Finding => ({
 
 beforeEach(resetAll);
 
+describe("the lens a score measures with", () => {
+  const nearest = async (lens?: number) => {
+    const { walkId } = await seedScoredWalk("ca", LOOP);
+    const scored = await scoreWalk({ ...deps(), ...(lens === undefined ? {} : { longSideFovDegrees: lens }) }, walkId);
+    if (!scored.ok) throw new Error(scored.failure.message);
+    return scored.value.findings.find((f) => f.concept === "dry_brush")!.distanceFeet.low;
+  };
+
+  it("reaches the distances when a render names its lens", async () => {
+    expect(await nearest(84)).not.toBeCloseTo(await nearest(), 3);
+  });
+});
+
 describe("proofStillKey", () => {
   it("names the still by walk, clip and frame", () => {
     expect(proofStillKey(idFor(1), idFor(2), 7)).toBe(`stills/${idFor(1)}/${idFor(2)}/7.jpg`);
+  });
+});
+
+describe("scoreWalk on an object it cannot place", () => {
+  it("records its concept as not placed, so results never read as fully checked", async () => {
+    const { walkId } = await seedScoredWalk("ca", [["house_wall", [0.05, 0.2, 0.95, 0.6]], ["tree", [0.3, 0.05, 0.5, 0.2]]]);
+    const scored = await scoreWalk(deps(), walkId);
+    if (!scored.ok) throw new Error(scored.failure.message);
+    expect(scored.value.findings).toEqual([]);
+    expect(await unplacedOf(env.MEDIA, walkId)).toEqual([{ concept: "tree", side: null, why: "beyond_house" }]);
+  });
+
+  it("records a thing on the ground it could not measure as not measured, with the side it was seen on", async () => {
+    const { walkId } = await seedScoredWalk("ca", [["house_wall", [0.05, 0.2, 0.95, 0.6]], ["wood_pile", [0.3, 0.3, 0.5, 0.45]]], {}, "left");
+    const scored = await scoreWalk(deps(), walkId);
+    if (!scored.ok) throw new Error(scored.failure.message);
+    expect(scored.value.findings).toEqual([]);
+    expect(await unplacedOf(env.MEDIA, walkId)).toEqual([{ concept: "wood_pile", side: "left", why: "not_measured" }]);
+  });
+
+  it("records nothing when every object was placed", async () => {
+    const { walkId } = await seedScoredWalk("ca");
+    await scoreWalk(deps(), walkId);
+    expect(await unplacedOf(env.MEDIA, walkId)).toEqual([]);
   });
 });
 
@@ -171,7 +209,7 @@ describe("scoreWalk", () => {
     const { walkId } = await seedScoredWalk("ca", LOOP.slice(0, 2), { 0: WALL_MASK, 1: inFrames(cells(2, 4, "11110000")) });
     const reads: string[] = [];
     const base = deps();
-    const bucket = { ...base.bucket, get: (key: string) => { reads.push(key); return env.MEDIA.get(key); } } as unknown as R2Bucket;
+    const bucket = { ...base.bucket, put: (key: string, value: string) => env.MEDIA.put(key, value), get: (key: string) => { reads.push(key); return env.MEDIA.get(key); } } as unknown as R2Bucket;
     const scored = await scoreWalk({ ...base, bucket }, walkId);
     if (!scored.ok) throw new Error(scored.failure.message);
     expect(scored.value.findings.find((f) => f.concept === "wood_pile")?.contact).toBe("yes");

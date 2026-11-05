@@ -13,6 +13,8 @@ import bpy
 from ewscene import assets, blendmask, blendscene, house, maskbox, output, paths, recheck
 from ewscene.units import m_to_in
 
+paths.relink(bpy.data)
+
 
 def load_after(spec_path, changes_path):
     catalog, rules = assets.load_catalog(), house.load_rules()

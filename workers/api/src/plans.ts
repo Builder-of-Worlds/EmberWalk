@@ -1,3 +1,4 @@
+import { onPlanOf } from "@emberwalk/db";
 import { holdsPlan, type StripeStatus } from "@emberwalk/shared";
 
 export type PlanRow = {
@@ -58,21 +59,42 @@ export const refundedInFull = (plan: Pick<PlanRow, "refundedChargeAt" | "periodS
 
 export const holdsLivePlan = (plan: PlanRow): boolean => holdsPlan(plan.status) && !refundedInFull(plan);
 
-export const planOf = async (db: D1Database, visitorId: string): Promise<PlanRow | null> =>
-  db.prepare(`SELECT ${COLUMNS} FROM plans WHERE visitor_id = ? ORDER BY ${HOLDING_FIRST} LIMIT 1`).bind(visitorId).first<PlanRow>();
+export const planOf = async (db: D1Database, visitorId: string): Promise<PlanRow | null> => {
+  const { results } = await db.prepare(`SELECT ${COLUMNS} FROM plans WHERE visitor_id = ? ORDER BY ${HOLDING_FIRST}`).bind(visitorId).all<PlanRow>();
+  return results.find(holdsLivePlan) ?? results[0] ?? null;
+};
 
 export const planByCustomer = async (db: D1Database, customerId: string): Promise<PlanRow | null> =>
   db.prepare(`SELECT ${COLUMNS} FROM plans WHERE customer_id = ?`).bind(customerId).first<PlanRow>();
 
 export const unlinkVisitor = async (db: D1Database, visitorId: string): Promise<void> => {
-  await db.prepare(`UPDATE plans SET visitor_id = NULL, updated_at = ${NOW} WHERE visitor_id = ?`).bind(visitorId).run();
+  await db.batch([
+    db.prepare(`UPDATE plans SET visitor_id = NULL, updated_at = ${NOW} WHERE visitor_id = ?`).bind(visitorId),
+    db.prepare("DELETE FROM stripe_customers WHERE visitor_id = ?").bind(visitorId),
+  ]);
+};
+
+export const storedCustomer = async (db: D1Database, visitorId: string): Promise<string | null> =>
+  (await db.prepare("SELECT customer_id AS id FROM stripe_customers WHERE visitor_id = ?").bind(visitorId).first<{ id: string }>())?.id ?? null;
+
+export const keepCustomer = async (db: D1Database, visitorId: string, customerId: string): Promise<{ customerId: string; kept: boolean }> => {
+  const insert = await db.prepare("INSERT INTO stripe_customers (visitor_id, customer_id) VALUES (?, ?) ON CONFLICT DO NOTHING").bind(visitorId, customerId).run();
+  return insert.meta.changes > 0 ? { customerId, kept: true } : { customerId: (await storedCustomer(db, visitorId)) ?? customerId, kept: false };
 };
 
 export const extraWalksBought = async (db: D1Database, customerId: string): Promise<number> =>
   (await db.prepare("SELECT coalesce(sum(walks), 0) AS n FROM extra_walks WHERE customer_id = ? AND refunded_at IS NULL").bind(customerId).first<{ n: number }>())?.n ?? 0;
 
+const COUNTED_WALKS = `SELECT count(*) AS n FROM walks w WHERE (w.visitor_id = ?1 OR w.visitor_id = ?3 OR w.plan_visitor = ?1 OR w.${onPlanOf("?1")}) AND ${COUNTED_WALK} AND (?2 IS NULL OR w.created_at >= ?2)`;
+
+export const walksThisPlanYear = async (db: D1Database, visitor: string, periodStart: string | null, phone: string = visitor): Promise<number> =>
+  (await db.prepare(COUNTED_WALKS).bind(visitor, periodStart, phone).first<{ n: number }>())?.n ?? 0;
+
+export const walksAllowed = async (db: D1Database, plan: PlanRow, walksPerYear: number): Promise<number> =>
+  walksPerYear + Math.max(0, (await extraWalksBought(db, plan.customerId)) - plan.extraWalksUsed);
+
 const ROLLOVER = `UPDATE plans SET extra_walks_used = extra_walks_used + max(0, (SELECT count(*) FROM walks w
-    WHERE w.visitor_id = plans.visitor_id AND ${COUNTED_WALK} AND w.created_at >= plans.period_start AND w.created_at < ?2) - ?3)
+    WHERE (w.visitor_id = plans.visitor_id OR w.plan_visitor = plans.visitor_id OR w.${onPlanOf("plans.visitor_id")}) AND ${COUNTED_WALK} AND w.created_at >= plans.period_start AND w.created_at < ?2) - ?3)
   WHERE customer_id = ?1 AND period_start IS NOT NULL AND period_start < ?2 AND event_at <= ?4`;
 
 const statementsOf = (db: D1Database, change: PlanChange): D1PreparedStatement[] => {
@@ -129,6 +151,12 @@ const statementOf = (db: D1Database, change: Exclude<PlanChange, { kind: "extra"
 };
 
 const isDuplicate = (error: unknown): boolean => error instanceof Error && /UNIQUE constraint failed: stripe_events\.id/.test(error.message);
+
+export const eventSeen = async (db: D1Database, eventId: string): Promise<boolean> =>
+  (await db.prepare("SELECT 1 AS seen FROM stripe_events WHERE id = ?").bind(eventId).first()) !== null;
+
+export const walkLanguageOf = async (db: D1Database, visitorId: string): Promise<"en" | "es"> =>
+  (await db.prepare("SELECT language FROM walks WHERE visitor_id = ? ORDER BY created_at DESC LIMIT 1").bind(visitorId).first<{ language: string }>())?.language === "es" ? "es" : "en";
 
 export const recordEvent = async (db: D1Database, event: { id: string; type: string }, change: PlanChange | null): Promise<Recorded> => {
   const seen = await db.prepare("SELECT 1 AS seen FROM stripe_events WHERE id = ?").bind(event.id).first();

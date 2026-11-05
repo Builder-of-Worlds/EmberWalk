@@ -21,6 +21,9 @@ export type Deps = {
   isSyntheticRender: (key: string) => Promise<boolean>;
   baseten?: () => Baseten | null;
   secondCheckRealWalks?: boolean;
+  rarePointLooks?: number;
+  // Only a render with a known lens sets this; a phone walk uses the phone lens in the rules.
+  longSideFovDegrees?: number;
 };
 
 export type Baseten = { client: MetaClient; transport: Transport };

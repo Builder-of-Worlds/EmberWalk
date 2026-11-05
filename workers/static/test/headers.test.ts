@@ -3,7 +3,7 @@ import { handle } from "../src/handler";
 import { deps, fakeMailer, fakeVerify, testEnv } from "./helpers";
 
 const CSP =
-  "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+  "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; font-src 'self'; img-src 'self' data:; media-src blob: https://judges.emberwalk.app; connect-src 'self' https://challenges.cloudflare.com https://judges.emberwalk.app; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 function get(path: string, method = "GET") {
   return handle(new Request(`https://emberwalk.app${path}`, { method }), testEnv(), deps(fakeVerify(), fakeMailer()));
@@ -23,6 +23,27 @@ describe("site headers", () => {
 
   it("does not ask browsers to preload HSTS", async () => {
     expect((await get("/")).headers.get("strict-transport-security")).not.toContain("preload");
+  });
+
+  it.each(["/", "/?lang=es", "/privacy", "/no-such-page"])("tells the edge not to add scripts to the page on %s", async (path) => {
+    const caching = (await get(path)).headers.get("cache-control") ?? "";
+    expect(caching.split(",").map((part) => part.trim())).toContain("no-transform");
+  });
+
+  it.each(["/sitemap.xml", "/api/config"])("leaves caching of %s alone", async (path) => {
+    expect((await get(path)).headers.get("cache-control") ?? "").not.toContain("no-transform");
+  });
+});
+
+describe("Spanish address", () => {
+  it.each(["/es", "/es/"])("sends %s to the Spanish landing page", async (path) => {
+    const response = await get(path);
+    expect(response.status).toBe(302);
+    expect(new URL(response.headers.get("location") ?? "", "https://emberwalk.app").href).toBe("https://emberwalk.app/?lang=es");
+  });
+
+  it("still answers a path that only starts with es as missing", async () => {
+    expect((await get("/escape")).status).toBe(404);
   });
 });
 

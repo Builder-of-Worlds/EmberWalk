@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
-import { draft } from "../../src/copy.ts";
 import { DepsContext } from "../../src/deps.ts";
-import { portfolioApi } from "../../src/portfolio-api.ts";
-import { resultsFor, ROUTES } from "../../src/router.ts";
+import { portfolioWords as w } from "../../src/draft-words.ts";
+import { noPortfolio, portfolioApi } from "../../src/portfolio-api.ts";
+import { propertyFor, ROUTES } from "../../src/router.ts";
 import { Homes } from "../../src/screens/Homes.tsx";
 import { testDeps } from "./fakes.ts";
+import { needsWork, notWalked, ready } from "./portfolio-fakes.ts";
 import { render, settle } from "./render.ts";
 
 const PORTFOLIO = "4d3c2b1a-0f9e-4d8c-8b7a-6f5e4d3c2b1a";
@@ -46,29 +47,52 @@ afterEach(async () => {
   window.location.hash = "";
 });
 
-describe("every home in one place", () => {
-  it("says for each home whether it was walked and whether it is ready, and links a walked home to its results", async () => {
-    const view = await open({
-      portfolio: { id: PORTFOLIO, name: "Rentals" },
-      properties: [
-        property(1, "12 Cedar Lane"),
-        { ...property(2, "40 Manzanita Court"), walk: { id: "walk-ready", ready: true } },
-        { ...property(3, "7 Oak Road"), walk: { id: "walk-fix", ready: false } },
-      ],
+describe("a second home on a plan that does not cover it", () => {
+  const addRefused = async (code: string) => {
+    const portfolio = { ...noPortfolio, homes: async () => ({ value: [{ ...notWalked(), synthetic: false }] }), add: async () => ({ code }) };
+    const view = await render(
+      <DepsContext.Provider value={testDeps({ portfolio })}>
+        <Homes />
+      </DepsContext.Provider>,
+    );
+    mounted.push(view);
+    await settle(() => new Promise((r) => setTimeout(r, 20)));
+    const input = view.host.querySelector<HTMLInputElement>("#home-label")!;
+    await settle(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Second Home");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(view.host.querySelector("h1")?.textContent).toBe(draft.portfolio.title);
+    await settle(() => view.host.querySelector("form")!.requestSubmit());
+    await settle(() => new Promise((r) => setTimeout(r, 20)));
+    return { alert: view.host.querySelector("[role=alert]")?.textContent, links: [...view.host.querySelectorAll("a")].map((a) => a.getAttribute("href")) };
+  };
+
+  it("says so and leads to the plan screen", async () => {
+    const { alert, links } = await addRefused("plan_needed");
+    expect(alert).toBe(w.planNeeded);
+    expect(links).toContain(ROUTES.plan);
+  });
+
+  it("offers no plan link for any other failure", async () => {
+    const { alert, links } = await addRefused("server_error");
+    expect(alert).toBe(w.addFailed);
+    expect(links).not.toContain(ROUTES.plan);
+  });
+});
+
+describe("every home in one place", () => {
+  it("says for each home whether it was walked and whether it is ready, and links each home to its Property screen", async () => {
+    const homes = [notWalked(), ready(), needsWork()];
+    const view = await open({ properties: homes });
+    expect(view.host.querySelector("h1")?.textContent).toBe(w.title);
     const rows = [...view.host.querySelectorAll("main li")].map((li) => [li.querySelector("b")?.textContent, li.querySelector("p")?.textContent, li.querySelector("a")?.getAttribute("href") ?? null]);
-    expect(rows).toEqual([
-      ["12 Cedar Lane", draft.portfolio.notWalked, null],
-      ["40 Manzanita Court", draft.portfolio.ready, resultsFor("walk-ready")],
-      ["7 Oak Road", draft.portfolio.needsFixes, resultsFor("walk-fix")],
-    ]);
+    expect(rows).toEqual(homes.map((home) => [home.label, w.status[home.status], propertyFor(home.id)]));
   });
 
   it("Home never asks the server for homes and offers no way in", async () => {
     let asked = 0;
     window.location.hash = ROUTES.home;
-    const portfolio = { homes: async () => ((asked += 1), { value: [] }) };
+    const portfolio = { ...noPortfolio, homes: async () => ((asked += 1), { value: [] }) };
     const view = await render(<App deps={testDeps({ portfolio })} />);
     mounted.push(view);
     await until(() => view.host.querySelector("h1") !== null);
@@ -79,13 +103,13 @@ describe("every home in one place", () => {
 
   it("lists no home when the server refuses or answers with a home it cannot read", async () => {
     for (const [body, status] of [
-      [{ portfolio: { id: PORTFOLIO, name: "Rentals" }, properties: [] }, 200],
+      [{ properties: [] }, 200],
       [{ error: { code: "not_found", message: "Not found." } }, 404],
       [{ properties: [{ label: "no id" }] }, 200],
       [{ properties: [{ ...property(1, "12 Cedar Lane"), walk: { id: "", ready: true } }] }, 200],
     ] as const) {
       const view = await open(body, status);
-      expect(view.host.querySelector("h1")?.textContent).toBe(draft.portfolio.title);
+      expect(view.host.querySelector("h1")?.textContent).toBe(w.title);
       expect(view.host.querySelectorAll("main li")).toHaveLength(0);
       await view.unmount();
       mounted.pop();

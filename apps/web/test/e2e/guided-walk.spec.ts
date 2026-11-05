@@ -2,7 +2,6 @@ import type { Gap, Tag } from "@emberwalk/shared";
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 import { copy, draft } from "../../src/copy.ts";
-import { DRAFT_WORDS_KEY } from "../../src/draft-words.ts";
 import { recordPartFor, resultsFor, ROUTES } from "../../src/router.ts";
 import guidedWalk from "../unit/guided-walk.json" with { type: "json" };
 import { LIVE_WALK, liveBody } from "../unit/result-fakes.ts";
@@ -49,14 +48,8 @@ const standInApi = async (page: Page, server: Server) => {
   await page.route("**/storage/**", (route) => route.fulfill({ status: 200, headers: { etag: `"e-1"` }, body: "" }));
 };
 
-const motionRefused = async (page: Page, draftWords: boolean) => {
-  await page.addInitScript(
-    ([key, on]) => {
-      Object.defineProperty(window, "DeviceOrientationEvent", { configurable: true, value: undefined });
-      if (on) window.localStorage.setItem(key, "on");
-    },
-    [DRAFT_WORDS_KEY, draftWords] as const,
-  );
+const motionRefused = async (page: Page) => {
+  await page.addInitScript(() => Object.defineProperty(window, "DeviceOrientationEvent", { configurable: true, value: undefined }));
 };
 
 const SIDE_ORDER = ["front", "left", "back", "right"] as const;
@@ -68,7 +61,7 @@ test.beforeEach(async ({ context }) => {
 test("with motion refused, the phone guides each side, tags it at each Next tap, and a missed side asks for that side alone, at 390 px", async ({ page }) => {
   const server: Server = { ids: [LIVE_WALK, PART_WALK], started: [], tags: [] };
   await standInApi(page, server);
-  await motionRefused(page, true);
+  await motionRefused(page);
   await page.goto(`/${ROUTES.record}`);
   await page.getByRole("button", { name: copy.record.start }).click();
   await expect(page.locator("video.preview")).toBeVisible();
@@ -129,23 +122,10 @@ test("with motion refused, the phone guides each side, tags it at each Next tap,
   expect(server.tags[1]?.[0]?.light?.length).toBeGreaterThan(3);
 });
 
-test("with motion refused, no draft guide words show while they are drafts: no prompt and no Next button, at 390 px", async ({ page }) => {
-  const server: Server = { ids: [LIVE_WALK], started: [], tags: [] };
-  await standInApi(page, server);
-  await motionRefused(page, false);
-  await page.goto(`/${ROUTES.record}`);
-  await page.getByRole("button", { name: copy.record.start }).click();
-  await expect(page.locator("video.preview")).toBeVisible();
-  await expect(page.getByRole("button", { name: draft.guided.next })).toHaveCount(0);
-  for (const side of SIDE_ORDER) await expect(page.getByText(draft.guided.now(side))).toHaveCount(0);
-  await expect(page.getByText(draft.guided.back)).toHaveCount(0);
-  expect(await page.evaluate(sideways)).toBe(0);
-});
-
-test('"asks for that part only (one side or corner)": a walk with one corner failed asks for that corner alone and sends one pan of it, with the draft words on, at 390 px', async ({ page }) => {
+test('"asks for that part only (one side or corner)": a walk with one corner failed asks for that corner alone and sends one pan of it, at 390 px', async ({ page }) => {
   const server: Server = { ids: [PART_WALK], started: [], tags: [], gaps: guidedWalk.missedCorner.gaps as Gap[] };
   await standInApi(page, server);
-  await motionRefused(page, true);
+  await motionRefused(page);
   await page.goto(`/${resultsFor(LIVE_WALK)}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
   await expect(page.locator("main ul.lines li span")).toHaveText([draft.corners.gap.missing("front_right")]);
@@ -171,18 +151,4 @@ test('"asks for that part only (one side or corner)": a walk with one corner fai
   await expect(page.getByRole("status")).toHaveText(copy.send.sent);
   expect(server.started[0]).toMatchObject({ partOf: { walkId: LIVE_WALK, side: "front_right" } });
   expect(server.tags[0]?.map((tag) => `${tag.kind} ${tag.label}`)).toEqual(["pan front right corner"]);
-});
-
-test("with the draft words off, a corner gap is not listed and the corner reshoot route is refused, at 390 px", async ({ page }) => {
-  const server: Server = { ids: [PART_WALK], started: [], tags: [], gaps: guidedWalk.missedCorner.gaps as Gap[] };
-  await standInApi(page, server);
-  await motionRefused(page, false);
-  await page.goto(`/${resultsFor(LIVE_WALK)}`);
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByText(draft.corners.gap.missing("front_right"))).toHaveCount(0);
-  await expect(page.getByRole("link", { name: draft.corners.panCorner("front_right") })).toHaveCount(0);
-  await page.goto(`/${recordPartFor(LIVE_WALK, "front_right")}`);
-  await expect(page.getByRole("button", { name: copy.record.start })).toBeVisible();
-  await expect(page.getByText(draft.corners.oneCorner("front_right"))).toHaveCount(0);
-  await expect(page.getByText(copy.record.ready)).toBeVisible();
 });

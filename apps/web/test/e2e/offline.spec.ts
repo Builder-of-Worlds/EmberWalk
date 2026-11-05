@@ -33,7 +33,7 @@ test("the app, the record screen, the sample house and a finding open with no si
 
   await reopened.goto("/");
   await reopened.getByRole("link", { name: copy.home.sample }).click();
-  await expect(reopened.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
+  await expect(reopened.getByRole("heading", { level: 1 })).toHaveText(copy.sample.partial);
   await expect(reopened.getByText(/synthetic/i)).toHaveCount(0);
   expect(await reopened.evaluate(sideways)).toBe(0);
 

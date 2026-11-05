@@ -1,5 +1,7 @@
-import { isCorner, WalkPart } from "@emberwalk/shared";
+import { WalkPart } from "@emberwalk/shared";
 import type { Part } from "@emberwalk/shared";
+
+export const SIGN_IN_PATH = "/?signin=1";
 
 export const ROUTES = {
   home: "#/",
@@ -8,6 +10,7 @@ export const ROUTES = {
   record: "#/record",
   send: "#/send",
   results: "#/results",
+  map: "#/map",
   finding: "#/finding",
   checking: "#/checking",
   fix: "#/fix",
@@ -16,6 +19,15 @@ export const ROUTES = {
   history: "#/history",
   recheck: "#/recheck",
   report: "#/report",
+  crews: "#/crews",
+  signIn: "#/sign-in",
+  homes: "#/homes",
+  property: "#/property",
+  invite: "#/invite-tenant",
+  tenantInvite: "#/invite",
+  plan: "#/plan",
+  walks: "#/walks",
+  settings: "#/settings",
 } as const;
 
 export type Route = keyof typeof ROUTES;
@@ -24,7 +36,7 @@ export const WALK_START = ROUTES.record;
 
 const BY_HASH = new Map<string, Route>(Object.entries(ROUTES).map(([route, hash]) => [hash, route as Route]));
 
-const WITH_ID: Route[] = ["send", "results", "finding", "checking", "fix", "approve", "inspection", "recheck", "report"];
+const WITH_ID: Route[] = ["send", "results", "map", "finding", "checking", "fix", "approve", "inspection", "recheck", "report", "plan"];
 
 const idAfter = (prefix: string, hash: string): string | null => {
   if (!hash.startsWith(prefix) || hash.length === prefix.length) return null;
@@ -95,6 +107,10 @@ export const approveIdsIn = (hash: string): ApproveIds | null => {
 
 export const resultsIdIn = (hash: string): string | null => idAfter(`${ROUTES.results}/`, hash);
 
+export const mapFor = withId("map");
+
+export const mapIdIn = (hash: string): string | null => idAfter(`${ROUTES.map}/`, hash);
+
 export const reportFor = withId("report");
 
 export const reportIdIn = (hash: string): string | null => idAfter(`${ROUTES.report}/`, hash);
@@ -103,10 +119,10 @@ export const walkIdIn = (hash: string): string | null => idAfter(`${ROUTES.check
 
 export const recordPartFor = (walkId: string, side: Part): string => `${ROUTES.record}/${encodeURIComponent(walkId)}/${side}`;
 
-export const recordPartIn = (hash: string, corners = false): WalkPart | null => {
+export const recordPartIn = (hash: string): WalkPart | null => {
   const [walkId, side, ...rest] = (idAfter(`${ROUTES.record}/`, hash) ?? "").split("/");
   const part = WalkPart.safeParse({ walkId, side });
-  return rest.length === 0 && part.success && (corners || !isCorner(part.data.side)) ? { walkId: part.data.walkId, side: part.data.side } : null;
+  return rest.length === 0 && part.success ? { walkId: part.data.walkId, side: part.data.side } : null;
 };
 
 const hasIds = (route: Route, hash: string): boolean => {
@@ -116,9 +132,43 @@ const hasIds = (route: Route, hash: string): boolean => {
   return idAfter(`${ROUTES[route]}/`, hash) !== null;
 };
 
+export const signInTokenIn = (hash: string): string | null => idAfter(`${ROUTES.signIn}/`, hash);
+
+export const propertyFor = withId("property");
+
+export const propertyIdIn = (hash: string): string | null => idAfter(`${ROUTES.property}/`, hash);
+
+export const inviteFor = withId("invite");
+
+export const invitePropertyIdIn = (hash: string): string | null => idAfter(`${ROUTES.invite}/`, hash);
+
+export const tenantInviteFor = withId("tenantInvite");
+
+export const tenantInviteCodeIn = (hash: string): string | null => idAfter(`${ROUTES.tenantInvite}/`, hash);
+
+export type PlanReturn = "done" | "cancelled";
+
+const PLAN_RETURNS: readonly string[] = ["done", "cancelled"] satisfies PlanReturn[];
+
+export const planReturnIn = (hash: string): PlanReturn | null => {
+  const word = idAfter(`${ROUTES.plan}/`, hash);
+  return word !== null && PLAN_RETURNS.includes(word) ? (word as PlanReturn) : null;
+};
+
+export const checkoutReturnIn = (search: string): string | null => {
+  const word = new URLSearchParams(search).get("checkout");
+  return word !== null && PLAN_RETURNS.includes(word) ? `${ROUTES.plan}/${word}` : null;
+};
+
 export const routeFor = (hash: string): Route => {
+  if (signInTokenIn(hash) !== null) return "signIn";
+  if (tenantInviteCodeIn(hash) !== null) return "tenantInvite";
+  if (propertyIdIn(hash) !== null) return "property";
+  if (invitePropertyIdIn(hash) !== null) return "invite";
   const routed = WITH_ID.find((route) => hasIds(route, hash));
   if (routed !== undefined) return routed;
   if (hash.startsWith(`${ROUTES.record}/`)) return "record";
-  return BY_HASH.get(hash === "" || hash === "#" ? ROUTES.home : hash) ?? "home";
+  const exact = BY_HASH.get(hash === "" || hash === "#" ? ROUTES.home : hash) ?? "home";
+  if (exact === "tenantInvite" || exact === "property" || exact === "invite" || exact === "map") return "home";
+  return exact;
 };

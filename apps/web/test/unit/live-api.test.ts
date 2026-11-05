@@ -76,11 +76,19 @@ describe("apiResults", () => {
   });
 });
 
+describe("a sample's own coverage", () => {
+  it("is shown as recorded, never forced to checked", async () => {
+    const recorded = { ...SAMPLES[0]!, coverage: "not_checked" as const, notChecked: ["tree" as const], loop: "open" as const };
+    const answer = await samplesThenApi(async () => recorded, vi.fn(async () => null))(recorded.id);
+    expect(answer).toMatchObject({ coverage: "not_checked", notChecked: ["tree"], loop: "open" });
+  });
+});
+
 describe("samplesThenApi", () => {
-  it("opens a bundled sample as checked and never asks the API for it", async () => {
+  it("opens a bundled sample with no recorded coverage as not checked, and never asks the API for it", async () => {
     const api = vi.fn(async () => null);
     const sample = SAMPLES[0]!;
-    expect(await samplesThenApi(sampleResults, api)(sample.id)).toEqual({ ...sample, coverage: "checked", notChecked: [] });
+    expect(await samplesThenApi(sampleResults, api)(sample.id)).toEqual({ ...sample, coverage: "not_checked", notChecked: [] });
     expect(api).not.toHaveBeenCalled();
   });
 

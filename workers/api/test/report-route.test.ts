@@ -1,4 +1,4 @@
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
 import { markFinding } from "@emberwalk/db";
 import { RULES } from "@emberwalk/rules";
 import { ErrorBody, previewKey, recheckAnswerKey, recheckPhotoKey, VISITOR_HEADER } from "@emberwalk/shared";
@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { type BrowserBinding, pdfOf } from "../src/browser-run.ts";
 import { approvalKey, handleReport, MAX_STILL_BYTES, pdfKey, REPORT_PATH } from "../src/report-route.ts";
 import { reportWords } from "../src/report-words.ts";
+import { reportWordsEs } from "../src/report-words-es.ts";
 import { fakeBrowser } from "./browser-fake.ts";
 import { emptyBucket } from "./route.ts";
 import { clearWalks, type DoneWalk, OWNER, seedDonePart, seedDoneWalk, seedWalk } from "./seed.ts";
@@ -108,6 +109,16 @@ const printedPages = async (): Promise<{ shown: string; pdf: string; share: stri
   return { shown, pdf: pdf.seen.html ?? "", share: share.seen.html ?? "" };
 };
 
+describe("the PDF's file name", () => {
+  it("carries the phone's day for the walk", async () => {
+    await env.DB.prepare("UPDATE walks SET walk_day = '2026-03-04' WHERE id = ?").bind(WALK).run();
+    await html();
+    await approve();
+    const response = await report(`/api/walks/${WALK}/report.pdf`, { browser: fakeBrowser() });
+    expect(response.headers.get("content-disposition")).toContain("emberwalk-record-2026-03-04.pdf");
+  });
+});
+
 let walk: DoneWalk;
 
 beforeEach(async () => {
@@ -116,6 +127,38 @@ beforeEach(async () => {
   walk = await seedDoneWalk(WALK, 1, false);
   await env.DB.prepare("UPDATE walks SET created_at = '2026-10-28T17:00:00.000Z' WHERE id = ?").bind(WALK).run();
   await seedDoneWalk(OTHER, 2);
+});
+
+describe("the report's language", () => {
+  it("follows the walk: Spanish walks get a Spanish page, and the same Spanish goes to the printer", async () => {
+    await env.DB.prepare("UPDATE walks SET language = 'es' WHERE id = ?").bind(WALK).run();
+    const page = await html();
+    expect(page).toContain('<html lang="es">');
+    expect(page).toContain("Registro de espacio defendible");
+    expect(page).not.toContain(reportWords.title);
+    await approve();
+    const browser = fakeBrowser();
+    expect((await report(`/api/walks/${WALK}/report.pdf`, { browser })).status).toBe(200);
+    expect(browser.seen.html).toContain('<html lang="es">');
+    expect(browser.seen.html).toContain("Registro de espacio defendible");
+  });
+
+  it("does not undo an approval when the language changes: same photos seen, same digest, and the new language prints", async () => {
+    const before = await seenOf();
+    await approve();
+    await env.DB.prepare("UPDATE walks SET language = 'es' WHERE id = ?").bind(WALK).run();
+    expect(await seenOf()).toBe(before);
+    expect(await approvalNow()).toMatchObject({ changed: false, approvedAt: NOW.toISOString() });
+    const browser = fakeBrowser();
+    expect((await report(`/api/walks/${WALK}/report.pdf`, { browser })).status).toBe(200);
+    expect(browser.seen.html).toContain('<html lang="es">');
+  });
+
+  it("stays English for an English walk", async () => {
+    const page = await html();
+    expect(page).toContain('<html lang="en">');
+    expect(page).toContain(reportWords.title);
+  });
 });
 
 describe("GET /api/walks/{walkId}/report", () => {
@@ -296,6 +339,26 @@ describe("GET /api/walks/{walkId}/report", () => {
     expect(fake.seen.acquired).toBe(1);
   }, 120_000);
 
+  it("embeds each photo's small report copy when the walk has one, so a walk whose full photos are over the limit still gets its report", async () => {
+    const jpeg = (size: number, fill: number) => {
+      const bytes = new Uint8Array(size).fill(fill);
+      bytes.set([0xff, 0xd8], 0);
+      bytes.set([0xff, 0xd9], bytes.length - 2);
+      return bytes;
+    };
+    const full = (MAX_STILL_BYTES / 4) * 3;
+    for (const [i, id] of [walk.fence.id, walk.brush.id].entries()) {
+      const key = await stillKey(id);
+      await env.MEDIA.put(key, jpeg(full, i + 1));
+      await env.MEDIA.put(key.replace(/\.jpg$/, ".small.jpg"), jpeg(3000, i + 5));
+    }
+    const page = await html();
+    const embedded = [...page.matchAll(/<img src="data:image\/jpeg;base64,([^"]+)"/g)].map((m) => m[1]!.length);
+    expect(embedded).toEqual([4000, 4000]);
+    await approve();
+    expect((await report(`/api/walks/${WALK}/report.pdf`, { browser: fakeBrowser() })).status).toBe(200);
+  }, 120_000);
+
   it("refuses a photo too large to embed by its stored size, before reading it into memory", async () => {
     const key = await stillKey(walk.brush.id);
     const over = new Uint8Array((MAX_STILL_BYTES / 4) * 3 + 1);
@@ -353,11 +416,64 @@ describe("approving the blurred report, then the PDF", () => {
     expect([...new Uint8Array(await (await env.MEDIA.get(pdfKey(WALK)))!.arrayBuffer())]).toEqual([...pdf]);
   });
 
+  it("serves the stored PDF on a later tap without printing again, and prints fresh after a new approval or a language change", async () => {
+    const tap = async (query = "") => {
+      const browser = fakeBrowser();
+      const response = await report(`/api/walks/${WALK}/report.pdf${query}`, { browser });
+      expect([response.status, response.headers.get("content-type")]).toEqual([200, "application/pdf"]);
+      return { printed: browser.seen.acquired, bytes: [...new Uint8Array(await response.arrayBuffer())] };
+    };
+    await approve();
+    const first = await tap();
+    expect(first.printed).toBe(1);
+    expect(await tap()).toEqual({ printed: 0, bytes: first.bytes });
+    await env.DB.prepare("UPDATE walks SET language = 'es' WHERE id = ?").bind(WALK).run();
+    expect((await tap()).printed).toBe(1);
+    expect((await tap()).printed).toBe(0);
+    await approve(WALK, new Date("2026-11-05T10:00:00.000Z"), `?removed=${walk.fence.id}`);
+    expect((await tap(`?removed=${walk.fence.id}`)).printed).toBe(1);
+    expect((await tap(`?removed=${walk.fence.id}`)).printed).toBe(0);
+  });
+
   it("answers 503 and stores no PDF when Browser Run gives no browser or is not bound", async () => {
     await approve();
     await refused(await report(`/api/walks/${WALK}/report.pdf`, { browser: fakeBrowser({ refuse: "acquire" }) }), 503, "server_error");
     await refused(await report(`/api/walks/${WALK}/report.pdf`), 503, "server_error");
     expect(await keysUnder(`reports/${WALK}/`)).toEqual([approvalKey(WALK)]);
+  });
+});
+
+describe("the day the report says it was approved", () => {
+  const EVENING = new Date("2026-11-04T01:38:00.000Z");
+  const approveOn = async (day: string | null) => {
+    const seen = await seenOf();
+    const path = `/api/walks/${WALK}/report/approval`;
+    const headers: Record<string, string> = { [VISITOR_HEADER]: OWNER, [SEEN]: seen, ...(day === null ? {} : { "x-report-day": day }) };
+    const response = await handleReport(new Request(`https://api.test${path}`, { method: "POST", headers }), on(), REPORT_PATH.exec(path)!, { now: () => EVENING });
+    expect(response.status).toBe(200);
+  };
+  const daysShown = async () => {
+    const browser = fakeBrowser();
+    expect((await report(`/api/walks/${WALK}/report.pdf`, { browser })).status).toBe(200);
+    const page = browser.seen.html ?? "";
+    return { cover: /data-part="approved">.*?<strong>(.*?)<\/strong>/.exec(page)?.[1], record: [...page.matchAll(/<tr data-day="([^"]+)"/g)].map((m) => m[1]) };
+  };
+
+  for (const language of ["en", "es"]) {
+    it(`is the phone's own day, sent with the approval, on the cover and in the dated record of the PDF (${language})`, async () => {
+      await env.DB.prepare("UPDATE walks SET language = ? WHERE id = ?").bind(language, WALK).run();
+      await approveOn("2026-11-03");
+      const words = language === "es" ? reportWordsEs : reportWords;
+      expect(await daysShown()).toEqual({ cover: words.shortDay("2026-11-03"), record: ["2026-10-28", "2026-11-03"] });
+    });
+  }
+
+  it("falls back to the UTC day when the phone sends no day, or one more than a day from the approval", async () => {
+    await approveOn(null);
+    expect((await daysShown()).record).toEqual(["2026-10-28", "2026-11-04"]);
+    await env.MEDIA.delete(approvalKey(WALK));
+    await approveOn("2026-10-01");
+    expect((await daysShown()).record).toEqual(["2026-10-28", "2026-11-04"]);
   });
 });
 
@@ -469,8 +585,9 @@ describe("the approval covers what was seen", () => {
       });
     await approve();
     expect((await printWhile(async () => null)).status).toBe(200);
-    expect((await env.MEDIA.head(pdfKey(WALK)))?.customMetadata).toEqual({ approvedAt: NOW.toISOString(), seen: await seenOf() });
+    expect((await env.MEDIA.head(pdfKey(WALK)))?.customMetadata).toEqual({ approvedAt: NOW.toISOString(), seen: await seenOf(), language: "en" });
     const later = new Date("2026-11-05T10:00:00.000Z");
+    await env.MEDIA.delete(pdfKey(WALK));
     await refused(await printWhile(() => approve(WALK, later, `?removed=${walk.fence.id}`)), 409, "conflict");
     expect(await keysUnder(`reports/${WALK}/`)).toEqual([approvalKey(WALK)]);
     expect([(await stored()).approvedAt, (await stored()).removed]).toEqual([later.toISOString(), [walk.fence.id]]);
@@ -504,9 +621,7 @@ describe("refusals", () => {
     expect(await keysUnder("reports/")).toEqual([]);
   });
 
-  it("is not found while the report flag is off, as the Worker is configured today", async () => {
-    expect(env.REPORT).toBe("off");
-    for (const end of ["report", "report.pdf", "report/approval"]) await refused(await exports.default.fetch(ask(`/api/walks/${WALK}/${end}`)), 404, "not_found");
+  it("is not found while the report flag is off", async () => {
     await refused(await report(`/api/walks/${WALK}/report`, { reportEnv: { ...on(), REPORT: "off" } }), 404, "not_found");
     await refused(await report(`/api/walks/${WALK}/report/approval`, { method: "POST", reportEnv: { ...on(), REPORT: "off" } }), 404, "not_found");
     expect(await keysUnder("reports/")).toEqual([]);

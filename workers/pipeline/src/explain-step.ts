@@ -1,5 +1,5 @@
 import { applyWording, clipsForWalk, detectionsForClip, findingsForWalk, getWalk, tagsForWalk } from "@emberwalk/db";
-import { explain, type ExplainFinding, MAX_FRAMES, MAX_TURNS } from "@emberwalk/explain";
+import { explain, type ExplainFinding, MAX_TURNS } from "@emberwalk/explain";
 import { CaJurisdiction, evaluate, observe, rank } from "@emberwalk/rules";
 import { Language, type Track } from "@emberwalk/shared";
 import type { Deps } from "./deps.ts";
@@ -35,7 +35,7 @@ export const explainWalk = async (deps: Deps, walkId: string, raster: Raster = r
 
   const explained = saved.filter((f) => findings.some((e) => e.findingId === f.id));
   const stills = [...new Set(explained.map((f) => f.proofFrame.still))];
-  const links = new Map(await Promise.all(stills.slice(0, MAX_FRAMES).map(async (key) => [key, await deps.signer.get(key)] as const)));
+  const links = new Map(await Promise.all(stills.map(async (key) => [key, await deps.signer.get(key)] as const)));
   const stillOf = new Map(explained.map((f) => [f.id, f.proofFrame.still]));
   const answer = await explain(deps.meta(), {
     walkId,

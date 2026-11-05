@@ -1,4 +1,6 @@
-import { welcomeMessage } from "./email-copy";
+import { applyAppLink, applyFilmSlot } from "./app-link";
+import { welcomeMessage, welcomeMessageEs } from "./email-copy";
+import { applyLanguage, languageNamed, languageOf } from "./landing-language";
 import { applyLaunchDate, launchDateShown } from "./launch-date";
 import { applyPostalAddress } from "./postal-address";
 import { verifyTurnstile } from "./turnstile";
@@ -18,7 +20,8 @@ const SECURITY_HEADERS: Record<string, string> = {
     "style-src 'self'",
     "font-src 'self'",
     "img-src 'self' data:",
-    `connect-src 'self' ${TURNSTILE_HOST}`,
+    "media-src blob: https://judges.emberwalk.app",
+    `connect-src 'self' ${TURNSTILE_HOST} https://judges.emberwalk.app`,
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
@@ -80,7 +83,12 @@ async function signup(request: Request, env: Env, deps: Deps): Promise<Response>
 
   if (isNew && deps.mailer && env.UNSUBSCRIBE_SECRET) {
     try {
-      await deps.mailer.send(welcomeMessage(input.email, await unsubscribeUrl(input.email, env.UNSUBSCRIBE_SECRET), env));
+      const link = await unsubscribeUrl(input.email, env.UNSUBSCRIBE_SECRET);
+      await deps.mailer.send(
+        languageNamed(input.language) === "es"
+          ? { ...welcomeMessageEs(input.email, `${link}&lang=es`, env), language: "es" }
+          : welcomeMessage(input.email, `${link}&lang=en`, env),
+      );
       await env.DB.prepare("UPDATE signups SET welcomed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE email = ?1")
         .bind(input.email)
         .run();
@@ -95,15 +103,16 @@ async function unsubscribe(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET" && request.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: { allow: "GET, POST" } });
   }
-  if (!env.UNSUBSCRIBE_SECRET) return unsubscribePage("failed");
+  const language = languageOf(request);
+  if (!env.UNSUBSCRIBE_SECRET) return unsubscribePage("failed", language);
   const email = await readToken(new URL(request.url).searchParams.get("t") ?? "", env.UNSUBSCRIBE_SECRET);
-  if (email === null) return unsubscribePage("invalid");
+  if (email === null) return unsubscribePage("invalid", language);
   try {
     await env.DB.prepare("DELETE FROM signups WHERE email = ?1").bind(email).run();
   } catch {
-    return unsubscribePage("failed");
+    return unsubscribePage("failed", language);
   }
-  return unsubscribePage("removed");
+  return unsubscribePage("removed", language);
 }
 
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
@@ -120,11 +129,19 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         : fail(405, "method_not_allowed", { allow: "GET" });
   } else if (pathname.startsWith("/api/")) {
     response = fail(404, "not_found");
+  } else if (pathname === "/es" || pathname === "/es/") {
+    response = Response.redirect(new URL("/?lang=es", request.url).href, 302);
+  } else if (pathname === "/favicon.ico") {
+    response = await env.ASSETS.fetch(new Request(new URL("/brand/icon-32.png", request.url), request));
   } else {
-    response = await applyPostalAddress(applyLaunchDate(await env.ASSETS.fetch(request), launchDateShown(env)), env.POSTAL_ADDRESS);
+    response = await applyLanguage(await applyPostalAddress(applyFilmSlot(applyAppLink(applyLaunchDate(await env.ASSETS.fetch(request), launchDateShown(env)), env), env), env.POSTAL_ADDRESS), request);
   }
 
   const secured = new Response(response.body, response);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) secured.headers.set(name, value);
+  if ((secured.headers.get("content-type") ?? "").includes("text/html")) {
+    // no-transform keeps Cloudflare from adding its analytics beacon; the privacy policy promises no analytics.
+    secured.headers.set("cache-control", `${secured.headers.get("cache-control") ?? "public, max-age=0, must-revalidate"}, no-transform`);
+  }
   return secured;
 }

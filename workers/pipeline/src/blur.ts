@@ -7,6 +7,8 @@ import { originalKey } from "./storage.ts";
 
 export type WantedStill = { frame: number; output: string };
 
+export const smallStillKey = (key: string): string => key.replace(/\.jpg$/, ".small.jpg");
+
 const Box = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 const PrivacyFile = z.object({
   phrases: z.array(z.object({ phrase: z.string(), status: z.enum(["checked", "not_checked"]) })),
@@ -44,6 +46,7 @@ export const blurredStills = async (
     wanted.map(async ({ frame, output }) => ({
       time: startSeconds + frame / clip.fps,
       output: await deps.signer.put(output),
+      small: await deps.signer.put(smallStillKey(output)),
       regions: regionsAt(frame),
     })),
   );

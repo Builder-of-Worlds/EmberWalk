@@ -44,6 +44,14 @@ describe("walkCost", () => {
     expect(walkCost([loop]).nano).toBe(406_020_000);
   });
 
+  it("prices the rare looks only when asked, trading each row's SAM call for its looks", () => {
+    const on = walkCost([loop], 20);
+    expect(on.sparkCalls).toBe(2 * POINT_LOOKS + 3 * 20);
+    expect(on.samCalls).toBe(26);
+    expect(on.nano).toBeGreaterThan(walkCost([loop]).nano);
+    expect(walkCost([pan], 20)).toEqual(walkCost([pan]));
+  });
+
   it("prices a pan clip, which points only at dry brush", () => {
     expect(walkCost([pan])).toEqual({ nano: 263_010_000, samCalls: 18, sparkCalls: POINT_LOOKS });
   });

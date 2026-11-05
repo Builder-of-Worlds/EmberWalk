@@ -207,6 +207,7 @@
       "additionalProperties": false,
       "required": ["siding", "trim", "roof", "ground", "light"],
       "properties": {
+        "finish": {"type": "integer", "enum": [1, 2], "description": "Optional, default 1, the approved hero finish. 2 adds dark window rooms behind the glass, painted municipal bins and clumped tall grass patches. Only with photoscans."},
         "photoscans": {"type": "boolean", "description": "Optional. True builds the lot with Poly Haven photoscan models (catalog photoscan entries) and a dense meadow in place of scripted stand ins."},
         "siding": {
           "type": "object",
@@ -428,7 +429,20 @@
         "width_px": {"type": "integer", "minimum": 1},
         "height_px": {"type": "integer", "minimum": 1},
         "focal_mm": {"type": "number", "exclusiveMinimum": 0},
-        "sensor_width_mm": {"type": "number", "exclusiveMinimum": 0}
+        "sensor_width_mm": {"type": "number", "exclusiveMinimum": 0},
+        "steady": {
+          "description": "Present, the walk is the second lap only with no step bob and slow turns, and these settings replace the walk's own; the scene is still built from the settings above.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["standoff_in", "focal_mm", "fps", "pan_s"],
+          "properties": {
+            "standoff_in": {"type": "integer", "minimum": 120, "maximum": 192},
+            "focal_mm": {"type": "number", "exclusiveMinimum": 0},
+            "fps": {"enum": [15, 24, 25, 30, 60]},
+            "pan_s": {"type": "number", "minimum": 10, "maximum": 20},
+            "level": {"type": "boolean"}
+          }
+        }
       }
     }
   }

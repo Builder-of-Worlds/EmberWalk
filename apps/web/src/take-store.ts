@@ -32,7 +32,7 @@ export type WalkMarks = {
 
 export const NO_MARKS: WalkMarks = { soundOffAtMs: null, pauses: [], propertyLines: [], motion: [], pans: [] };
 
-export type TakeSetup = { jurisdiction: Jurisdiction | null; sound: boolean; device?: Device | null; partOf?: WalkPart | null };
+export type TakeSetup = { jurisdiction: Jurisdiction | null; sound: boolean; device?: Device | null; partOf?: WalkPart | null; inviteCode?: string; propertyId?: string };
 
 const DEFAULT_SETUP: TakeSetup = { jurisdiction: null, sound: true, device: null };
 
@@ -49,6 +49,8 @@ export type Take = {
   sound: boolean;
   device?: Device | null;
   partOf?: WalkPart | null;
+  inviteCode?: string;
+  propertyId?: string;
   marks: WalkMarks;
   tags?: TagsSent | OneTagSent | null;
 };
@@ -136,6 +138,8 @@ export const openTakeStore = async (idb: IDBFactory, name = "emberwalk"): Promis
         sound: setup.sound,
         device: setup.device ?? null,
         partOf: setup.partOf ?? null,
+        ...(setup.inviteCode === undefined ? {} : { inviteCode: setup.inviteCode }),
+        ...(setup.propertyId === undefined ? {} : { propertyId: setup.propertyId }),
         marks: NO_MARKS,
       };
       const tx = db.transaction(TAKES, "readwrite");

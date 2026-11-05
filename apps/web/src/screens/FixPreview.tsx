@@ -35,4 +35,6 @@ export const SecondCheckNote = ({ check }: { check: SecondCheck | null | undefin
     <p className="second-check" role="note">
       {copy.finding.secondCheck(check.reason)}
     </p>
+  ) : check?.verdict === "agrees" ? (
+    <p className="second-check-agrees">{copy.finding.secondCheckAgrees}</p>
   ) : null;

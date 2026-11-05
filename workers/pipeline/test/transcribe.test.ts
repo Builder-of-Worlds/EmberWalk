@@ -115,12 +115,12 @@ describe("transcribeWalk", () => {
     expect(asked()).toHaveLength(0);
   });
 
-  it("makes no audio or Meta call for real content on free credits", async () => {
+  it("cuts the sound and transcribes real content on free credits", async () => {
     harness.voiceNotes = true;
     const walkId = await walk({ synthetic: false });
-    expect(await transcribeWalk(deps(), walkId)).toEqual({ turns: 0 });
-    expect(harness.audioed).toHaveLength(0);
-    expect(asked()).toHaveLength(0);
+    expect(await transcribeWalk(deps(), walkId)).toEqual({ turns: 3 });
+    expect(harness.audioed).toHaveLength(1);
+    expect(asked()).toHaveLength(1);
   });
 
   it("throws for a walk that does not exist", async () => {

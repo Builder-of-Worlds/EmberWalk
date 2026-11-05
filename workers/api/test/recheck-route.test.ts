@@ -2,7 +2,7 @@ import { markFinding } from "@emberwalk/db";
 import { limitsWith, RecheckErrorBody, RecheckLinkResponse, recheckAnswerKey, recheckPhotoKey, RecheckResponse, VISITOR_HEADER } from "@emberwalk/shared";
 import type { Limits, Recheck } from "@emberwalk/shared";
 import { presign } from "@emberwalk/sigv4";
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleRecheck, RECHECK_PATH } from "../src/recheck-route.ts";
 import type { RecheckDeps, RecheckOutcome } from "../src/recheck-route.ts";
@@ -129,15 +129,11 @@ describe("the recheck upload link", () => {
     expect((await call(depsWith({ limits: { rechecksPerFinding: 3 } }).deps, "/api/rechecks", { body: ask(walk.brush.id) })).status).toBe(201);
   });
 
-  it("is off unless the limits switch it on, and answers no link without signing keys", async () => {
+  it("is off when the limits switch it off, and answers no link without signing keys", async () => {
     const walk = await doneFinding();
     for (const path of ["/api/rechecks", `/api/rechecks/${RECHECK}`]) {
-      const response = await exports.default.fetch(
-        new Request(`https://api.test${path}`, { method: "POST", headers: { [VISITOR_HEADER]: OWNER }, body: JSON.stringify(ask(walk.brush.id)) }),
-      );
-      expect([response.status, RecheckErrorBody.parse(await response.json()).error.code]).toEqual([404, "not_found"]);
+      expect(await call(depsWith({ limits: { recheckOn: false } }).deps, path, { body: ask(walk.brush.id) })).toMatchObject({ status: 404, json: { error: { code: "not_found" } } });
     }
-    expect(await call(depsWith({ limits: { recheckOn: false } }).deps, "/api/rechecks", { body: ask(walk.brush.id) })).toMatchObject({ status: 404, json: { error: { code: "not_found" } } });
     expect(await call(depsWith({ signing: null }).deps, "/api/rechecks", { body: ask(walk.brush.id) })).toMatchObject({ status: 500, json: { error: { code: "server_error" } } });
   });
 });

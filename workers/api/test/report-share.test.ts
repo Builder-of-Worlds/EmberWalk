@@ -200,11 +200,9 @@ describe("making a share link", () => {
     expect(await keysUnder("shares/")).toEqual([]);
   });
 
-  it("is not found while the report flag is off, as the Worker is configured today", async () => {
+  it("is not found while the report flag is off", async () => {
     await approve();
-    expect(env.REPORT).toBe("off");
     await refused(await call(`/api/walks/${WALK}/report/share`, { method: "POST", flag: "off", browser: fakeBrowser() }), 404, "not_found");
-    await refused(await exports.default.fetch(new Request(`https://api.test/api/walks/${WALK}/report/share`, { headers: { [VISITOR_HEADER]: OWNER } })), 404, "not_found");
     expect(await keysUnder("shares/")).toEqual([]);
   });
 });

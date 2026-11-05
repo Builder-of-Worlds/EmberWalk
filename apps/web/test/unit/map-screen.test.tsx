@@ -4,15 +4,16 @@ import { DepsContext } from "../../src/deps.ts";
 import { MapScreen } from "../../src/screens/MapScreen.tsx";
 import { testDeps } from "./fakes.ts";
 import { render, settle } from "./render.ts";
-import { finding, walk } from "./result-fakes.ts";
+import { finding, pin, walk } from "./result-fakes.ts";
 
-const RESULTS = walk([finding("near"), finding("far")]);
+const RESULTS = walk([finding("near"), finding("far")], [], { pins: [pin("near")] });
 
 afterEach(() => {
   window.location.hash = "";
 });
 
 describe("the house map screen", () => {
+
   it("shows its heading and the drawn house for a walk", async () => {
     const deps = testDeps({ results: async (id) => (id === RESULTS.id ? RESULTS : null) });
     const view = await render(

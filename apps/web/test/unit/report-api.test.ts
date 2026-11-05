@@ -71,6 +71,22 @@ describe("the report client", () => {
     }
   });
 
+  it("sends the phone's own day with an approval, not the UTC day, when the two differ", async () => {
+    const zone = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-04T01:38:00.000Z"));
+    try {
+      const { seen, api } = serving((request) => Response.json({ approvedAt: request.method === "POST" ? "2026-11-04T01:38:00.000Z" : null, changed: false }));
+      await api.approval(WALK, []);
+      await api.approve(WALK, [], DIGEST);
+      expect(seen.map((r) => r.headers.get("x-report-day"))).toEqual([null, "2026-11-03"]);
+    } finally {
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
+  });
+
   it("refuses a report page that comes without the server's digest of what it shows", async () => {
     for (const digest of [null, "", "AB".repeat(32), "ab".repeat(31), `${"ab".repeat(32)}0`]) {
       const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8", ...(digest === null ? {} : { [SEEN]: digest }) };

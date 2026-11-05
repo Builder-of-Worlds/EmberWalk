@@ -19,7 +19,7 @@
         "roll_deg": 0.698
       },
       "file": "synthetic-recheck-gutter-leaves-back.png",
-      "sha256": "da37b934d9f96d6d10ab5f55262949f3e10a65dbc22b77e883df5ccf5eda76fb",
+      "sha256": "932b71a5be846b81b3ed44805459565b83989cc8071e2a080aed9a6b9551c273",
       "area_px": 0
     },
     {
@@ -36,7 +36,7 @@
         "roll_deg": -0.596
       },
       "file": "synthetic-recheck-vent-debris-left.png",
-      "sha256": "fb7e73b6dfcbecd41893539c37daf2577380ba9f19dba57015aaef57e58a27df",
+      "sha256": "1168ce6e8451596bb4693cb5a0806b12b42e842bb3b400b7c55798770c702b9d",
       "area_px": 0
     },
     {
@@ -53,41 +53,41 @@
         "roll_deg": -0.085
       },
       "file": "synthetic-recheck-dry-brush-front.png",
-      "sha256": "cc29cb09b6fc9a601094e7cbdff7898aec9e841fc6f24c276862e397fb8ad1ec",
+      "sha256": "8ee6906a4a5617eb5a63f1a3f0d73945b5af72db0175a43d9cc242c7de4e3e29",
       "area_px": 0
     },
     {
       "hazard_id": "wood-pile-back",
-      "before_frame": 3198,
+      "before_frame": 796,
       "pose": {
         "pos_in": [
-          89.28,
-          731.55,
-          53.42
+          121.25,
+          731.52,
+          54.44
         ],
-        "heading_deg": 179.935,
-        "tilt_deg": 12.383,
-        "roll_deg": -0.526
+        "heading_deg": 180.345,
+        "tilt_deg": 11.886,
+        "roll_deg": -0.38
       },
       "file": "synthetic-recheck-wood-pile-back.png",
-      "sha256": "eaecfd2f572ae042e15dfc59999bfac6b4a14a88674c2e31405219785067fc2b",
+      "sha256": "370df60e93ad63e678e6532479437b510412f3213c56b0376417108e7d3f9416",
       "area_px": 0
     },
     {
       "hazard_id": "branch-over-roof-back",
-      "before_frame": 3801,
+      "before_frame": 3797,
       "pose": {
         "pos_in": [
           804.0,
           540.0,
           54.0
         ],
-        "heading_deg": 133.683,
-        "tilt_deg": -35.586,
-        "roll_deg": -0.571
+        "heading_deg": 120.971,
+        "tilt_deg": -35.17,
+        "roll_deg": -0.195
       },
       "file": "synthetic-recheck-branch-over-roof-back.png",
-      "sha256": "a98630eb32ba8051ea1160db168075c0be48b1656452ec99565a9190aea405ac",
+      "sha256": "093a099a18e1ccbd6ac1a20a5e5acf7f9b1489f4ab7ef1a1a3ec5ddccb7fbecc",
       "area_px": 0
     },
     {
@@ -104,70 +104,70 @@
         "roll_deg": 0.223
       },
       "file": "synthetic-recheck-branch-over-roof-front.png",
-      "sha256": "2ce03c979946e9e6f5100e7c3dc4026fcc98ce5b7d5f9f4e3a162100b43dd95d",
+      "sha256": "c2ff324ecc8d1ccd160e9a281714ee7db467dad043f5c9a90cdf1f5b959eebc6",
       "area_px": 0
     },
     {
       "hazard_id": "shrub-front",
-      "before_frame": 109,
+      "before_frame": 108,
       "pose": {
         "pos_in": [
-          307.95,
-          -132.06,
-          53.81
+          310.22,
+          -132.24,
+          53.37
         ],
-        "heading_deg": 359.536,
-        "tilt_deg": 13.016,
-        "roll_deg": 0.611
+        "heading_deg": 359.71,
+        "tilt_deg": 12.799,
+        "roll_deg": 0.677
       },
       "file": "synthetic-recheck-shrub-front.png",
-      "sha256": "27a4bab7a31c91386388a20b0917f485c86bfd85d4ef97aa258cd3cd564c5d31",
+      "sha256": "da234e577fc6f693354f2096f8b804b976fc1189ca0b93839c74aeb85e8fa71f",
       "area_px": 0
     },
     {
       "hazard_id": "dry-grass-front",
-      "before_frame": 1915,
+      "before_frame": 1944,
       "pose": {
         "pos_in": [
           480.0,
           -132.0,
           54.0
         ],
-        "heading_deg": 115.272,
-        "tilt_deg": 3.67,
-        "roll_deg": 0.544
+        "heading_deg": 147.35,
+        "tilt_deg": 3.896,
+        "roll_deg": 0.515
       },
       "file": "synthetic-recheck-dry-grass-front.png",
-      "sha256": "411e484b273d60338d96525fe72e0e765d58e76b7c5b1a65a86514d64e3563ad",
-      "area_px": 31473,
+      "sha256": "0f717f768394774881d407fbef3ea52c2d86bfdce4c9313e539690542cbf73a0",
+      "area_px": 10411,
       "box_px": [
-        436,
-        392,
-        1280,
-        605
+        0,
+        412,
+        706,
+        600
       ]
     },
     {
       "hazard_id": "tall-grass-back",
-      "before_frame": 3668,
+      "before_frame": 3666,
       "pose": {
         "pos_in": [
           804.0,
           540.0,
           54.0
         ],
-        "heading_deg": 345.019,
-        "tilt_deg": 2.322,
-        "roll_deg": 0.429
+        "heading_deg": 342.285,
+        "tilt_deg": 2.193,
+        "roll_deg": 0.223
       },
       "file": "synthetic-recheck-tall-grass-back.png",
-      "sha256": "7a46bbdd5222e8a251305b5a6e7c4d8627d35a0361d914d02332009c3da71752",
-      "area_px": 20022,
+      "sha256": "e7e79fdc321b53e3453784efed6a1a498e0e4bd46b3232f95bdf2934ca613341",
+      "area_px": 6709,
       "box_px": [
-        396,
-        392,
-        1278,
-        453
+        467,
+        395,
+        1280,
+        458
       ]
     }
   ]

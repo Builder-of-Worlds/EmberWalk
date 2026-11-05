@@ -66,7 +66,25 @@ const floorMoves = (apart: number, to: number): Move[] => {
 
 type Spot = [x: number, y: number];
 
+const roomAtTheEnd = (pins: readonly Pin[]): Pin[] =>
+  pins.map((pin) => {
+    const onSide = pins.filter((p) => p.side === pin.side);
+    const places = new Set(onSide.map((p) => p.position)).size;
+    const after = new Set(onSide.filter((p) => p.position > pin.position).map((p) => p.position)).size;
+    return { ...pin, position: Math.min(pin.position, 1 - after * Math.min(PIN_APART / SPAN, 1 / places)) };
+  });
+
+const closest = (spots: readonly Spot[]): number =>
+  Math.min(Infinity, ...spots.flatMap(([x, y], i) => spots.slice(i + 1).map(([ox, oy]) => Math.hypot(ox - x, oy - y))));
+
 export const spread = (pins: readonly Pin[]): Spot[] => {
+  const asFound = placed(pins);
+  if (closest(asFound) >= PIN_APART) return asFound;
+  const eased = placed(roomAtTheEnd(pins));
+  return closest(eased) > closest(asFound) ? eased : asFound;
+};
+
+const placed = (pins: readonly Pin[]): Spot[] => {
   const lying = pins.map((_, i) => i).sort((a, b) => pins[a]!.position - pins[b]!.position || a - b);
   const spots = new Map<number, Spot>();
   const reached: { pin: Pin; along: number }[] = [];
@@ -115,6 +133,17 @@ export const numbering = (findings: readonly ResultFinding[], pins: readonly Pin
 };
 
 type Props = { findings: ResultFinding[]; pins: readonly Pin[]; resultsId: string };
+
+export const PlacedMap = ({ findings, pins, resultsId }: Props) => {
+  const placed = numbering(findings, pins).size;
+  if (placed === 0) return <p className="map-note">{copy.map.noPins}</p>;
+  return (
+    <>
+      <HouseMap findings={findings} pins={pins} resultsId={resultsId} />
+      {placed < findings.length ? <p className="map-note">{copy.map.somePlaced}</p> : null}
+    </>
+  );
+};
 
 export const HouseMap = ({ findings, pins, resultsId }: Props) => {
   const numbers = numbering(findings, pins);

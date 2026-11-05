@@ -1,5 +1,7 @@
+import { accountOwner, accountsSignedInOn, deleteAccount, provenPhones } from "@emberwalk/db";
 import { cacheMarksPrefix, DeleteEverythingRequest, DeleteEverythingResponse, Fingerprint, VISITOR_HEADER } from "@emberwalk/shared";
 import type { DeleteEverythingCode, Limits } from "@emberwalk/shared";
+import { accountOf } from "./account.ts";
 import { unlinkVisitor } from "./plans.ts";
 import { reportPrefix } from "./report-keys.ts";
 import { stopShare } from "./report-share.ts";
@@ -18,7 +20,7 @@ const MESSAGE: Record<DeleteEverythingCode, string> = {
   not_found: "No such endpoint.",
   method_not_allowed: "Use POST.",
   conflict: "A walk is still being sent or checked. Try again when it is done.",
-  server_error: "Not everything could be deleted. Try again.",
+  server_error: "Delete Everything is not finished. Try again.",
 };
 
 const fail = (code: DeleteEverythingCode, status: number, headers?: HeadersInit): Response =>
@@ -108,7 +110,7 @@ const eraseRows = async (db: D1Database, visitor: string, walkId: string): Promi
       `DELETE FROM get_it_fixed_uses WHERE subject_id IN (${JOBS}) OR subject_id IN (${MESSAGES})`,
       `DELETE FROM fault_reports WHERE walk_id IN (${OWN})`,
       `UPDATE cost_records SET walk_id = NULL WHERE walk_id IN (${OWN})`,
-      `DELETE FROM message_approvals WHERE visitor_id = ?1 AND message_id IN (${MESSAGES})`,
+      `DELETE FROM message_approvals WHERE message_id IN (${MESSAGES})`,
       `DELETE FROM walks WHERE id IN (${OWN})`,
     ].map((sql) => db.prepare(sql).bind(visitor, walkId)),
   );
@@ -145,8 +147,17 @@ export const busy = async (db: D1Database, bucket: R2Bucket, visitor: string, no
   return false;
 };
 
+const signOut = async (db: D1Database, visitor: string): Promise<void> => {
+  await db.batch(["sign_in_links", "sessions", "message_approvals"].map((table) => db.prepare(`DELETE FROM ${table} WHERE visitor_id = ?`).bind(visitor)));
+};
+
 export const eraseVisitor = async (db: D1Database, bucket: R2Bucket, visitor: string, meter: Meter): Promise<{ walks: number; left: number }> => {
   await unlinkVisitor(db, visitor);
+  await signOut(db, visitor);
+  return eraseWalksOf(db, bucket, visitor, meter);
+};
+
+const eraseWalksOf = async (db: D1Database, bucket: R2Bucket, visitor: string, meter: Meter): Promise<{ walks: number; left: number }> => {
   const walkIds = await walksOf(db, visitor);
   const prefixes = walkIds.length === 0 ? [] : (await listAll(bucket, { delimiter: "/" })).flatMap((page) => page.delimitedPrefixes);
   let erased = 0;
@@ -179,7 +190,31 @@ export const handleDeleteEverything = async (request: Request, deps: EraseDeps):
   const bucket = metered(deps.bucket, meter);
   try {
     if (await busy(db, bucket, visitor, deps.now())) return fail("conflict", 409);
-    return Response.json(DeleteEverythingResponse.parse(await eraseVisitor(db, bucket, visitor, meter)));
+    const session = await accountOf(request, db, new Date(deps.now()));
+    const signedIn = await accountsSignedInOn(db, visitor);
+    if (session === null && signedIn.length > 0) {
+      await unlinkVisitor(db, visitor);
+      return Response.json({ ...(await eraseWalksOf(db, bucket, visitor, meter)), accountKept: true });
+    }
+    if (signedIn.some((account) => account.id !== session?.account.id)) return Response.json({ error: { code: "sign_in_first", message: "Sign in first." } }, { status: 401 });
+    const owner = session === null ? null : await accountOwner(db, session.account.id);
+    const others = session === null ? [] : [...(owner === null ? [] : [owner]), ...(await provenPhones(db, session.account.id)).filter((phone) => phone !== visitor)];
+    for (const phone of others) {
+      if (await busy(db, bucket, phone, deps.now())) return fail("conflict", 409);
+    }
+    let erasedElsewhere = 0;
+    for (const phone of others) {
+      const done = await eraseWalksOf(db, bucket, phone, meter);
+      erasedElsewhere += done.walks;
+      if (done.left > 0) return Response.json(DeleteEverythingResponse.parse({ walks: erasedElsewhere, left: done.left }));
+    }
+    for (const phone of others) {
+      await unlinkVisitor(db, phone);
+      await signOut(db, phone);
+    }
+    for (const account of session === null ? signedIn : [session.account, ...signedIn.filter((a) => a.id !== session.account.id)]) await deleteAccount(db, account);
+    const here = await eraseVisitor(db, bucket, visitor, meter);
+    return Response.json(DeleteEverythingResponse.parse({ walks: here.walks + erasedElsewhere, left: here.left }));
   } catch (error) {
     console.warn(`delete everything stopped part way: ${error instanceof Error ? error.message : String(error)}`);
     return fail("server_error", 500);

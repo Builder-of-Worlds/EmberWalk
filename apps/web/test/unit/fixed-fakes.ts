@@ -96,6 +96,9 @@ export type StandIn = {
   openItems: string;
   inspectionError: { status: number; code: string; message: string } | null;
   inspection: InspectionRequest;
+  inspectionSendFails: boolean;
+  signupRefused: boolean;
+  signupAnswer: "check_email" | "license_listed" | "license_waiting";
   sendFails: boolean;
   limited: boolean;
   offline: boolean;
@@ -112,7 +115,10 @@ export const standIn = (over: Partial<StandIn> = {}): StandIn => ({
   ready: true,
   openItems: "InspectionRefused: not every Required Now item is Done: Move the wood pile (Needs Fixing)",
   inspectionError: null,
-  inspection: { subject: "Inspection request", body: "Please inspect my defensible space.", links: [{ label: "Fire rules", url: "https://rules.example/a" }] },
+  inspection: { subject: "Inspection request", body: "Please inspect my defensible space.", links: [{ label: "Fire rules", url: "https://rules.example/a" }], contact: null, messageId: null, sent: false, replies: [] },
+  inspectionSendFails: false,
+  signupRefused: false,
+  signupAnswer: "check_email",
   sendFails: false,
   limited: false,
   offline: false,
@@ -207,6 +213,15 @@ export const respond = (state: StandIn, method: string, path: string, body: unkn
     return refusal(state.inspectionError.status, state.inspectionError.code, state.inspectionError.message);
   if (method === "POST" && parts[3] === "inspection-request")
     return state.ready ? ok(state.inspection) : refusal(409, "not_ready", state.openItems);
+  if (method === "POST" && parts[1] === "crew-signups") return state.signupRefused ? refusal(409, "conflict") : ok({ status: state.signupAnswer });
+  if (method === "POST" && parts[1] === "jobs" && parts[3] === "crews" && parts[5] === "text") {
+    const target = state.view.jobs.find((j) => j.id === parts[2]);
+    if (!target) return refusal(404, "not_found");
+    target.messages.push(message(draftId(target.id, target.messages.length + 50), parts[4]!, { channel: "text", subject: null, body: "Hi", photos: [] }));
+    return ok(state.view);
+  }
+  if (method === "POST" && parts[1] === "jobs" && parts[3] === "crews") return ok(state.view);
+  if (method === "POST" && parts[1] === "inspections" && parts[3] === "approve") return state.inspectionSendFails ? refusal(502, "send_failed") : ok({ status: "sent" });
   if (method === "GET" && parts[1] === "history") return ok(state.history);
   if (method === "POST" && parts[1] === "findings" && parts[3] === "status") {
     if (!state.findings.includes(parts[2] ?? "")) return refusal(404, "not_found");

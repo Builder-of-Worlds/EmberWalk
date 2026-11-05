@@ -10,6 +10,11 @@ MIN_GABLE_ROW_IN = 1.0
 EPS = 1e-6
 
 
+def wanted(spec):
+    """Lap boards belong on a lap sided house wearing the photo look; stucco and metal walls stay flat."""
+    return bool(spec["look"].get("photoscans")) and spec["house"]["siding"] == "fiber cement lap"
+
+
 def pitch(wall_in):
     return wall_in / max(1, round(wall_in / BOARD_IN))
 

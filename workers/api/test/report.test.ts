@@ -79,9 +79,9 @@ describe("the report page", () => {
     expect(claims).toEqual([
       "Approved by the homeowner",
       "EmberWalk is not an inspection or certification.",
-      "The homeowner checked the blurred photos and approved this record on Nov.",
+      "The blurred photos were shown to the homeowner, who approved this record on Nov.",
     ]);
-    expect(sentencesOf(reportHtml(done))).toContain("Your local fire agency gives the official sign-off.");
+    expect(sentencesOf(reportHtml(done))).toContain("The local fire agency gives the official sign-off.");
   });
 
   it("prints both fixed statements on every report: not an inspection or certification, and the Zone 0 rules not yet law", () => {
@@ -89,7 +89,7 @@ describe("the report page", () => {
       const start = page.indexOf('data-part="not-inspection"');
       const note = page.slice(start, page.indexOf("</div>", start));
       expect([...note.matchAll(/<p>([^<]*)<\/p>/g)].map((m) => m[1])).toEqual([
-        "EmberWalk is not an inspection or certification. Your local fire agency gives the official sign-off.",
+        "EmberWalk is not an inspection or certification. The local fire agency gives the official sign-off.",
         "Distances are approximate.",
         "The Zone 0 rules for the first 5 feet are not yet law.",
       ]);
@@ -109,6 +109,22 @@ describe("the report page", () => {
   it("names a thing not checked in the app's words for it", () => {
     const page = reportHtml(input({}, { notChecked: ["propane_cylinder", "tree_branch_over_roof"] }));
     expect(textIn(page, 'data-part="coverage"')).toEqual(["Not checked on this walk: small propane cylinders.", "Not checked on this walk: branches over the roof."]);
+  });
+
+  it("says what the walk could not measure in one line per side, in walking order, then one line for the rest, after what it did not check", () => {
+    const unplaced = [
+      { concept: "shrub" as const, side: "right" as const },
+      { concept: "wood_pile" as const, side: null },
+      { concept: "doormat" as const, side: "right" as const },
+      { concept: "wooden_fence" as const, side: "front" as const },
+    ];
+    const page = reportHtml(input({}, { coverage: "not_checked", notChecked: ["propane_cylinder"], unplaced }));
+    expect(textIn(page, 'data-part="coverage"')).toEqual([
+      reportWords.notChecked("propane_cylinder"),
+      reportWords.unplaced("front", ["wooden_fence"]),
+      reportWords.unplaced("right", ["shrub", "doormat"]),
+      reportWords.unplaced(null, ["wood_pile"]),
+    ]);
   });
 
   it("leaves an item removed with This Isn't Right out of the lists, the count and the record, and lists it under Removed by the homeowner", () => {
@@ -179,9 +195,9 @@ describe("the report page", () => {
     ];
     expect(textIn(reportHtml(input({ rechecks, approvedAt: "2026-10-30T09:00:00.000Z" })), 'data-part="record"')).toEqual([
       "Walked Wednesday, October 28th, 2026.",
-      "The homeowner checked the blurred photos and approved this record on Oct. 30th, 2026.",
+      "The blurred photos were shown to the homeowner, who approved this record on Oct. 30th, 2026.",
       "Rechecked on Nov. 2nd, 2026, still shows in the new photo: Clear item 1.",
-      "Rechecked on Nov. 3rd, 2026, the new photo could not show it clearly: Clear item 1.",
+      "Rechecked on Nov. 3rd, 2026, the new photo was not clear enough to show it: Clear item 1.",
     ]);
   });
 
@@ -242,13 +258,46 @@ describe("the report page", () => {
   });
 });
 
+describe("our advice, not a rule, in the report", () => {
+  const page = (language?: "en" | "es") => reportHtml(input({ ...(language === undefined ? {} : { language }) }, { findings: [finding(1, { advice: true }), finding(2)] }));
+
+  it("is said under only the advised item, in English", () => {
+    const html = page("en");
+    expect([...html.matchAll(/data-part="advice"[^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Our advice, not a rule"]);
+    expect(html.indexOf('data-part="advice"')).toBeGreaterThan(html.indexOf(`data-finding="${id(1)}"`));
+    expect(html.indexOf('data-part="advice"')).toBeLessThan(html.indexOf(`data-finding="${id(2)}"`));
+  });
+
+  it("is said in Spanish on a Spanish report, and never shown for an item with no mark", () => {
+    expect([...page("es").matchAll(/data-part="advice"[^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Nuestro consejo, no una regla"]);
+    expect(reportHtml(input({ language: "en" }, { findings: [finding(1)] }))).not.toContain('data-part="advice"');
+  });
+});
+
 describe("the report's fix first order", () => {
   const ids = (list: ResultFinding[]) => list.map((f) => f.id);
 
-  it("lists nothing first while a side of the walk is missing, as the results screen does", () => {
-    const order = reportOrder({ findings: [finding(1)], gaps: [{ side: "left", kind: "missing", hint: "walk_side" }] }, () => false);
-    expect(order.first).toEqual([]);
-    expect(order.bands.map((b) => ids(b.findings))).toEqual([[id(1)]]);
+  it("still lists every open finding inside 30 feet first while a side of the walk is missing, as the results screen does", () => {
+    const list = [finding(1), finding(2, { band: "zone_2", label: "recommended", distanceFeet: { low: 40, high: 45 } })];
+    const order = reportOrder({ findings: list, gaps: [{ side: "left", kind: "missing", hint: "walk_side" }] }, () => false);
+    expect(ids(order.first)).toEqual([id(1)]);
+    expect(order.bands.map((b) => ids(b.findings))).toEqual([[id(2)]]);
+  });
+
+  it("breaks a tie at the same distance and label by the surer finding, as the results screen does, whatever order they come in", () => {
+    const sure = finding(1, { confidence: 0.6 });
+    const surer = finding(2, { confidence: 0.9 });
+    for (const list of [[sure, surer], [surer, sure]]) expect(ids(reportOrder({ findings: list, gaps: [] }, () => false).first)).toEqual([id(2), id(1)]);
+  });
+
+  it("lists nothing first under a gap when nothing open is inside 30 feet", () => {
+    const far = [finding(1, { band: "zone_2", distanceFeet: { low: 60, high: 70 } })];
+    expect(reportOrder({ findings: far, gaps: [{ side: "left", kind: "missing", hint: "walk_side" }] }, () => false).first).toEqual([]);
+  });
+
+  it("leaves a cleared finding out of the list under a gap", () => {
+    const order = reportOrder({ findings: [finding(1), finding(2)], gaps: [{ side: "left", kind: "missing", hint: "walk_side" }] }, (f) => f.id === id(1));
+    expect(ids(order.first)).toEqual([id(2)]);
   });
 
   it("lists the blocking findings first, nearest first, when none is inside 30 feet", () => {
@@ -261,7 +310,7 @@ describe("the report's fix first order", () => {
     expect(ids(reportOrder({ findings: zone0, gaps: [] }, () => false).first)).toEqual([id(1)]);
   });
 
-  it("still lists first while only a corner has a gap, as the results screen does", () => {
+  it("still lists first while a corner has a gap, as the results screen does", () => {
     const order = reportOrder({ findings: [finding(1)], gaps: [{ side: "back_left", kind: "missing", hint: "pan_corner" }] }, () => false);
     expect(ids(order.first)).toEqual([id(1)]);
   });

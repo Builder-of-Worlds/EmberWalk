@@ -11,6 +11,8 @@ import bpy
 
 from ewscene import assets, blendscene, chunks, house, output, paths
 
+paths.relink(bpy.data)
+
 CYCLES64 = {"samples": 64, "size": (1280, 720)}
 
 
@@ -21,6 +23,7 @@ def main():
     parser.add_argument("--motion", required=True)
     parser.add_argument("--frames", required=True)
     parser.add_argument("--chunk", type=int, default=300)
+    parser.add_argument("--max-frames", type=int, default=200, help="render at most this many missing frames, then exit; render_chunks.py starts the next process")
     parser.add_argument("--only", help="first:last, render only frames in this range")
     parser.add_argument("--test", action="store_true", help="EEVEE test render instead of the final Cycles settings")
     parser.add_argument("--percent", type=int, default=100, help="resolution percent, test renders only")
@@ -53,18 +56,16 @@ def main():
                    "blender": bpy.app.version_string, "machine": platform.platform()}, f, indent=2)
     output.png(scene.render)
     scene.render.use_file_extension = False
-    for c in plan:
-        for frame in chunks.todo(c, folder):
-            if not first <= frame <= last:
-                continue
-            final = os.path.join(folder, chunks.frame_name(frame))
-            scene.frame_set(frame)
-            scene.render.filepath = final + ".part"
-            started = time.monotonic()
-            bpy.ops.render.render(write_still=True)
-            os.replace(final + ".part", final)
-            print("EW_FRAME %d %.1f s" % (frame, time.monotonic() - started), flush=True)
-    print("EW_FRAMES done %s" % folder, flush=True)
+    for frame in chunks.pick(plan, folder, first, last, args.max_frames):
+        final = os.path.join(folder, chunks.frame_name(frame))
+        scene.frame_set(frame)
+        scene.render.filepath = final + ".part"
+        started = time.monotonic()
+        bpy.ops.render.render(write_still=True)
+        os.replace(final + ".part", final)
+        print("EW_FRAME %d %.1f s" % (frame, time.monotonic() - started), flush=True)
+    left = sum(1 for c in plan for f in chunks.todo(c, folder) if first <= f <= last)
+    print("EW_FRAMES done %s" % folder if left == 0 else "EW_FRAMES %d left in %s" % (left, folder), flush=True)
 
 
 main()

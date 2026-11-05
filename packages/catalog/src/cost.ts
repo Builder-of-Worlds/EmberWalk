@@ -10,16 +10,17 @@ const EMPTY_STILL = new Uint8Array(0);
 
 const lookNano = (target: string): number => sparkBoxCall({ concept: "estimate", target, jpeg: EMPTY_STILL, content: "synthetic" }).estimateNano;
 
-export const walkCost = (clips: readonly Pick<Clip, "kind" | "frameCount">[]): WalkCost => {
+export const walkCost = (clips: readonly Pick<Clip, "kind" | "frameCount">[], rareLooks = 0): WalkCost => {
   const total: WalkCost = { nano: 0, samCalls: 0, sparkCalls: 0 };
   for (const clip of clips) {
     const samNano = samVideoFramesBilled(clip.frameCount) * PRICE_NANO_USD.samVideoFrame;
-    for (const row of rowsForClip(clip.kind)) {
+    for (const row of rowsForClip(clip.kind, rareLooks)) {
       total.samCalls += 1;
       total.nano += samNano;
       if (row.point === null) continue;
-      total.sparkCalls += POINT_LOOKS;
-      total.nano += POINT_LOOKS * lookNano(row.point);
+      const looks = row.looks ?? POINT_LOOKS;
+      total.sparkCalls += looks;
+      total.nano += looks * lookNano(row.point);
     }
   }
   return total;

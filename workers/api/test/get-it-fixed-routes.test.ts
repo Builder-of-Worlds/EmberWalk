@@ -126,6 +126,47 @@ describe("Get It Fixed routes pass the homeowner's request to the service", () =
     expect(await send("GET", `/api/jobs/${JOB}/drafts`)).toMatchObject({ status: 405 });
   });
 
+  it("takes a crew signup with no phone id kept, and only the whole form", async () => {
+    const signup = { businessName: "Ridge", licenseNumber: "2000001", licenseClass: "C-27", email: "office@ridge.test", phone: null, zip: "95370", agreed: true };
+    expect((await send("POST", "/api/crew-signups", { body: signup })).json).toEqual({ method: "crewSignup", args: [signup] });
+    expect(await send("POST", "/api/crew-signups", { body: { ...signup, agreed: false } })).toMatchObject({ status: 400 });
+    expect(await send("POST", "/api/crew-signups", { body: { ...signup, licenseClass: "B" } })).toMatchObject({ status: 400 });
+    expect((await send("POST", "/api/crew-signups", { visitor: null, body: signup })).json).toEqual({ method: "crewSignup", args: [signup] });
+    expect(await send("GET", "/api/crew-signups")).toMatchObject({ status: 405 });
+  });
+
+  it("asks before listing a crew on the confirm link, so a mail scanner opening it lists nothing", async () => {
+    const asked = await send("GET", "/api/crew-confirm/good.token", { visitor: null });
+    expect(asked.status).toBe(200);
+    expect(asked.text).toContain("List My Crew");
+    expect((await send("POST", "/api/crew-confirm/good.token", { visitor: null })).text).toContain("Your crew is listed");
+    expect(await send("POST", "/api/crew-confirm/bad.token", { visitor: null })).toMatchObject({ status: 404 });
+  });
+
+  it("adds a crew the homeowner names, for that homeowner only, with an email or a phone", async () => {
+    await seedMessage();
+    const path = `/api/jobs/${JOB}/crews`;
+    const named = { name: "My Crew", email: "crew@me.test", phone: null };
+    expect((await send("POST", path, { body: named })).json).toEqual({ method: "addCrew", args: [JOB, named] });
+    expect(await send("POST", path, { body: { name: "My Crew", email: null, phone: null } })).toMatchObject({ status: 400 });
+    expect(await send("POST", path, { visitor: "b".repeat(64), body: named })).toMatchObject({ status: 404 });
+    expect(await send("GET", path)).toMatchObject({ status: 405 });
+  });
+
+  it("sends the fire department email only for the homeowner of a real walk", async () => {
+    const ID = "fa0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
+    await seedDoneWalk(WALK, 1, false);
+    await env.DB.prepare("INSERT INTO inspection_messages (id, walk_id, agency, to_address, source, read_on, subject, body, status, created_at) VALUES (?, ?, 'A', 'a@b.test', 'https://a.test', '2026-10-31', 'S', 'B', 'draft', ?)").bind(ID, WALK, AT).run();
+    const path = `/api/inspections/${ID}/approve`;
+    expect((await send("POST", path)).json).toEqual({ method: "approveInspection", args: [ID, OWNER] });
+    expect(await send("GET", path)).toMatchObject({ status: 405 });
+    expect(await send("POST", path, { visitor: "b".repeat(64) })).toMatchObject({ status: 404 });
+    expect(await send("POST", path, { visitor: null })).toMatchObject({ status: 400 });
+    expect(await send("POST", "/api/inspections/fa0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a09/approve")).toMatchObject({ status: 404 });
+    await env.DB.prepare("UPDATE walks SET synthetic = 1 WHERE id = ?").bind(WALK).run();
+    expect(await send("POST", path)).toMatchObject({ status: 404 });
+  });
+
   it("approves as the homeowner who asked, and passes texts and logged replies", async () => {
     await seedMessage();
     expect((await send("POST", `/api/messages/${MESSAGE}/approve`)).json).toEqual({ method: "approve", args: [MESSAGE, OWNER] });
@@ -153,7 +194,7 @@ describe("Get It Fixed routes pass the homeowner's request to the service", () =
     await seedDoneWalk(FAILING_ID, 2, false);
     expect(await send("POST", `/api/walks/${FAILING_ID}/get-it-fixed`, { body: { zip: "95370" } })).toMatchObject({
       status: 409,
-      json: { error: { code: "conflict", message: "That cannot be done now." } },
+      json: { error: { code: "conflict", message: "That is not available yet." } },
     });
   });
 
@@ -231,10 +272,10 @@ describe("the refusal words", () => {
     await seedDoneWalk(OFF_ID, 3, false);
     expect(await message("POST", `/api/walks/${WALK}/get-it-fixed`, { zip: "9537" })).toBe("The request is not valid.");
     expect(await message("POST", `/api/messages/${FAILING_ID}/approve`, undefined, STRANGER)).toBe("That does not exist.");
-    expect(await message("GET", `/api/walks/${WALK}/get-it-fixed`)).toBe("That method is not allowed here.");
-    expect(await message("POST", `/api/messages/${FAILING_ID}/sent-by-phone`)).toBe("That cannot be done now.");
-    expect(await message("POST", `/api/messages/${FAILING_ID}/approve`)).toBe("The email did not go out. Try again.");
-    expect(await message("POST", `/api/walks/${OFF_ID}/followups`)).toBe("Get It Fixed is not available right now. Try again later.");
+    expect(await message("GET", `/api/walks/${WALK}/get-it-fixed`)).toBe("That is not available here.");
+    expect(await message("POST", `/api/messages/${FAILING_ID}/sent-by-phone`)).toBe("That is not available yet.");
+    expect(await message("POST", `/api/messages/${FAILING_ID}/approve`)).toBe("The email has not gone out yet. Try again.");
+    expect(await message("POST", `/api/walks/${OFF_ID}/followups`)).toBe("Get It Fixed is not open right now. Try again later.");
     expect(draft.message.not_ready).toBe("Mark every Required Now item done first.");
   });
 
@@ -261,13 +302,13 @@ describe("the crew opt-out page", () => {
     expect(ask.text).toContain("<p>Take this address off the EmberWalk list?</p>");
     expect(ask.text).toContain(">Take me off the list</button>");
     const done = await send("POST", "/api/crew-optout/good.token", { visitor: null });
-    expect(done.text).toContain("<p>Done. EmberWalk will not email this address again.</p>");
+    expect(done.text).toContain("<p>Done. EmberWalk will not send this address any more Get It Fixed emails.</p>");
     const bad = await send("POST", "/api/crew-optout/bad.token", { visitor: null });
-    expect(bad.text).toContain("<p>This link does not work. Reply to the email and say so, and the address will be taken off the list.</p>");
+    expect(bad.text).toContain("<p>This link does not work. Write to hello@emberwalk.app and say so, and the address will be taken off the list.</p>");
     const down = await send("POST", "/api/crew-optout/down.token", { visitor: null });
     expect(down.status).toBe(503);
-    expect(down.text).toContain("<p>That did not work. Reply to the email and say so, and the address will be taken off the list.</p>");
-    expect(draft.optout.failed).toBe("That did not work. Reply to the email and say so, and the address will be taken off the list.");
+    expect(down.text).toContain("<p>That is not finished yet. Write to hello@emberwalk.app and say so, and the address will be taken off the list.</p>");
+    expect(draft.optout.failed).toBe("That is not finished yet. Write to hello@emberwalk.app and say so, and the address will be taken off the list.");
   });
 
   it("says a bad link does not work", async () => {

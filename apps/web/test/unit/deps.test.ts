@@ -46,11 +46,11 @@ describe("browserDeps", () => {
     expect(seen.map((r) => r.headers.get(VISITOR_HEADER))).toEqual([deps.prefs.visitorId(), deps.prefs.visitorId()]);
   });
 
-  it("opens a bundled sample as checked without asking the API", async () => {
+  it("opens a bundled sample with no recorded coverage as not checked, without asking the API", async () => {
     const fetched = vi.fn();
     vi.stubGlobal("fetch", fetched);
     const found = await browserDeps().results(SAMPLES[0]!.id);
-    expect(found).toMatchObject({ id: SAMPLES[0]!.id, coverage: "checked", notChecked: [] });
+    expect(found).toMatchObject({ id: SAMPLES[0]!.id, coverage: "not_checked", notChecked: [] });
     expect(fetched).not.toHaveBeenCalled();
   });
 
@@ -142,12 +142,12 @@ describe("browserDeps", () => {
 
   it("reads the limits from the build, falling back to the defaults on a missing or bad value", () => {
     expect(limitsFrom(undefined)).toEqual(DEFAULT_LIMITS);
-    expect(limitsFrom('{"recheckOn":true}')).toEqual({ ...DEFAULT_LIMITS, recheckOn: true });
+    expect(limitsFrom('{"recheckOn":false}')).toEqual({ ...DEFAULT_LIMITS, recheckOn: false });
     for (const bad of ["", "not json", '{"recheckOn":"yes"}', '{"noSuchLimit":1}', "[1]"]) expect(limitsFrom(bad), bad).toEqual(DEFAULT_LIMITS);
     expect(browserDeps().limits).toEqual(DEFAULT_LIMITS);
-    vi.stubEnv("VITE_EMBERWALK_LIMITS", '{"recheckOn":true}');
+    vi.stubEnv("VITE_EMBERWALK_LIMITS", '{"recheckOn":false}');
     try {
-      expect(browserDeps().limits.recheckOn).toBe(true);
+      expect(browserDeps().limits.recheckOn).toBe(false);
     } finally {
       vi.unstubAllEnvs();
     }

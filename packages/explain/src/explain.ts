@@ -4,6 +4,8 @@ import { PLANT_CONCEPTS, SPACED_CONCEPTS, type Band, type PlantState, type Spaci
 import type { z } from "zod";
 import {
   explainRequest,
+  MAX_FINDINGS,
+  MAX_FRAMES,
   MAX_PROBLEM_CHARACTERS,
   MAX_PROBLEMS,
   tableRows,
@@ -152,7 +154,40 @@ const reasonOf = (err: unknown): RefusalReason | "transport" => (err instanceof 
 
 const bounded = (problems: string[]): string[] => problems.slice(0, MAX_PROBLEMS).map((p) => p.slice(0, MAX_PROBLEM_CHARACTERS));
 
+export type Batch = { findings: ExplainFinding[]; frames: string[] };
+
+export const batchesOf = (findings: ExplainFinding[], frames: string[]): Batch[] => {
+  if (findings.length <= MAX_FINDINGS && frames.length <= MAX_FRAMES) return [{ findings, frames }];
+  const batches: Batch[] = [];
+  let open: Batch = { findings: [], frames: [] };
+  for (const finding of findings) {
+    const frame = finding.proofFrame !== undefined && frames.includes(finding.proofFrame) ? finding.proofFrame : null;
+    const newFrame = frame !== null && !open.frames.includes(frame);
+    if (open.findings.length === MAX_FINDINGS || (newFrame && open.frames.length === MAX_FRAMES)) {
+      batches.push(open);
+      open = { findings: [], frames: [] };
+    }
+    open.findings.push(finding);
+    if (frame !== null && !open.frames.includes(frame)) open.frames.push(frame);
+  }
+  batches.push(open);
+  return batches;
+};
+
 export async function explain(client: MetaClient, input: ExplainInput): Promise<Explanation> {
+  const results: ExplainResult[] = [];
+  let costUsd = 0;
+  let refused: Explanation["refused"] = null;
+  for (const batch of batchesOf(input.findings, input.frames)) {
+    const answer = await explainBatch(client, { ...input, ...batch });
+    results.push(...answer.results);
+    costUsd += answer.costUsd;
+    refused = refused ?? answer.refused;
+  }
+  return { results, costUsd, refused };
+}
+
+async function explainBatch(client: MetaClient, input: ExplainInput): Promise<Explanation> {
   const c: Context = { input, table: new Map(tableRows(input.jurisdiction).map((r) => [r.id, r])), all: ALL_RULES };
   const results = new Map<string, ExplainResult>();
   const last = new Map<string, string[]>();

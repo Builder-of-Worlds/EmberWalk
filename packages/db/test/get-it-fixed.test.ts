@@ -390,6 +390,11 @@ describe("crew addresses from the homeowner", () => {
 describe("marks and the dated record", () => {
   const mark = (n: number, over = {}) => ({ id: markId(n), findingId: FINDING, status: "done" as const, note: "", doneOn: "2026-10-26", markedAt: AT, ...over });
 
+  it("dates a walk on the record by the phone's day when it has one", async () => {
+    await env.DB.prepare("UPDATE walks SET walk_day = '2026-03-04' WHERE id = ?").bind(WALK).run();
+    expect((await historyFor(env.DB, VISITOR)).find((w) => w.walkId === WALK)?.walkedOn).toBe("2026-03-04");
+  });
+
   it("keeps each mark with its day and sets the finding's status", async () => {
     await markFinding(env.DB, mark(1, { status: "fix_planned", note: "Crew on Saturday.", doneOn: null }));
     await markFinding(env.DB, mark(2, { markedAt: LATER }));

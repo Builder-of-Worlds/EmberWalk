@@ -200,6 +200,13 @@ describe("pins that would sit on top of each other", () => {
     }
   });
 
+  it("keeps four pins at the far end of a side clear of each other, in walking order", () => {
+    const pins = [0, 3, 12, 20].map((feet, i) => pin(`p${i}`, { feet, position: 0.95 + i * 0.01 }));
+    const placed = spread(pins);
+    nobodyTouches(placed, "four at the end");
+    for (let i = 1; i < 4; i++) expect(alongOut("back", placed[i - 1]!)[0]).toBeLessThanOrEqual(alongOut("back", placed[i]!)[0] + 1e-9);
+  });
+
   it("moves nothing that already has room, and gives the same answer every time", () => {
     const set = [pin("a", { side: "back", position: 0.1 }), pin("b", { side: "back", position: 0.9 }), pin("c", { side: "left", position: 0.5, feet: 40 })];
     expect(spread(set)).toEqual(set.map(pinAt));

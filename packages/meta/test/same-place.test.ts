@@ -95,10 +95,10 @@ describe("a same place call that is refused by the client", () => {
     return null;
   };
 
-  it("sends no request for real content while free credits are in use", async () => {
+  it("sends real content while free credits are in use", async () => {
     const s = setup({ answer: () => ok(sparkBody('{"same": true, "confidence": 0.9}')) });
-    expect(await refusal(s.client.call(samePlaceCall({ first: FIRST, last: LAST, content: "real" })))).toBe("real_content_on_free_credits");
-    expect(s.transport.requests).toHaveLength(0);
+    expect((await s.client.call(samePlaceCall({ first: FIRST, last: LAST, content: "real" }))).value.same).toBe(true);
+    expect(s.transport.requests).toHaveLength(1);
   });
 
   it("sends real content on a paid run", async () => {

@@ -57,20 +57,39 @@ describe("workList and withWork", () => {
   it("lists the work in rank order, one line and one photo per finding", async () => {
     const [brush, dryGrass] = await setup();
     expect(workList([dryGrass!, brush!])).toBe(WORK);
-    expect(withWork(BODY, [brush!, dryGrass!])).toBe(`${BODY}\n\n${WORK}`);
-    expect(bodyRoom([brush!, dryGrass!])).toBe(MAX_BODY - WORK.length - 2);
+    expect(withWork(BODY, [brush!, dryGrass!], "95370")).toBe(`${BODY}\n\nZIP: 95370\n\n${WORK}`);
+    expect(bodyRoom([brush!, dryGrass!])).toBe(MAX_BODY - WORK.length - "\n\nZIP: 95370\n\n".length);
+  });
+
+  it("always carries the ZIP, even when the model's words have none", async () => {
+    const [brush] = await setup();
+    expect(withWork("Hello, a quote please.", [brush!], "95370")).toContain("ZIP: 95370");
+  });
+
+  it("refuses a body holding a phone number, a street address or an email address", async () => {
+    const [brush] = await setup();
+    for (const words of ["Call me at (209) 555-0100.", "Call 209.555.0100 today.", "The house is 123 Oak Street.", "It is at 4 Old Mill Rd in town.", "Estoy en Calle Robles 45.", "Write to me@home.test please."]) {
+      expect(() => withWork(words, [brush!], "95370"), words).toThrow(/private detail/);
+    }
+  });
+
+  it("lets ordinary work words through", async () => {
+    const [brush] = await setup();
+    for (const words of ["Clear brush within 30 feet of the home, and 100 feet out.", "Hello Sample Crew 1, a quote by May 12 2027 please.", "Limpiar la maleza a 10 pies de la casa."]) {
+      expect(withWork(words, [brush!], "95370"), words).toContain(words);
+    }
   });
 
   it("refuses a work list with no finding", () => {
     expect(() => workList([])).toThrow(DraftRefused);
-    expect(() => withWork(BODY, [])).toThrow(DraftRefused);
+    expect(() => withWork(BODY, [], "95370")).toThrow(DraftRefused);
   });
 
   it("refuses a body that passes the cap once the work is added", async () => {
     const findings = await setup();
     const room = bodyRoom(findings);
-    expect(withWork("x".repeat(room), findings)).toHaveLength(MAX_BODY);
-    expect(() => withWork("x".repeat(room + 1), findings)).toThrow(`may have at most ${room}`);
+    expect(withWork("x".repeat(room), findings, "95370")).toHaveLength(MAX_BODY);
+    expect(() => withWork("x".repeat(room + 1), findings, "95370")).toThrow(`may have at most ${room}`);
   });
 });
 
@@ -81,7 +100,7 @@ describe("drafts in the job loop", () => {
     const { outcome } = await run([toolAnswer(find), toolAnswer(draft()), done], photos);
     expect(outcome.drafts).toBe(1);
     const [message] = await messagesForJob(env.DB, JOB);
-    expect(message!.body).toBe(`${BODY}\n\n${WORK}`);
+    expect(message!.body).toBe(`${BODY}\n\nZIP: 95370\n\n${WORK}`);
     expect(await draftPhotos(env.DB, photos, message!)).toEqual([
       { findingId: BRUSH, key: BRUSH_STILL },
       { findingId: GRASS, key: GRASS_STILL },
@@ -95,7 +114,7 @@ describe("drafts in the job loop", () => {
     const { outcome, requests } = await run([toolAnswer(find), toolAnswer(long), toolAnswer(draft()), done], stillStore([BRUSH_STILL, GRASS_STILL]));
     expect(toolOutputs(requests[2]!).at(-1)).toEqual({ error: `the body is ${room + 1} characters; with the work list EmberWalk adds, it may have at most ${room}` });
     expect(outcome.drafts).toBe(1);
-    expect((await messagesForJob(env.DB, JOB)).map((m) => m.body)).toEqual([`${BODY}\n\n${WORK}`]);
+    expect((await messagesForJob(env.DB, JOB)).map((m) => m.body)).toEqual([`${BODY}\n\nZIP: 95370\n\n${WORK}`]);
     expect((await stepsForJob(env.DB, JOB)).map((s) => s.outcome)).toEqual(["ran", "refused", "ran", "ran"]);
   });
 

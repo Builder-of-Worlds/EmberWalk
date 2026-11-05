@@ -221,6 +221,20 @@ class Cli(unittest.TestCase):
         self.assertEqual(len(got), 14)
         self.assertTrue(all(name.startswith("hero-look/synthetic-hero-") and size > 0 and len(digest) == 64 for name, size, digest in got))
 
+    def test_each_committed_mobile_and_apartment_record_names_its_own_files(self):
+        root = os.path.join(support.REPO_DIR, "fixtures", "synthetic")
+        for house, stills in (("mobile", 8), ("apartment", 9)):
+            for state in ("before", "after"):
+                scene = "%s-%s" % (house, state)
+                with self.subTest(scene):
+                    (name, size, digest), = arrival.entries(support.load_json(os.path.join(root, scene, "render.json")))
+                    self.assertEqual(name, "%s/walk.mp4" % scene)
+                    self.assertGreater(size, 0)
+                    self.assertEqual(len(digest), 64)
+            got = arrival.entries(support.load_json(os.path.join(root, "%s-after" % house, "recheck.json")))
+            self.assertEqual(len(got), stills)
+            self.assertTrue(all(name.startswith("%s-after/recheck/synthetic-recheck-" % house) and len(digest) == 64 for name, _, digest in got))
+
 
 if __name__ == "__main__":
     unittest.main()

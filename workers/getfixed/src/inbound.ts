@@ -1,4 +1,4 @@
-import { jobCrews, jobForToken, messagesForJob, optOutAddress, removeLicense, saveReply } from "@emberwalk/db";
+import { getJob, inspectionForWalk, jobCrews, jobForToken, messagesForJob, optOutAddress, removeLicense, saveInspectionReply, saveReply } from "@emberwalk/db";
 import { tryReading } from "./actions.ts";
 import type { Deps } from "./deps.ts";
 import { tokenOfMailbox } from "./mail.ts";
@@ -28,9 +28,17 @@ export async function receive(d: Deps, mail: Inbound): Promise<InboundOutcome> {
   const crew = (await jobCrews(d.db, jobId)).find((c) => c.email?.toLowerCase() === from);
   const sent = (await messagesForJob(d.db, jobId)).filter((m) => m.crewId === crew?.id && m.channel === "email" && isSent(m.status)).sort((a, b) => (b.sentAt ?? "").localeCompare(a.sentAt ?? ""));
   const latest = sent[0];
-  if (crew === undefined || latest === undefined) return reject();
-  const parsed = parseMail(await new Response(mail.raw).text());
   const at = d.now().toISOString();
+  if (crew === undefined) {
+    const job = await getJob(d.db, jobId);
+    const asked = job === null ? null : await inspectionForWalk(d.db, job.walkId);
+    if (asked === null || asked.status !== "sent" || asked.toAddress.toLowerCase() !== from) return reject();
+    const reply = parseMail(await new Response(mail.raw).text());
+    await saveInspectionReply(d.db, { id: d.newId(), messageId: asked.id, fromAddress: from, text: reply.text.trim() === "" ? "(The reply had no text.)" : reply.text, receivedAt: at });
+    return "saved";
+  }
+  if (latest === undefined) return reject();
+  const parsed = parseMail(await new Response(mail.raw).text());
   if (asksToBeRemoved(parsed.subject, parsed.text)) {
     await optOutAddress(d.db, from, at);
     if (crew.licenseNumber !== null) await removeLicense(d.db, crew.licenseNumber, at.slice(0, 10));

@@ -19,6 +19,12 @@ export const POINT_TARGETS: Readonly<Record<string, string>> = {
   "wooden fence": "wooden fence: upright wooden boards fixed to posts, standing on the ground",
 };
 
+export const RARE_POINT_TARGETS: Readonly<Record<string, string>> = {
+  roof_debris: "roof debris: dead leaves or pine needles lying in a gutter or on a roof",
+  foundation_vent: "foundation vent: a small screened opening low in a house wall",
+  tree_branch_over_roof: "tree branch over a roof: a branch reaching above or across a house roof",
+};
+
 const Edge = z.number().finite().nonnegative();
 
 export const SparkBoxAnswer = z

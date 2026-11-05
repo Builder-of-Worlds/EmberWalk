@@ -151,12 +151,12 @@ describe("the pointing call", () => {
     expect(() => call.read(sparkBody('{"found": false, "box": null}', "incomplete"))).toThrow(new MetaRefused("invalid_answer", "Muse Spark did not complete"));
   });
 
-  it("sends no request for real content on free credits", async () => {
-    const s = setup({ answer: () => ok(sparkBody("{}")) });
+  it("sends real content on free credits", async () => {
+    const s = setup({ answer: () => ok(sparkBody('{"found": true, "box": [10, 20, 300, 400]}')) });
 
-    await expect(s.client.call(sparkBoxCall({ concept: "dry brush", jpeg: JPEG, content: "real" }))).rejects.toMatchObject({
-      reason: "real_content_on_free_credits",
-    });
-    expect(s.transport.requests).toHaveLength(0);
+    const a = await s.client.call(sparkBoxCall({ concept: "dry brush", jpeg: JPEG, content: "real" }));
+
+    expect(a.value.box).toEqual({ left: 10, top: 20, right: 300, bottom: 400 });
+    expect(s.transport.requests).toHaveLength(1);
   });
 });

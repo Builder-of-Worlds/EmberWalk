@@ -162,12 +162,12 @@ describe("findPrivacy", () => {
     expect(await env.MEDIA.head(privacyKey(walkId, clip.id))).toBeNull();
   });
 
-  it("refuses real footage on free credits before anything is sent", async () => {
+  it("checks real footage on free credits", async () => {
     const { walkId, clip } = await setup({ synthetic: false });
 
-    expect(await findPrivacy(deps(), walkId, clip, "file-1")).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
-    expect(sent()).toHaveLength(0);
-    expect(await env.MEDIA.head(privacyKey(walkId, clip.id))).toBeNull();
+    expect(await findPrivacy(deps(), walkId, clip, "file-1")).toEqual({ ok: true, value: { clipId: clip.id, regions: 0, notChecked: 0 } });
+    expect(sent()).toHaveLength(6);
+    expect(await env.MEDIA.head(privacyKey(walkId, clip.id))).not.toBeNull();
   });
 
   it("refuses a walk that is gone", async () => {

@@ -51,7 +51,8 @@
           "pos_in": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
           "heading_deg": {"type": "number", "minimum": 0, "maximum": 360},
           "tilt_deg": {"type": "number", "minimum": -90, "maximum": 90},
-          "roll_deg": {"type": "number", "minimum": -180, "maximum": 180}
+          "roll_deg": {"type": "number", "minimum": -180, "maximum": 180},
+          "shift_y": {"type": "number"}
         }
       }
     }

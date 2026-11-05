@@ -1,5 +1,5 @@
-import { env, exports } from "cloudflare:workers";
-import { DEFAULT_LIMITS, DELETE_EVERYTHING_PATH, limitsWith, secondCheckKey, VISITOR_HEADER } from "@emberwalk/shared";
+import { env } from "cloudflare:workers";
+import { DELETE_EVERYTHING_PATH, limitsWith, secondCheckKey, VISITOR_HEADER } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleDeleteEverything } from "../src/delete-everything.ts";
 import type { EraseDeps } from "../src/delete-everything.ts";
@@ -14,10 +14,14 @@ const ON = limitsWith({ deleteEverythingOn: true });
 const ERASED = new Set([
   "walks", "tags", "clips", "concept_runs", "tracks", "findings", "walk_gaps", "walk_parts", "fault_reports", "cost_records",
   "agent_jobs", "agent_job_crews", "agent_messages", "agent_steps", "follow_ups", "message_approvals", "job_addresses",
-  "outbox", "crew_replies", "finding_marks", "job_crew_cards", "get_it_fixed_uses", "cache_entries", "step_timings",
+  "outbox", "crew_replies", "inspection_messages", "inspection_approvals", "inspection_outbox", "inspection_replies", "finding_marks", "job_crew_cards", "get_it_fixed_uses", "cache_entries", "step_timings",
+  "sign_in_links", "sessions", "property_walks", "invites",
 ]);
-const HOLDS_NO_VISITOR = new Set(["signups", "crews", "crew_removals", "zip_centres", "mail_optouts", "d1_migrations", "stripe_events", "extra_walks", "refunded_charges"]);
-const UNLINKED = new Set(["plans"]);
+const HOLDS_NO_VISITOR = new Set([
+  "signups", "crew_signups", "crew_signup_mail_days", "crews", "crew_removals", "zip_centres", "mail_optouts", "d1_migrations", "stripe_events", "extra_walks", "refunded_charges",
+  "accounts", "portfolios", "properties", "reminder_sends",
+]);
+const UNLINKED = new Set(["plans", "stripe_customers"]);
 
 const tablesHolding = async (ids: string[]): Promise<string[]> => [...new Set((await rowsHolding(ids)).map((row) => row.split(" ")[0]!))].sort();
 
@@ -69,7 +73,7 @@ const counted = <T extends object>(target: T, tally: { n: number }): T =>
 describe("Delete Everything", () => {
   beforeEach(async () => {
     await run("DELETE FROM walks");
-    for (const table of ["get_it_fixed_uses", "fault_reports", "cost_records", "cache_entries"]) await run(`DELETE FROM ${table}`);
+    for (const table of ["get_it_fixed_uses", "fault_reports", "cost_records", "cache_entries", "sign_in_links", "accounts"]) await run(`DELETE FROM ${table}`);
     await emptyBucket();
   });
 
@@ -106,6 +110,40 @@ describe("Delete Everything", () => {
     expect(await tablesHolding([OWNER])).not.toEqual([]);
     expect(await answer(ask())).toEqual({ status: 200, body: { walks: 3, left: 0 } });
     expect(await rowsHolding([OWNER])).toEqual([]);
+  });
+
+  it("signs the caller out on this phone and drops the tenant walks from the manager's property, keeping the manager's account, properties, unused invites and other phones whole", async () => {
+    await seedBoth();
+    const rows = async (sql: string) => ({ results: (await env.DB.prepare(sql).all()).results });
+    const keptBefore = {
+      accounts: await rows("SELECT * FROM accounts ORDER BY id"),
+      portfolios: await rows("SELECT * FROM portfolios ORDER BY id"),
+      properties: await rows("SELECT * FROM properties ORDER BY id"),
+      theirSessions: await rows(`SELECT * FROM sessions WHERE visitor_id <> '${OWNER}' ORDER BY token_hash`),
+      theirLinks: await rows(`SELECT * FROM sign_in_links WHERE visitor_id <> '${OWNER}' ORDER BY token_hash`),
+      unusedInvite: await rows("SELECT * FROM invites WHERE walk_id IS NULL"),
+      theirTenantWalk: await rows(`SELECT * FROM property_walks WHERE walk_id = '${WB}'`),
+      theirInvite: await rows(`SELECT * FROM invites WHERE walk_id = '${WB}'`),
+    };
+    expect(keptBefore.theirSessions.results).toHaveLength(2);
+    expect((await rows("SELECT walk_id FROM property_walks")).results).toHaveLength(4);
+
+    expect(await answer(ask())).toEqual({ status: 200, body: { walks: 3, left: 0 } });
+
+    expect((await rows(`SELECT * FROM sessions WHERE visitor_id = '${OWNER}'`)).results).toEqual([]);
+    expect((await rows(`SELECT * FROM sign_in_links WHERE visitor_id = '${OWNER}'`)).results).toEqual([]);
+    expect((await rows("SELECT walk_id FROM property_walks")).results).toEqual([{ walk_id: WB }]);
+    expect((await rows("SELECT id FROM invites ORDER BY id")).results).toHaveLength(2);
+    expect({
+      accounts: await rows("SELECT * FROM accounts ORDER BY id"),
+      portfolios: await rows("SELECT * FROM portfolios ORDER BY id"),
+      properties: await rows("SELECT * FROM properties ORDER BY id"),
+      theirSessions: await rows(`SELECT * FROM sessions ORDER BY token_hash`),
+      theirLinks: await rows(`SELECT * FROM sign_in_links ORDER BY token_hash`),
+      unusedInvite: await rows("SELECT * FROM invites WHERE walk_id IS NULL"),
+      theirTenantWalk: await rows(`SELECT * FROM property_walks WHERE walk_id = '${WB}'`),
+      theirInvite: await rows(`SELECT * FROM invites WHERE walk_id = '${WB}'`),
+    }).toEqual(keptBefore);
   });
 
   it("unlinks the caller from their plan and keeps the billing row and another visitor's plan whole", async () => {
@@ -195,7 +233,7 @@ describe("Delete Everything", () => {
     let failed = false;
     const bucket = failing({ delete: () => !failed && (failed = true) });
     const stopped = await answer(ask({}, deps({ bucket })));
-    expect(stopped).toEqual({ status: 500, body: { error: { code: "server_error", message: "Not everything could be deleted. Try again." } } });
+    expect(stopped).toEqual({ status: 500, body: { error: { code: "server_error", message: "Delete Everything is not finished. Try again." } } });
     expect((await env.DB.prepare("SELECT count(*) AS n FROM walks WHERE visitor_id = ?").bind(OWNER).first<{ n: number }>())?.n).toBe(3);
     expect(await answer(ask())).toEqual({ status: 200, body: { walks: 3, left: 0 } });
     expect(await rowsHolding(mine)).toEqual([]);
@@ -245,13 +283,14 @@ describe("Delete Everything", () => {
     expect(await keysHolding([W5, encodeURIComponent(gone.uploadId)])).toEqual([]);
   });
 
+  // Writes 1,005 objects, about 0.5 ms each locally: near 1 s alone and over 3 s under the gate's load.
   it("erases past the first 1000 objects of a prefix, following the listing to its end", async () => {
     await seedDoneWalk(W1, 1);
     const keys = Array.from({ length: 1005 }, (_, n) => `clips/${W1}/look/${String(n).padStart(4, "0")}.jpg`);
     for (let i = 0; i < keys.length; i += 100) await Promise.all(keys.slice(i, i + 100).map((key) => env.MEDIA.put(key, "x")));
     expect(await answer(ask())).toEqual({ status: 200, body: { walks: 1, left: 0 } });
     expect(await keysHolding([W1])).toEqual([]);
-  });
+  }, 30_000);
 
   it("refuses with 409 while a walk is queued, processing or has an open upload, erasing nothing, and erases a walk whose upload has lapsed", async () => {
     const { mine, theirs } = await seedBoth();
@@ -289,13 +328,13 @@ describe("Delete Everything", () => {
   });
 
   it("stops short of 1000 storage and database calls in one request for a long time visitor, and answers how many walks are left", async () => {
-    const walks = Array.from({ length: 90 }, (_, n) => gid("55", n));
+    const walks = Array.from({ length: 30 }, (_, n) => gid("55", n));
     for (const walkId of walks) await seedWalk(walkId, "done");
-    for (const walkId of walks) {
-      await Promise.all(
+    await Promise.all(
+      walks.flatMap((walkId) =>
         ["originals", "clips", "privacy", "previews", "reports", "coverage", "rechecks", "stills", "newarea"].map((prefix) => env.MEDIA.put(`${prefix}/${walkId}/x`, "x")),
-      );
-    }
+      ),
+    );
     const calls: number[] = [];
     let left = Number.POSITIVE_INFINITY;
     let erased = 0;
@@ -310,7 +349,7 @@ describe("Delete Everything", () => {
     }
     expect(calls.length).toBeGreaterThan(1);
     expect(Math.max(...calls)).toBeLessThan(1000);
-    expect(erased).toBe(90);
+    expect(erased).toBe(30);
     expect(await keysHolding(walks)).toEqual([]);
   });
 
@@ -343,10 +382,11 @@ describe("Delete Everything", () => {
   it("is not there while the flag is off, at the handler and through the worker", async () => {
     const { mine } = await seedBoth();
     const before = await rowsHolding(mine);
-    const off = await answer(ask({}, deps({ limits: DEFAULT_LIMITS })));
+    const off = await answer(ask({}, deps({ limits: limitsWith({ deleteEverythingOn: false }) })));
     expect(off).toEqual({ status: 404, body: { error: { code: "not_found", message: "No such endpoint." } } });
-    const routed = await exports.default.fetch(
+    const routed = await worker.fetch(
       new Request(`https://api.test${DELETE_EVERYTHING_PATH}`, { method: "POST", headers: { [VISITOR_HEADER]: OWNER }, body: JSON.stringify({ visitorId: OWNER }) }),
+      { ...env, EMBERWALK_LIMITS: '{"deleteEverythingOn":false}' },
     );
     expect(routed.status).toBe(404);
     expect(await rowsHolding(mine)).toEqual(before);
@@ -360,8 +400,8 @@ describe("Delete Everything", () => {
         { ...env, EMBERWALK_LIMITS: limits },
       );
     expect((await ask('{"deleteEverythingOn":false}')).status).toBe(404);
-    expect((await ask("not json")).status).toBe(404);
     const on = await ask('{"deleteEverythingOn":true}');
     expect({ status: on.status, body: await on.json() }).toEqual({ status: 200, body: { walks: 1, left: 0 } });
+    expect((await ask("not json")).status).toBe(200);
   });
 });

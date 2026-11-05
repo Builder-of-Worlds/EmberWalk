@@ -111,6 +111,14 @@ const seedJob = async (walkId: string, n: number, visitor: string, findingId: st
   await run("UPDATE agent_messages SET status = 'sent', sent_at = ? WHERE id = ?", AT, message);
   await run("INSERT INTO follow_ups (id, job_id, for_message_id, due_at, note, draft_message_id, done, created_at) VALUES (?, ?, ?, ?, 'Ask again.', NULL, 0, ?)", followUp, job, message, AT, AT);
   await run("INSERT INTO crew_replies (id, message_id, via, from_address, subject, text, received_at, reading, read_at) VALUES (?, ?, 'homeowner', NULL, NULL, 'Tuesday works.', ?, NULL, NULL)", reply, message, AT);
+  await run("INSERT INTO inspection_messages (id, walk_id, agency, to_address, source, read_on, subject, body, status, created_at) VALUES (?, ?, 'A', 'a@b.test', 'https://a.test', '2026-10-31', 'S', 'B', 'draft', ?)", message, walkId, AT);
+  await run("DROP TRIGGER inspection_approvals_never_on_a_sample_walk");
+  await run("INSERT INTO inspection_approvals (message_id, visitor_id, approved_at) VALUES (?, ?, ?)", message, visitor, AT);
+  await run("CREATE TRIGGER inspection_approvals_never_on_a_sample_walk BEFORE INSERT ON inspection_approvals WHEN EXISTS (SELECT 1 FROM inspection_messages m JOIN walks w ON w.id = m.walk_id WHERE m.id = NEW.message_id AND w.synthetic = 1) BEGIN SELECT RAISE(ABORT, 'a sample walk never messages a fire department'); END");
+  await run("UPDATE inspection_messages SET status = 'approved', approved_at = ? WHERE id = ?", AT, message);
+  await run("INSERT INTO inspection_outbox (message_id, state, provider_id, error, updated_at) VALUES (?, 'sent', 'p1', NULL, ?)", message, AT);
+  await run("UPDATE inspection_messages SET status = 'sent', sent_at = ? WHERE id = ?", AT, message);
+  await run("INSERT INTO inspection_replies (id, message_id, from_address, text, received_at) VALUES (?, ?, 'a@b.test', 'Thursday.', ?)", reply, message, AT);
   await run("INSERT INTO finding_marks (id, finding_id, status, note, done_on, marked_at) VALUES (?, ?, 'done', '', '2026-10-30', ?)", mark, findingId, AT);
   await run("INSERT INTO job_addresses (job_id, token, created_at) VALUES (?, ?, ?)", job, `tok${n}`.padEnd(16, "x"), AT);
   await run("INSERT INTO job_crew_cards (job_id, crew_id, card) VALUES (?, ?, '{}')", job, crew);
@@ -129,6 +137,31 @@ type Upload = { key: string; uploadId: string };
 export type Seeded = { mine: string[]; theirs: string[]; open: Upload; older: Upload };
 
 const doneIds = (done: DoneWalk): string[] => [done.walkId, done.loop.id, done.pan.id, done.brush.id, done.fence.id, done.vetoed.id];
+
+export const MANAGER = gid("a1", 1);
+export const OTHER_MANAGER = gid("a1", 2);
+export const MANAGER_PROPERTY = gid("a3", 1);
+export const MANAGER_PHONE = "9".repeat(64);
+const hashOf = (n: number): string => `${n}f`.repeat(32);
+
+const seedPortfolio = async (): Promise<void> => {
+  const [portfolio, otherPortfolio] = [gid("a2", 1), gid("a2", 2)] as [string, string];
+  await run("INSERT INTO accounts (id, email, created_at) VALUES (?, 'manager@example.com', ?), (?, 'other@example.com', ?)", MANAGER, AT, OTHER_MANAGER, AT);
+  await run("INSERT INTO portfolios (id, account_id, created_at) VALUES (?, ?, ?), (?, ?, ?)", portfolio, MANAGER, AT, otherPortfolio, OTHER_MANAGER, AT);
+  await run("INSERT INTO properties (id, portfolio_id, label, created_at) VALUES (?, ?, 'Unit A', ?), (?, ?, 'Elm Court', ?)", MANAGER_PROPERTY, portfolio, AT, gid("a3", 2), otherPortfolio, AT);
+  const expires = "2026-12-01T00:00:00.000Z";
+  await run("INSERT INTO sign_in_links (token_hash, email, visitor_id, created_at, expires_at) VALUES (?, 'manager@example.com', ?, ?, ?), (?, 'other@example.com', ?, ?, ?)", hashOf(1), OWNER, AT, expires, hashOf(2), OTHER, AT, expires);
+  await run(
+    "INSERT INTO sessions (token_hash, account_id, visitor_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)",
+    hashOf(3), MANAGER, OWNER, AT, expires, hashOf(4), OTHER_MANAGER, OTHER, AT, expires, hashOf(5), MANAGER, MANAGER_PHONE, AT, expires,
+  );
+  await run("INSERT INTO invites (id, property_id, code_hash, created_at, expires_at, used_at, walk_id) VALUES (?, ?, ?, ?, ?, ?, ?)", gid("a4", 1), MANAGER_PROPERTY, hashOf(6), AT, expires, AT, W1);
+  await run("INSERT INTO invites (id, property_id, code_hash, created_at, expires_at, used_at, walk_id) VALUES (?, ?, ?, ?, ?, ?, ?)", gid("a4", 2), MANAGER_PROPERTY, hashOf(7), AT, expires, AT, WB);
+  await run("INSERT INTO invites (id, property_id, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)", gid("a4", 3), MANAGER_PROPERTY, hashOf(8), AT, expires);
+  for (const [walkId, invite] of [[W1, gid("a4", 1)], [PART, gid("a4", 1)], [W2, null], [WB, gid("a4", 2)]] as const) {
+    await run("INSERT INTO property_walks (walk_id, property_id, invite_id, linked_at) VALUES (?, ?, ?, ?)", walkId, MANAGER_PROPERTY, invite, AT);
+  }
+};
 
 export const seedBoth = async (): Promise<Seeded> => {
   const first = await seedDoneWalk(W1, 1);
@@ -153,6 +186,7 @@ export const seedBoth = async (): Promise<Seeded> => {
   for (const [fingerprint, walkId] of MY_ANSWERS) await seedAnswer(fingerprint, walkId);
   await seedAnswer(THEIR_ANSWER, WB);
   await seedAnswer(NOBODYS_ANSWER, null);
+  await seedPortfolio();
   return {
     mine: [...mine, ...MY_ANSWERS.map(([fingerprint]) => fingerprint), encodeURIComponent("old/upload+1"), encodeURIComponent(open.uploadId), encodeURIComponent(older.uploadId)],
     theirs: [...other, THEIR_ANSWER, NOBODYS_ANSWER, encodeURIComponent("their/upload")],

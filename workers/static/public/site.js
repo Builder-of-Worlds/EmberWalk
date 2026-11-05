@@ -78,6 +78,8 @@ export const TRAIL = 4;
 export const HAZE = "222, 204, 178";
 export const MARKS = { glide: 0.1, swap: 0.42, hazeIn: 0.3, hazeOut: 0.52, settle: 0.9, lift: 0.08, land: 0.94 };
 export const CARDS = [[0.1, 0.38], [0.46, 0.74], [0.74, Infinity]];
+export const LEAVE_END = 92 / 60;
+export const CARD_GOES = 0.1;
 export const RIDGE = [1920, 1072];
 export const SIZES = { d: [1920, 1068], p: [604, 1072] };
 export const EMBER_FROM = [0.73, 0.82];
@@ -221,14 +223,41 @@ export function paintOpening(win, opening) {
     const to = point(cover(SIZES[want], vw, vh, MIDDLE, 1), EMBER_TO[want]);
     drawEmber(ctx, from, to, s, vh);
     opening.style.setProperty("--glide", s.glide.toFixed(3));
-    mark(cards, s.card);
+    const seal = between(p, 1, LEAVE_END);
+    opening.style.setProperty("--seal", seal.toFixed(3));
+    mark(cards, seal > CARD_GOES ? -1 : s.card);
   };
   opening.classList.toggle("pinned", true);
   repaint = scrub(win, () => {
     const rect = opening.getBoundingClientRect();
-    return clamp(-rect.top / (rect.height - win.innerHeight));
+    return Math.min(LEAVE_END, Math.max(0, (-rect.top / (rect.height - win.innerHeight)) * LEAVE_END));
   }, paint);
   ridge.addEventListener("load", () => repaint());
+}
+
+export const EDGE_NEAR = 0.1;
+export const UNDER_RATE = 1.4;
+
+export function softEdges(win, sections, under) {
+  if (sections.length === 0 && !under) return () => {};
+  const paint = () => {
+    const near = win.innerHeight * EDGE_NEAR;
+    for (const section of sections) {
+      const box = section.getBoundingClientRect();
+      section.style.setProperty("--rise", clamp(box.top / near).toFixed(3));
+      section.style.setProperty("--fall", clamp((win.innerHeight - box.bottom) / near).toFixed(3));
+    }
+    const next = under?.nextElementSibling;
+    if (next) {
+      const top = next.getBoundingClientRect().top;
+      under.style.setProperty("--under", clamp((1 - top / win.innerHeight) * UNDER_RATE).toFixed(3));
+      under.classList.toggle("covered", top < win.innerHeight);
+    }
+  };
+  win.addEventListener("scroll", paint, { passive: true });
+  win.addEventListener("resize", paint);
+  paint();
+  return paint;
 }
 
 export const fadeOut = (frame) => [
@@ -392,6 +421,24 @@ export function paintApart(win, apart, still) {
   });
 }
 
+const px = (value) => parseFloat(value) || 0;
+
+export function naturalHeight(win, card) {
+  const own = win.getComputedStyle(card);
+  return [...card.children].reduce((sum, child) => {
+    const s = win.getComputedStyle(child);
+    return sum + child.getBoundingClientRect().height + px(s.marginTop) + px(s.marginBottom);
+  }, px(own.paddingTop) + px(own.paddingBottom) + px(own.borderTopWidth) + px(own.borderBottomWidth));
+}
+
+export function fitApartCards(win, apart) {
+  const cards = [...apart.querySelectorAll(".apart-cards .card")];
+  const fit = () => apart.style.setProperty("--cards-h", `${Math.ceil(Math.max(0, ...cards.map((card) => naturalHeight(win, card))))}px`);
+  fit();
+  win.addEventListener("resize", fit);
+  win.document?.fonts?.ready.then(fit);
+}
+
 export function zones(win, map) {
   const bands = [...map.querySelectorAll(".band")].reverse();
   const cards = [...map.querySelectorAll(".zone")];
@@ -416,6 +463,11 @@ export function paintLoop(ring, steps, p) {
   const { drawn, lit } = loopState(p, steps.length);
   ring.style.setProperty("--p", drawn.toFixed(3));
   steps.forEach((step, i) => step.classList.toggle("lit", lit[i]));
+  const reached = lit.lastIndexOf(true);
+  const n = ring.querySelector(".ring-n");
+  const name = ring.querySelector(".ring-name");
+  if (n) n.textContent = String(reached + 1);
+  if (name) name.textContent = steps[reached].textContent.trim();
 }
 
 export function loop(card, gsap, trigger) {
@@ -479,18 +531,24 @@ export function turnState(p, count, i) {
 }
 
 export function paintTurn(section, cards, split, p) {
+  let front = null;
   cards.forEach((card, i) => {
     const { x, shown } = turnState(p, cards.length, i);
     card.style.setProperty("--x", x.toFixed(3));
     card.style.setProperty("--o", shown.toFixed(3));
     card.classList.toggle("on", shown > 0.5);
+    if (shown > 0.5) front = card;
   });
   section.style.setProperty("--head", (1 - turnParts(p, cards.length, split - 1).go).toFixed(3));
   section.style.setProperty("--sub", turnParts(p, cards.length, split).come.toFixed(3));
   section.style.setProperty("--drift", (clamp(p) || 0).toFixed(3));
+  const frame = section.querySelector(".card");
+  if (!front || !frame) return;
+  frame.style.setProperty("--fit", `${front.offsetHeight}px`);
+  frame.classList.toggle("narrow", front.matches(".plain"));
 }
 
-export function carousel(section, gsap, trigger, onTurn) {
+export function carousel(section, gsap, trigger, onTurn, onPin = () => {}) {
   const cards = [...section.querySelectorAll(".stat")];
   const split = section.querySelectorAll(".cost .stat").length;
   section.classList.toggle("turning", true);
@@ -502,6 +560,8 @@ export function carousel(section, gsap, trigger, onTurn) {
     pin: section,
     anticipatePin: 1,
     scrub: TURN_LAG,
+    // A fast scroll pins early and the pin lets go later with no scroll event; whatever reads the section's place must hear both.
+    onToggle: () => onPin(),
     onUpdate: (self) => {
       paintTurn(section, cards, split, self.progress);
       onTurn();
@@ -512,13 +572,15 @@ export function carousel(section, gsap, trigger, onTurn) {
 
 export const STEP_LEAD = 0.5;
 export const STEP_PARK = 0.25;
+export const STEP_SWAP = 0.03;
 
 export function stepState(p, count, i) {
   const t = (clamp(p) || 0) * (count + STEP_LEAD) - STEP_LEAD - i;
-  const last = i === count - 1;
-  const come = between(t, 0, 0.25);
-  const go = last ? 0 : between(t, 0.7, 0.95);
-  const shown = Math.min(between(t, 0.1, 0.3), last ? 1 : 1 - between(t, 0.72, 0.9));
+  const [first, last] = [i === 0, i === count - 1];
+  // The first step is in place as the stage arrives; each step fades out just before the next fades in, never both at once, so a hand-off is blank only for a moment.
+  const come = first ? 1 : between(t, -0.12, 0.06);
+  const go = last ? 0 : between(t, 0.94, 1.12);
+  const shown = Math.min(first ? 1 : between(t, 0, STEP_SWAP), last ? 1 : 1 - between(t, 1 - STEP_SWAP, 1));
   return { scale: STEP_PARK + (1 - STEP_PARK) * (come - go), shown, leaving: go > 0 };
 }
 
@@ -616,6 +678,18 @@ export const MESSAGES = {
   turnstile_failed: "We couldn't confirm you're a person. Please try again.",
   server: "Something went wrong on our end. Please try again, or write to hello@emberwalk.app.",
   network: "We couldn't reach the server. Please check your connection and try again.",
+  film_failed: "This video did not load. Please try again.",
+};
+
+export const MESSAGES_ES = {
+  success: "Ya está en la lista. Le enviaremos un correo cuando EmberWalk salga.",
+  invalid_email: "Ese correo no parece correcto. Revíselo e intente de nuevo.",
+  invalid_role: "Elija la opción que mejor se ajuste a usted.",
+  no_token: "Espere un momento a que termine la verificación e intente de nuevo.",
+  turnstile_failed: "No pudimos confirmar que usted es una persona. Intente de nuevo.",
+  server: "Algo salió mal de nuestro lado. Intente de nuevo o escriba a hello@emberwalk.app.",
+  network: "No pudimos conectarnos con el servidor. Revise su conexión e intente de nuevo.",
+  film_failed: "Este video no se cargó. Intente de nuevo.",
 };
 
 export function startTurnstile(doc, win, fetchImpl, box, onToken) {
@@ -651,13 +725,15 @@ export function setupSignup(doc, win, fetchImpl) {
   if (!form) return;
   const status = doc.getElementById("signup-status");
   const button = form.querySelector("button");
+  const spanish = doc.documentElement?.lang === "es";
+  const words = spanish ? MESSAGES_ES : MESSAGES;
   let token = "";
   const resetTurnstile = startTurnstile(doc, win, fetchImpl, doc.getElementById("turnstile-box"), (value) => {
     token = value;
   });
 
   const show = (key, kind) => {
-    status.textContent = MESSAGES[key];
+    status.textContent = words[key];
     status.dataset.kind = kind;
     status.hidden = false;
   };
@@ -675,7 +751,7 @@ export function setupSignup(doc, win, fetchImpl) {
       const response = await fetchImpl("/api/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.value, role: role.value, turnstileToken: token }),
+        body: JSON.stringify({ email: email.value, role: role.value, turnstileToken: token, ...(spanish ? { language: "es" } : {}) }),
       });
       const result = await response.json().catch(() => ({}));
       if (response.ok) {
@@ -698,18 +774,22 @@ export function start(doc, win, fetchImpl) {
   const [opening, apart, plot, stats, how, after, end] = ["opening", "apart", "plot", "stats", "how", "after", "finish"].map((id) => doc.getElementById(id));
   setupSignup(doc, win, fetchImpl);
   if (apart) paintApart(win, apart, still);
+  if (apart && win.getComputedStyle) fitApartCards(win, apart);
   if (plot) placeWalker(plot);
   if (still) return;
   const turning = stats && win.gsap && win.ScrollTrigger;
   const figures = [...doc.querySelectorAll("[data-count]")];
   const shown = (el) => !turning || el.closest(".stat").classList.contains("on");
   const check = figures.length ? counts(win, figures, shown) : () => {};
-  if (turning) carousel(stats, win.gsap, win.ScrollTrigger, check);
+  let edges = () => {};
+  if (turning) carousel(stats, win.gsap, win.ScrollTrigger, check, () => edges());
   if (how && win.gsap && win.ScrollTrigger) stepper(how, win.gsap, win.ScrollTrigger);
   if (opening) paintOpening(win, opening);
   if (after && win.gsap && win.ScrollTrigger) loop(after, win.gsap, win.ScrollTrigger);
   if (end && win.gsap && win.ScrollTrigger) finish(end, win.gsap, win.ScrollTrigger, win);
+  edges = softEdges(win, [...doc.querySelectorAll(".soft-edge")], apart);
   doc.documentElement.classList.add("js");
+  for (const play of doc.querySelectorAll(".film-play")) play.addEventListener("click", () => playFilm(doc, play));
   watch(doc, win, ".rise", IN_VIEW, rise);
   const begun = new Set();
   watch(doc, win, "[data-live]", "0px", (el, shown) => {
@@ -717,6 +797,45 @@ export function start(doc, win, fetchImpl) {
     begun.add(el);
     LIVE[el.getAttribute("data-live")](doc, win, el);
   });
+}
+
+function playFilm(doc, play) {
+  const video = doc.createElement("video");
+  video.controls = true;
+  video.playsInline = true;
+  video.crossOrigin = "anonymous";
+  video.setAttribute("aria-label", doc.documentElement?.lang === "es" ? "La película de EmberWalk" : "The EmberWalk film");
+  if (play.previousElementSibling?.getAttribute("role") === "status") play.previousElementSibling.remove();
+  play.replaceWith(video);
+  video.focus();
+  const failed = () => {
+    const status = doc.createElement("p");
+    status.setAttribute("role", "status");
+    status.textContent = (doc.documentElement?.lang === "es" ? MESSAGES_ES : MESSAGES).film_failed;
+    video.replaceWith(status, play);
+  };
+  const film = "https://judges.emberwalk.app/film/master.m3u8";
+  if (video.canPlayType("application/vnd.apple.mpegurl") !== "") {
+    video.addEventListener("error", failed, { once: true });
+    video.src = film;
+    video.play().catch(() => {});
+    return;
+  }
+  const script = doc.createElement("script");
+  script.src = "/vendor/hls.light.min.js";
+  script.onerror = failed;
+  script.onload = () => {
+    const player = new doc.defaultView.Hls({ enableWorker: false });
+    player.on("hlsError", (_event, data) => {
+      if (!data.fatal) return;
+      player.destroy();
+      failed();
+    });
+    player.loadSource(film);
+    player.attachMedia(video);
+    video.play().catch(() => {});
+  };
+  doc.head.append(script);
 }
 
 if (typeof document !== "undefined") start(document, window, (...args) => fetch(...args));

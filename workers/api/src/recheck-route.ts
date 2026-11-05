@@ -1,6 +1,7 @@
 import { ownerOfFinding } from "@emberwalk/db";
 import { Fingerprint, Id, recheckAnswerKey, RecheckLinkRequest, RecheckLinkResponse, recheckPhotoKey, RecheckRequest, RecheckResponse, VISITOR_HEADER } from "@emberwalk/shared";
 import type { Limits, Recheck, RecheckRouteCode } from "@emberwalk/shared";
+import { reachesThroughSession, shouldSignInAgain } from "./account.ts";
 import { presign } from "@emberwalk/sigv4";
 import type { Signing } from "./upload-api.ts";
 
@@ -37,11 +38,11 @@ const MESSAGE: Record<Code, string> = {
   invalid_request: "The request is not valid.",
   not_found: "That does not exist.",
   no_photo: "The recheck photo has not arrived.",
-  method_not_allowed: "Use POST.",
+  method_not_allowed: "That is not available here.",
   not_done: "Mark the item done before rechecking it.",
-  too_large: "The photo is larger than a recheck photo may be.",
-  too_many_rechecks: "This item has been rechecked as many times as it may be.",
-  server_error: "The recheck could not be made. Try again.",
+  too_large: "That photo is too large for a recheck.",
+  too_many_rechecks: "This item has used all of its rechecks.",
+  server_error: "The recheck is not finished. Try again.",
 };
 
 const fail = (code: Code, status = STATUS[code]): Response => Response.json({ error: { code, message: MESSAGE[code] } }, { status });
@@ -56,9 +57,15 @@ const bodyOf = async <T>(request: Request, schema: { safeParse(input: unknown): 
   return parsed.success ? (parsed.data as T) : null;
 };
 
-const ownedWalk = async (db: D1Database, findingId: string, visitor: string): Promise<string | null> => {
+const ownedWalk = async (request: Request, db: D1Database, findingId: string, visitor: string): Promise<string | null> => {
   const owner = await ownerOfFinding(db, findingId);
-  return owner !== null && owner.visitorId === visitor ? owner.walkId : null;
+  if (owner === null) return null;
+  return owner.visitorId === visitor || (await reachesThroughSession(request, db, owner.visitorId)) ? owner.walkId : null;
+};
+
+const shut = async (request: Request, db: D1Database, findingId: string, visitor: string): Promise<Response> => {
+  const owner = await ownerOfFinding(db, findingId);
+  return fail("not_found", owner !== null && (await shouldSignInAgain(request, db, owner.visitorId, visitor)) ? 401 : undefined);
 };
 
 const isDone = async (db: D1Database, findingId: string): Promise<boolean> =>
@@ -85,8 +92,8 @@ const answersOf = async (bucket: R2Bucket, walkId: string, findingId: string): P
 const link = async (request: Request, deps: RecheckDeps, visitor: string): Promise<Response> => {
   const body = await bodyOf(request, RecheckLinkRequest);
   if (body === null) return fail("invalid_request");
-  const walkId = await ownedWalk(deps.db, body.findingId, visitor);
-  if (walkId === null) return fail("not_found");
+  const walkId = await ownedWalk(request, deps.db, body.findingId, visitor);
+  if (walkId === null) return shut(request, deps.db, body.findingId, visitor);
   if (!(await isDone(deps.db, body.findingId))) return fail("not_done");
   if (body.bytes > deps.limits.recheckPhotoBytes) return fail("too_large");
   if ((await photosOf(deps.bucket, walkId, body.findingId)) >= deps.limits.rechecksPerFinding) return fail("too_many_rechecks");
@@ -106,6 +113,7 @@ const link = async (request: Request, deps: RecheckDeps, visitor: string): Promi
     service: "s3",
     now: new Date(now),
     expiresSeconds: deps.limits.uploadLinkTtlSeconds,
+    devHttp: deps.signing.devHttp === true,
   });
   const expiresAt = new Date(now + deps.limits.uploadLinkTtlSeconds * 1000).toISOString();
   return Response.json(RecheckLinkResponse.parse({ recheckId, url, method: "PUT", headers, expiresAt }), { status: 201 });
@@ -115,8 +123,8 @@ const judge = async (request: Request, deps: RecheckDeps, visitor: string, reche
   if (!Id.safeParse(recheckId).success) return fail("not_found");
   const body = await bodyOf(request, RecheckRequest);
   if (body === null) return fail("invalid_request");
-  const walkId = await ownedWalk(deps.db, body.findingId, visitor);
-  if (walkId === null) return fail("not_found");
+  const walkId = await ownedWalk(request, deps.db, body.findingId, visitor);
+  if (walkId === null) return shut(request, deps.db, body.findingId, visitor);
   const answers = await answersOf(deps.bucket, walkId, body.findingId);
   if (answers.length >= deps.limits.rechecksPerFinding && !answers.includes(recheckAnswerKey(walkId, body.findingId, recheckId))) return fail("too_many_rechecks");
   const outcome = await deps.judge.recheck(body.findingId, recheckId);

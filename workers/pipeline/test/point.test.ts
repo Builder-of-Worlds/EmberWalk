@@ -1,4 +1,4 @@
-import { gridToPixels, readSparkBox } from "@emberwalk/meta";
+import { gridToPixels, RARE_POINT_TARGETS, readSparkBox, samBoxText } from "@emberwalk/meta";
 import { saveClip } from "@emberwalk/db";
 import type { Clip } from "@emberwalk/shared";
 import { env } from "cloudflare:workers";
@@ -42,6 +42,49 @@ describe("lookFrames", () => {
     for (let start = 0; start + 15 <= FRAMES; start++) {
       expect(lookFrames(FRAMES).some((f) => f >= start && f < start + 15)).toBe(true);
     }
+  });
+});
+
+describe("the looks for the rows SAM's words miss", () => {
+  const LOOKS = 8;
+  const rareDeps = () => ({ ...deps(), rarePointLooks: LOOKS });
+
+  it("spreads the asked number of looks across a clip", () => {
+    expect(lookFrames(40, 8)).toEqual([2, 7, 12, 17, 22, 27, 32, 37]);
+  });
+
+  it("are off by default: no request names a rare target", async () => {
+    const { walkId, clip, content } = await setup();
+    await pointAndTrack(deps(), walkId, clip, "file-1", content);
+    expect(sparkRequests()).toHaveLength(10);
+    for (const target of Object.values(RARE_POINT_TARGETS)) expect(harness.asked).not.toContain(`Find the ${target}.`);
+  });
+
+  it("when on, look that many times for each of the three rows, on a loop", async () => {
+    const { walkId, clip, content } = await setup();
+    const result = await pointAndTrack(rareDeps(), walkId, clip, "file-1", content);
+    expect(sparkRequests()).toHaveLength(10 + 3 * LOOKS);
+    for (const target of Object.values(RARE_POINT_TARGETS)) expect(harness.asked.filter((a) => a === `Find the ${target}.`)).toHaveLength(LOOKS);
+    expect(result.runs.map((r) => r.concept).sort()).toEqual(["dry_brush", "foundation_vent", "roof_debris", "tree_branch_over_roof", "wooden_fence"]);
+  });
+
+  it("when on, do not ask on a pan, which does not hold those rows", async () => {
+    const { walkId, clip, content } = await setup({ kind: "pan" });
+    await pointAndTrack(rareDeps(), walkId, clip, "file-1", content);
+    expect(sparkRequests()).toHaveLength(POINT_LOOKS);
+  });
+
+  it("track a row Spark points at, and store it under its own concept", async () => {
+    const { walkId, clip, content } = await setup();
+    const ask = `Find the ${RARE_POINT_TARGETS["roof_debris"]}.`;
+    harness.answers[ask] = [{ text: NOT_FOUND }];
+    harness.answers[`${ask}#22`] = [{ text: '{"found": true, "box": [100, 100, 400, 400]}' }];
+    const pixels = gridToPixels({ left: 100, top: 100, right: 400, bottom: 400 }, { width: WIDTH, height: HEIGHT });
+    const frames = [20, 21, 22].map((frame) => ({ frame, id: 1, box: [pixels.left, pixels.top, pixels.right - 1, pixels.bottom - 1] as [number, number, number, number], confidence: 0.9, frameSize: [WIDTH, HEIGHT] as [number, number] }));
+    harness.answers[samBoxText({ frame: 22, frameWidth: WIDTH, frameHeight: HEIGHT, boxes: [{ id: 1, ...pixels }] })] = [{ found: frames }];
+    const result = await pointAndTrack(rareDeps(), walkId, clip, "file-1", content);
+    expect(result.runs.find((r) => r.concept === "roof_debris")?.outcome).toBe("found");
+    expect(result.tracks.map((t) => t.concept)).toContain("roof_debris");
   });
 });
 
@@ -178,6 +221,7 @@ describe("pointAndTrack with answers that do not fit", () => {
 
     expect(result.runs[0]).toMatchObject({ outcome: "not_checked", framesBilled: 0 });
     expect(samRequests()).toEqual([]);
+    expect(harness.asked).not.toContain("dry brush");
   });
 
   it("marks a concept not_checked when every look came back malformed", async () => {
@@ -246,12 +290,17 @@ describe("pointAndTrack refusals", () => {
     expect(await left(`clips/${walkId}/${clip.id}/point/`)).toEqual([]);
   });
 
-  it("lets real footage on free credits reach the caller and sends nothing", async () => {
+  it("points at real footage on free credits", async () => {
     const { walkId, clip, content } = await setup({ synthetic: false });
+    stageRecorded();
 
-    await expect(pointAndTrack(deps(), walkId, clip, "file-1", content)).rejects.toMatchObject({ reason: "real_content_on_free_credits" });
+    const result = await pointAndTrack(deps(), walkId, clip, "file-1", content);
 
-    expect(requestsTo("/responses")).toHaveLength(0);
+    expect(result.runs.map((r) => [r.concept, r.outcome])).toEqual([
+      ["dry_brush", "found"],
+      ["wooden_fence", "found"],
+    ]);
+    expect(sparkRequests()).toHaveLength(10);
   });
 
   it("marks both concepts not_checked when the container refuses the stills", async () => {

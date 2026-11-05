@@ -38,6 +38,22 @@ export async function settle(page: Page) {
   );
 }
 
+export const lettersOutsideFont = (page: Page, letters: string) =>
+  page.evaluate(async (wanted) => {
+    const family = '"Atkinson Hyperlegible"';
+    const context = document.createElement("canvas").getContext("2d")!;
+    const missing: string[] = [];
+    for (const weight of [400, 700]) {
+      await document.fonts.load(`${weight} 40px ${family}`, wanted);
+      const width = (letter: string, fallback: string) => {
+        context.font = `${weight} 40px ${family}, ${fallback}`;
+        return context.measureText(letter).width;
+      };
+      for (const letter of wanted) if (width(letter, "serif") !== width(letter, "monospace")) missing.push(`${weight} ${letter}`);
+    }
+    return missing;
+  }, [...new Set(letters)].join(""));
+
 export function screenshotPath(info: TestInfo, name: string) {
   mkdirSync(SCREENS, { recursive: true });
   return `${SCREENS}/${name}-${info.project.name}.png`;

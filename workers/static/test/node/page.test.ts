@@ -394,7 +394,7 @@ describe("the page, the opening scrub", () => {
     const { win } = fakeWindow(false);
     P.paintOpening(win, opening);
     expect([...opening.classes]).toEqual(["pinned"]);
-    expect(opening.vars).toEqual(new Map([["--glide", "0.000"]]));
+    expect(opening.vars).toEqual(new Map([["--glide", "0.000"], ["--seal", "0.000"]]));
     expect(on(cards)).toEqual([false, false, false]);
     expect([canvas.width, canvas.height]).toEqual([800, 2000]);
     expect(calls[0]).toEqual(["setTransform", 2, 0, 0, 2, 0, 0]);
@@ -408,7 +408,7 @@ describe("the page, the opening scrub", () => {
     const { opening, cards, ridge, calls, box } = openingBox();
     const { win, listeners, frames } = fakeWindow(false);
     P.paintOpening(win, opening);
-    box.top = -2400;
+    box.top = (-2400 * 60) / 92;
     listeners.filter((l) => l.type === "scroll").forEach((l) => l.fn());
     for (let t = 1000; frames.length; t += 1000) frames.shift()?.(t as never);
     expect(win.made.map((img: { src: string }) => img.src)).toEqual(Array.from({ length: 75 }, (_, i) => P.frameSrc("p", i)));
@@ -423,8 +423,16 @@ describe("the page, the opening scrub", () => {
     near(drawn.slice(2) as number[], P.cover(P.SIZES.p, 400, 1000, P.MIDDLE, 1));
   });
 
+  it("past its last mark seals the photo and takes the card off, before the next section rises", () => {
+    const { opening, cards } = openingBox(-4000);
+    const { win } = fakeWindow(false);
+    P.paintOpening(win, opening);
+    expect(opening.vars.get("--seal")).toBe("1.000");
+    expect(on(cards)).toEqual([false, false, false]);
+  });
+
   it("fills the haze over the frame while it swaps", () => {
-    const { opening, calls } = openingBox(-1680);
+    const { opening, calls } = openingBox((-1680 * 60) / 92);
     const { win } = fakeWindow(false);
     P.paintOpening(win, opening);
     expect(calls.filter((c) => c[0] === "fillRect")).toEqual([["fillRect", "rgba(222, 204, 178, 1.000)", 0, 0, 400, 1000]]);
@@ -530,6 +538,32 @@ describe("the page, the house apart", () => {
     frames[3]();
     expect([...apart.classes]).toEqual(["pinned", "done"]);
     expect(on(cards)).toEqual([false, false, false, false, false, true]);
+  });
+
+  it("gives the photo back only the room the tallest card needs, padding, border and margins counted, and measures again on resize", () => {
+    const styles = new Map<object, Record<string, string>>();
+    const block = (height: number, margins: [string, string]) => {
+      const el = { getBoundingClientRect: () => ({ height }) };
+      styles.set(el, { marginTop: margins[0], marginBottom: margins[1] });
+      return el;
+    };
+    const card = (children: object[]) => {
+      const el = { children };
+      styles.set(el, { paddingTop: "17.6px", paddingBottom: "17.6px", borderTopWidth: "1px", borderBottomWidth: "1px" });
+      return el;
+    };
+    const short = card([block(20, ["0px", "8px"]), block(40, ["0px", "0px"])]);
+    const tall = card([block(20, ["0px", "8px"]), block(150.2, ["4px", "auto"])]);
+    const listeners: Record<string, () => void> = {};
+    const win = { getComputedStyle: (el: object) => styles.get(el)!, addEventListener: (type: string, fn: () => void) => (listeners[type] = fn) };
+    expect(P.naturalHeight(win, short)).toBeCloseTo(105.2);
+    const vars = new Map<string, string>();
+    const apart = { querySelectorAll: () => [short, tall], style: { setProperty: (k: string, v: string) => vars.set(k, v) } };
+    P.fitApartCards(win, apart);
+    expect(vars.get("--cards-h")).toBe("220px");
+    tall.children.pop();
+    listeners.resize!();
+    expect(vars.get("--cards-h")).toBe("106px");
   });
 });
 
@@ -716,6 +750,23 @@ describe("the page, live parts", () => {
     expect([ring.vars.get("--p"), lit()]).toEqual(["1.000", [true, true, true, true, true, true, true]]);
   });
 
+  it("names the step the line has reached in the middle of the ring, as the scroll moves either way", () => {
+    const { after, ring, steps } = ringBox();
+    steps.forEach((step, i) => Object.assign(step, { textContent: ` Step word ${i + 1} ` }));
+    const [n, name] = [Object.assign(new Node("span"), { textContent: "" }), Object.assign(new Node("span"), { textContent: "" })];
+    ring.parts[".ring-n"] = [n];
+    ring.parts[".ring-name"] = [name];
+    const trigger = fakeTrigger();
+    P.loop(after, fakeGsap(), trigger);
+    expect([n.textContent, name.textContent]).toEqual(["1", "Step word 1"]);
+    trigger.made[0].onUpdate({ progress: 3 / 7 });
+    expect([n.textContent, name.textContent]).toEqual(["4", "Step word 4"]);
+    trigger.made[0].onUpdate({ progress: 1 });
+    expect([n.textContent, name.textContent]).toEqual(["7", "Step word 7"]);
+    trigger.made[0].onUpdate({ progress: 1.5 / 7 });
+    expect([n.textContent, name.textContent]).toEqual(["2", "Step word 2"]);
+  });
+
   it("maps the scroll to the finish line's light and marks it passed only at the end", () => {
     expect(P.finishState(0)).toEqual({ f: 0, passed: false });
     expect(P.finishState(0.5)).toEqual({ f: 0.5, passed: false });
@@ -777,7 +828,7 @@ function fakeTrigger() {
 }
 
 function page(visibility = "visible") {
-  const opening = openingBox(-2400);
+  const opening = openingBox((-2400 * 60) / 92);
   const walking = walkBox();
   const live = (kind: string, parts: Record<string, Node[]>) => {
     const el = node("div", parts);
@@ -816,7 +867,7 @@ describe("the page, start", () => {
     const { opening, apart, walking, cards, form, doc } = page();
     const { win, observers } = fakeWindow(false);
     P.start(doc, win);
-    expect([[...opening.opening.classes], opening.opening.vars, on(opening.cards)]).toEqual([["pinned"], new Map([["--glide", "1.000"]]), [false, true, false]]);
+    expect([[...opening.opening.classes], opening.opening.vars, on(opening.cards)]).toEqual([["pinned"], new Map([["--glide", "1.000"], ["--seal", "0.000"]]), [false, true, false]]);
     expect(apart.pieces.map((p) => p.vars.get("--lift"))).toEqual(["0.000", "1.000", "0.000", "0.000"]);
     expect([walking.walker.getAttribute("cx"), walking.walker.getAttribute("cy")]).toEqual(["10.0", "5.0"]);
     expect([...doc.classes]).toEqual(["js"]);
@@ -961,10 +1012,13 @@ describe("the page, counting the statistics", () => {
     const gsap = fakeGsap();
     const trigger = fakeTrigger();
     let turns = 0;
-    P.carousel(section, gsap, trigger, () => turns++);
+    let pins = 0;
+    P.carousel(section, gsap, trigger, () => turns++, () => pins++);
     expect([gsap.plugins, [...section.classes]]).toEqual([[trigger], ["turning"]]);
     const [vars] = trigger.made;
-    expect({ ...vars, onUpdate: typeof vars.onUpdate }).toEqual({ trigger: section, start: "top top", end: "+=450%", pin: section, anticipatePin: 1, scrub: 0.8, onUpdate: "function" });
+    expect({ ...vars, onUpdate: typeof vars.onUpdate, onToggle: typeof vars.onToggle }).toEqual({ trigger: section, start: "top top", end: "+=450%", pin: section, anticipatePin: 1, scrub: 0.8, onToggle: "function", onUpdate: "function" });
+    vars.onToggle();
+    expect(pins, "a pin or its release reaches whatever reads the section's place").toBe(1);
     const cards = [...cost, ...proof];
     const state = () => [on(cards), cards.map((card) => card.vars.get("--x")), cards.map((card) => card.vars.get("--o")), section.vars.get("--head"), section.vars.get("--sub"), section.vars.get("--drift")];
     expect(state()).toEqual([[true, false, false, false, false, false], ["0.000", "1.000", "1.000", "1.000", "1.000", "1.000"], ["1.000", "0.000", "0.000", "0.000", "0.000", "0.000"], "1.000", "0.000", "0.000"]);
@@ -980,19 +1034,25 @@ describe("the page, counting the statistics", () => {
     expect(turns).toBe(3);
   });
 
-  it("parks every step small at its side before its turn, grows it to full size before it counts as in front, and never lets the last step go", () => {
+  it("shows the first step from the start, parks every later step small at its side, never shows two steps at once and blanks a hand-off only for a moment, and never lets the last step go", () => {
     const at = (p: number, i: number) => {
       const s = P.stepState(p, 3, i);
       return [Number(s.scale.toFixed(3)), Number(s.shown.toFixed(3)), s.leaving];
     };
-    expect([at(0, 0), at(0, 1), at(0, 2)]).toEqual([[0.25, 0, false], [0.25, 0, false], [0.25, 0, false]]);
+    expect([at(0, 0), at(0, 1), at(0, 2)]).toEqual([[1, 1, false], [0.25, 0, false], [0.25, 0, false]]);
     const slot = (i: number, t: number) => (t + i + P.STEP_LEAD) / (3 + P.STEP_LEAD);
     expect(at(slot(0, 0.5), 0)).toEqual([1, 1, false]);
-    expect(P.stepState(slot(1, 0.2), 3, 1).scale).toBeGreaterThanOrEqual(0.849);
-    expect(P.stepState(slot(1, 0.19), 3, 1).shown).toBeLessThan(0.5);
-    expect(at(slot(0, 0.95), 0)).toEqual([0.25, 0, true]);
+    expect(P.stepState(slot(1, P.STEP_SWAP / 2), 3, 1).scale, "a step is near full size once it counts as in front").toBeGreaterThanOrEqual(0.8);
+    let blank = 0;
+    for (let t = 0.9; t <= 1.1; t += 0.0005) {
+      const [out, into] = [P.stepState(slot(0, t), 3, 0).shown, P.stepState(slot(1, t - 1), 3, 1).shown];
+      expect(Math.min(out, into), `two steps at once at ${t.toFixed(4)}`).toBeLessThan(0.1);
+      if (Math.max(out, into) < 0.1) blank += 0.0005;
+    }
+    expect(blank, "the blank moment of a hand-off, in steps").toBeLessThan(0.01);
+    expect(at(slot(0, 1), 0)[1]).toBe(0);
     expect(at(1, 2)).toEqual([1, 1, false]);
-    expect([Number.NaN, -1, 2].map((p) => at(p, 0))).toEqual([[0.25, 0, false], [0.25, 0, false], [0.25, 0, true]]);
+    expect([Number.NaN, -1, 2].map((p) => at(p, 0))).toEqual([[1, 1, false], [1, 1, false], [0.25, 0, true]]);
   });
 
   it("pins the how it works section and paints each step's size, fade and front from the scrub", () => {
@@ -1005,7 +1065,7 @@ describe("the page, counting the statistics", () => {
     const [vars] = trigger.made;
     expect({ ...vars, onUpdate: typeof vars.onUpdate }).toEqual({ trigger: section, start: "top top", end: "+=262.5%", pin: section, anticipatePin: 1, scrub: 0.8, onUpdate: "function" });
     const state = () => [on(steps), steps.map((step) => step.classes.has("leaving")), steps.map((step) => step.vars.get("--s")), steps.map((step) => step.vars.get("--o")), section.vars.get("--drift")];
-    expect(state()).toEqual([[false, false, false], [false, false, false], ["0.250", "0.250", "0.250"], ["0.000", "0.000", "0.000"], "0.000"]);
+    expect(state()).toEqual([[true, false, false], [false, false, false], ["1.000", "0.250", "0.250"], ["1.000", "0.000", "0.000"], "0.000"]);
     vars.onUpdate({ progress: (1.5 + P.STEP_LEAD) / (3 + P.STEP_LEAD) });
     expect(state()).toEqual([[false, true, false], [true, false, false], ["0.250", "1.000", "0.250"], ["0.000", "1.000", "0.000"], "0.571"]);
   });

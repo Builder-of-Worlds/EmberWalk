@@ -1145,7 +1145,7 @@ class Siding(unittest.TestCase):
         walls = {name: (spec_of(name)["house"]["siding"], spec_of(name)["look"]["siding"]["material"]) for name in ("hero", "mobile", "apartment")}
         self.assertEqual(walls, {
             "hero": ("fiber cement lap", "polyhaven:exterior_wall_cladding_03"),
-            "mobile": ("fiber cement lap", "polyhaven:weathered_plank_siding"),
+            "mobile": ("fiber cement lap", "polyhaven:exterior_wall_cladding_03"),
             "apartment": ("stucco", "polyhaven:white_stucco_02"),
         })
         self.assertEqual(CATALOG["polyhaven:white_stucco_02"]["sidings"], ["stucco"])

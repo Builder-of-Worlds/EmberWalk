@@ -1,34 +1,31 @@
-import { Property, VISITOR_HEADER } from "@emberwalk/shared";
-import { ask } from "./api.ts";
-import type { Answer, Fetch } from "./api.ts";
+import { CreateInviteResponse, InviteLookup, PropertyEntry, PropertyList } from "@emberwalk/shared";
+import type { CreateInviteResponse as MadeInvite, InviteLookup as Lookup, PropertyEntry as Entry } from "@emberwalk/shared";
+import { z } from "zod";
+import { type Asked, call, OFFLINE, type Parser, request } from "./account-api.ts";
+import type { Fetch } from "./api.ts";
 
-export type Home = Property & { walk: { id: string; ready: boolean } | null };
+const Homes = PropertyList.transform((list) => list.properties);
 
-export type PortfolioApi = { homes(): Promise<Answer<Home[]>> };
+const Marked = z.looseObject({});
 
-const readWalk = (walk: unknown): Home["walk"] | undefined => {
-  if (walk === undefined || walk === null) return null;
-  const { id, ready } = walk as { id?: unknown; ready?: unknown };
-  return typeof id === "string" && id !== "" && typeof ready === "boolean" ? { id, ready } : undefined;
+export type PortfolioApi = {
+  homes(): Promise<Asked<Entry[]>>;
+  add(label: string): Promise<Asked<Entry>>;
+  one(id: string): Promise<Asked<Entry>>;
+  invite(id: string): Promise<Asked<MadeInvite>>;
+  lookup(code: string): Promise<Asked<Lookup>>;
+  markDone(findingId: string, doneOn: string): Promise<Asked<unknown>>;
 };
 
-const readHome = (item: unknown): Home | null => {
-  if (typeof item !== "object" || item === null) return null;
-  const { walk, ...rest } = item as Record<string, unknown>;
-  const property = Property.safeParse(rest);
-  const kept = readWalk(walk);
-  return property.success && kept !== undefined ? { ...property.data, walk: kept } : null;
-};
+const offline = async () => ({ code: OFFLINE });
 
-const readHomes = (body: unknown): Home[] | null => {
-  const properties = typeof body === "object" && body !== null ? (body as { properties?: unknown }).properties : undefined;
-  if (!Array.isArray(properties)) return null;
-  const homes = properties.map(readHome);
-  return homes.every((home): home is Home => home !== null) ? homes : null;
-};
-
-export const noPortfolio: PortfolioApi = { homes: async () => ({ code: "offline" }) };
+export const noPortfolio: PortfolioApi = { homes: offline, add: offline, one: offline, invite: offline, lookup: offline, markDone: offline };
 
 export const portfolioApi = (base: string, send: Fetch, visitorId: () => string): PortfolioApi => ({
-  homes: () => ask(send, new Request(new URL("/api/properties", base), { headers: { [VISITOR_HEADER]: visitorId() } }), readHomes),
+  homes: () => call(send, request(base, visitorId, "GET", "/api/properties"), Homes as Parser<Entry[]>),
+  add: (label) => call(send, request(base, visitorId, "POST", "/api/properties", { label }), PropertyEntry as Parser<Entry>),
+  one: (id) => call(send, request(base, visitorId, "GET", `/api/properties/${encodeURIComponent(id)}`), PropertyEntry as Parser<Entry>),
+  invite: (id) => call(send, request(base, visitorId, "POST", `/api/properties/${encodeURIComponent(id)}/invites`), CreateInviteResponse as Parser<MadeInvite>),
+  lookup: (code) => call(send, request(base, visitorId, "GET", `/api/invites/${encodeURIComponent(code)}`), InviteLookup as Parser<Lookup>),
+  markDone: (findingId, doneOn) => call(send, request(base, visitorId, "POST", `/api/findings/${encodeURIComponent(findingId)}/status`, { status: "done", doneOn }), Marked as Parser<unknown>),
 });

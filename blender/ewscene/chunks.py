@@ -36,10 +36,27 @@ def frame_name(frame):
     return "synthetic-frame-%05d.png" % frame
 
 
+def on_disk(folder, frame):
+    path = os.path.join(folder, frame_name(frame))
+    return os.path.isfile(path) and os.path.getsize(path) > 0
+
+
 def todo(chunk, folder):
+    return [f for f in range(chunk["start_frame"], chunk["end_frame"] + 1) if not on_disk(folder, f)]
+
+
+def pick(chunk_plan, folder, first, last, limit):
+    if limit < 1:
+        raise ValueError("a process renders at least one frame, not %d" % limit)
     out = []
-    for f in range(chunk["start_frame"], chunk["end_frame"] + 1):
-        path = os.path.join(folder, frame_name(f))
-        if not (os.path.isfile(path) and os.path.getsize(path) > 0):
-            out.append(f)
+    for c in chunk_plan:
+        for f in todo(c, folder):
+            if first <= f <= last:
+                out.append(f)
+                if len(out) == limit:
+                    return out
     return out
+
+
+def missing(frame_count, folder):
+    return sum(1 for f in range(1, frame_count + 1) if not on_disk(folder, f))

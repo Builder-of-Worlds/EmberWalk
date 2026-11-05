@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { isCorner, type Side, type WalkPart } from "@emberwalk/shared";
 import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
-import { draftWordsShown } from "../draft-words.ts";
 import { askMotion, CORNERS, cornersFor, turnBetween } from "../motion.ts";
 import type { Motion } from "../motion.ts";
 import { isJurisdiction, locateRules } from "../location.ts";
 import { cameraDevice, openCamera, startRecording } from "../recorder.ts";
 import type { CameraRefusal, Recording } from "../recorder.ts";
 import { ROUTES } from "../router.ts";
+import { clearClaim, pendingClaim } from "../walk-claim.ts";
 import type { Take } from "../take-store.ts";
 import { HOUSE_CORNERS, HouseShape } from "./HouseShape.tsx";
 
@@ -103,8 +103,15 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
   const [paused, setPaused] = useState(false);
   const [panned, setPanned] = useState<Panned & { left: number }>({ ...NOT_PANNED, left: 0 });
   const [rules, setRules] = useState<keyof typeof copy.record.location>("finding");
-  const [draftWords] = useState(() => draftWordsShown());
   const [guide, setGuide] = useState<Side | null>(null);
+  const guided = phase.kind === "recording" && part === null && phase.motion === null;
+
+  // Never speak while the microphone records: the walk's sound is transcribed into the finding notes.
+  useEffect(() => {
+    if (guided && soundOff && deps.prefs.readsStepsAloud()) void deps.voice.say(guide === null ? draft.guided.back : draft.guided.now(guide));
+  }, [deps, guided, guide, soundOff]);
+
+  useEffect(() => () => deps.voice.stop(), [deps]);
 
   useEffect(() => {
     let live = true;
@@ -135,12 +142,15 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
     const [motion, camera] = await Promise.all([askMotion(deps.motion), openCamera(deps.media, sound)]);
     if ("refusal" in camera) return setPhase({ kind: "refused", refusal: camera.refusal });
     const takes = await deps.takes();
+    const claim = part === null ? pendingClaim() : null;
     const take = await takes.create(camera.mimeType, deps.clock.now(), {
       jurisdiction: deps.prefs.jurisdiction(),
       sound,
       device: cameraDevice(camera.stream),
       partOf: part,
+      ...claim,
     });
+    clearClaim();
     void located.then((key) =>
       key === null || key === take.jurisdiction ? undefined : takes.setJurisdiction(take.id, key).catch(() => undefined),
     );
@@ -160,7 +170,7 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
     recording.current = startRecording(camera, sink, deps.clock, deps.maxWalkMs, motion, {
       light: deps.light(camera.stream),
       part: part?.side ?? null,
-      guided: draftWords,
+      guided: true,
     });
     setGuide(recording.current.guide());
     setSoundOff(!sound);
@@ -234,7 +244,7 @@ export const Record = ({ part = null }: { part?: WalkPart | null }) => {
           {part !== null ? (
             <p>{onePart(part)}</p>
           ) : phase.motion === null ? (
-            draftWords ? <Guide side={guide} held={paused || panned.panning} onNext={pressNext} /> : null
+            <Guide side={guide} held={paused || panned.panning} onNext={pressNext} />
           ) : (
             <Outline motion={phase.motion} panned={panned} />
           )}

@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Concept } from "@emberwalk/shared";
-import { evaluate, rank, RULES, scoreWalk, WalkRecord } from "@emberwalk/rules";
+import { evaluate, rank, RULES, scoreWalk, templateInstruction, WalkRecord } from "@emberwalk/rules";
 import type { Observation } from "@emberwalk/rules";
-import type { Proof, ResultFinding, Side, Source, WalkResults } from "../src/results.ts";
+import type { Pin, Proof, ResultFinding, Side, Source, WalkResults } from "../src/results.ts";
 import { SIDES } from "../src/results.ts";
 
 export const SAMPLE = {
@@ -16,8 +16,8 @@ export const SAMPLE = {
   sam: "packages/rules/test/fixtures/test-yard-sam-017.json",
 } as const;
 
-type TruthHazard = { id: string; concept: string; distance_ft: number; contact: boolean };
-type Truth = { synthetic: boolean; label: string; scene: string; side: Side; hazards: TruthHazard[] };
+type TruthHazard = { id: string; concept: string; distance_ft: number; contact: boolean; box_in: { min: number[]; max: number[] } };
+type Truth = { synthetic: boolean; label: string; scene: string; side: Side; wall: { length_in: number }; hazards: TruthHazard[] };
 type Render = { synthetic: boolean; label: string; scene: string; width: number; height: number };
 
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -45,6 +45,12 @@ const sourcesOf = (ruleIds: string[]): Source[] => {
   return [...seen.values()];
 };
 
+const pinOf = (f: ResultFinding, truth: Truth): Pin => {
+  const hazard = truth.hazards.find((h) => h.id === f.id)!;
+  const middle = (hazard.box_in.min[0]! + hazard.box_in.max[0]!) / 2;
+  return { findingId: f.id, side: truth.side, band: f.band, position: middle / truth.wall.length_in, feet: f.distanceFeet.low };
+};
+
 export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> => {
   const truth = read<Truth>(SAMPLE.truth);
   const render = read<Render>(SAMPLE.render);
@@ -70,6 +76,7 @@ export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> =>
   });
   const findings: ResultFinding[] = rank(evaluate(observations, SAMPLE.jurisdiction)).map((f) => {
     const seen = observations.find((o) => o.id === f.observationId)!;
+    const rule = RULES.find((r) => r.id === f.ruleIds[0])!;
     return {
       id: f.observationId,
       concept: f.concept,
@@ -77,11 +84,13 @@ export const sampleResults = (): Omit<WalkResults, "coverage" | "notChecked"> =>
       distanceFeet: seen.distanceFeet,
       label: f.label,
       instruction: f.instruction,
+      instructions: { en: templateInstruction(rule, null, "en"), es: templateInstruction(rule, null, "es") },
       sources: sourcesOf(f.ruleIds),
       confidence: f.confidence,
       proof: proofOf(f.observationId),
     };
   });
   const gaps = SIDES.filter((side) => side !== truth.side).map((side) => ({ side, kind: "missing" as const, hint: "walk_side" as const }));
-  return { id: SAMPLE.id, walkedOn: SAMPLE.walkedOn, synthetic: true, gaps, findings };
+  const pins = findings.map((f) => pinOf(f, truth));
+  return { id: SAMPLE.id, walkedOn: SAMPLE.walkedOn, synthetic: true, gaps, findings, pins };
 };

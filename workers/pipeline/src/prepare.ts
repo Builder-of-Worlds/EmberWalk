@@ -29,7 +29,6 @@ export const prepareWalk = async (deps: Deps, walkId: string): Promise<Outcome<C
   if (walk.synthetic && !(await deps.isSyntheticRender(originalKey(walkId)))) {
     return refuse("not_sample_render", "A sample walk can only use the built-in sample video.");
   }
-  if (!walk.synthetic && deps.billing !== "paid") return refuse("real_footage_not_allowed", "Real footage is not accepted yet.");
 
   const original = await deps.signer.get(originalKey(walkId));
   const probe = await deps.media.probe(original);

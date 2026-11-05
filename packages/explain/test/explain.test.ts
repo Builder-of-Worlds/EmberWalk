@@ -313,12 +313,12 @@ describe("explain, refused", () => {
     expect(out.results.map((r) => r.wording)).toEqual(["template", "template", "template"]);
   });
 
-  it("sends nothing for real content on free credits", async () => {
+  it("sends real content on free credits and uses the model's wording", async () => {
     const { client, requests } = standIn([KEEP]);
     const out = await explain(client, input({ content: "real" }));
-    expect(requests).toHaveLength(0);
-    expect(out.refused).toBe("real_content_on_free_credits");
-    expect(out.results.every((r) => r.wording === "template")).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(out.refused).toBeNull();
+    expect(out.results.some((r) => r.wording !== "template")).toBe(true);
   });
 
   it("sends exactly two requests for a bad answer given twice, then template, with ledger lines for both", async () => {
@@ -348,6 +348,14 @@ describe("explain, refused", () => {
     );
     expect(requests).toHaveLength(0);
   });
+
+  it("takes an http frame link only from a local rehearsal host, never from anywhere else", async () => {
+    const local = "http://host.docker.internal:8788/emberwalk-media/stills/a.jpg";
+    const { client, requests } = standIn([KEEP]);
+    await explain(client, input({ frames: [local], findings: withProofFrame(input().findings, FENCE, local) }));
+    expect(requests).toHaveLength(1);
+    await expect(explain(standIn([KEEP]).client, input({ frames: ["http://frames.example/a.jpg"] }))).rejects.toThrow();
+  });
 });
 
 describe("explain, a plant that may be dead, in Spanish", () => {
@@ -368,8 +376,8 @@ describe("explain, a plant that may be dead, in Spanish", () => {
   const spanishWalk = async (list: ReturnType<typeof findings>) => {
     const results = [];
     for (let at = 0; at < list.length; at += 40) {
-      const { client, requests } = standIn([KEEP]);
-      results.push(...(await explain(client, input({ language: "es", content: "real", findings: list.slice(at, at + 40) }))).results);
+      const { client, requests } = standIn([KEEP], { capUsd: 0.0001 });
+      results.push(...(await explain(client, input({ language: "es", findings: list.slice(at, at + 40) }))).results);
       expect(requests).toHaveLength(0);
     }
     return { results };

@@ -3,7 +3,7 @@ import { ROLES, type Role } from "./types";
 export type SignupError = "invalid_body" | "invalid_email" | "invalid_role";
 
 export type SignupInput =
-  | { ok: boolean; error?: undefined; email: string; role: Role; token: string }
+  | { ok: boolean; error?: undefined; email: string; role: Role; token: string; language: unknown }
   | { ok: boolean; error: SignupError };
 
 const EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
@@ -26,5 +26,5 @@ export function validateSignup(body: unknown): SignupInput {
   const role = ROLES.find((candidate) => candidate === fields.role);
   if (role === undefined) return { ok: false, error: "invalid_role" };
   const token = typeof fields.turnstileToken === "string" ? fields.turnstileToken : "";
-  return { ok: true, email, role, token };
+  return { ok: true, email, role, token, language: fields.language };
 }

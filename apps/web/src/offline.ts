@@ -21,7 +21,7 @@ export const removeOldCaches = async (caches: CacheStorage, version: string): Pr
 
 export const handles = (request: Request, scope: string): boolean => {
   const url = new URL(request.url);
-  return request.method === "GET" && url.origin === new URL(scope).origin && !url.pathname.startsWith("/api/");
+  return request.method === "GET" && url.origin === new URL(scope).origin && !url.pathname.startsWith("/api/") && !url.searchParams.has("signin");
 };
 
 export const respond = async (

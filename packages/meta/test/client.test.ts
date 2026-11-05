@@ -115,10 +115,10 @@ describe("MetaClient", () => {
     expect((await client.call(frames(1000))).cached).toBe(false);
   });
 
-  it("refuses real content on free credits and sends it on a paid run", async () => {
+  it("sends real content on free credits and on a paid run", async () => {
     const free = setup({ answer: () => ok({ n: 1 }) });
-    expect(await refusal(free.client.call(frames(10, { content: "real" })))).toBe("real_content_on_free_credits");
-    expect(free.transport.requests).toHaveLength(0);
+    expect((await free.client.call(frames(10, { content: "real" }))).value).toEqual({ n: 1 });
+    expect(free.transport.requests).toHaveLength(1);
     const paid = setup({ answer: () => ok({ n: 1 }), billing: "paid" });
     expect((await paid.client.call(frames(10, { content: "real" }))).value).toEqual({ n: 1 });
   });

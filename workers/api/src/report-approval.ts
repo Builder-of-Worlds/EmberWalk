@@ -9,6 +9,7 @@ import { resultsFor } from "./walk-read.ts";
 export const Approval = z.strictObject({
   walkId: Id,
   approvedAt: z.iso.datetime(),
+  day: z.iso.date().optional(),
   findingIds: z.array(Id),
   stillKeys: z.array(z.string()),
   removed: z.array(Id),
@@ -64,6 +65,17 @@ export const approvalOf = async (media: R2Bucket, walkId: string): Promise<Appro
   const parsed = Approval.safeParse(await stored.json().catch(() => null));
   return parsed.success && parsed.data.walkId === walkId ? parsed.data : null;
 };
+
+export const DAY_HEADER = "x-report-day";
+
+const DAY_MS = 86_400_000;
+
+export const phoneDay = (asked: string | null, approvedAt: string): string | undefined => {
+  if (asked === null || !z.iso.date().safeParse(asked).success) return undefined;
+  return Math.abs(Date.parse(`${asked}T00:00:00.000Z`) - Date.parse(`${approvedAt.slice(0, 10)}T00:00:00.000Z`)) <= DAY_MS ? asked : undefined;
+};
+
+export const approvedDay = (approval: Pick<Approval, "approvedAt" | "day">): string => approval.day ?? approval.approvedAt.slice(0, 10);
 
 export const pdfStamp = async (approval: Approval): Promise<Record<string, string>> => ({ approvedAt: approval.approvedAt, seen: await digestOf(approval) });
 

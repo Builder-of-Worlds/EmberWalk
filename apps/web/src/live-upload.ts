@@ -20,7 +20,7 @@ export type LiveUploadDeps = {
 
 type Open = { uploadId: string; partBytes: number };
 
-const TRY_LATER: ReadonlySet<Failure> = new Set(["offline", "server_error", "rate_limited"]);
+const TRY_LATER: ReadonlySet<Failure> = new Set(["offline", "sign_in_needed", "server_error", "rate_limited"]);
 
 export const liveUpload = (deps: LiveUploadDeps, takeId: string, ready: Promise<unknown> = Promise.resolve()): LiveUpload => {
   const { takes } = deps;

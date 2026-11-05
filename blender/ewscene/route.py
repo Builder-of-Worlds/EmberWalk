@@ -27,6 +27,10 @@ UP_SWEEP_MAX_DEG = 45
 UP_TURN_S = 2
 UP_SWEEP_S = 4
 UP_SPAN_DEG = 80
+NORMAL_PACE = {"steady": False, "ease_s": EASE_S, "turn_in": TURN_IN, "pan_turn_s": PAN_TURN_S, "up_turn_s": UP_TURN_S, "up_sweep_s": UP_SWEEP_S}
+STEADY_PACE = {"steady": True, "ease_s": 1.5, "turn_in": 72, "pan_turn_s": 4.0, "up_turn_s": 2.5, "up_sweep_s": 5.0}
+STEADY_KEYS = ("standoff_in", "focal_mm", "fps", "pan_s")
+STEADY_MAX_TURN_DEG = 1.7
 PAN_SIDES = ("front", "right", "back", "left")
 WALKABLE = ("porch", "deck", "landing")
 PARTS = "emberwalk.route-parts/1"
@@ -50,7 +54,7 @@ CONVENTIONS = {
 def params(spec):
     p = dict(DEFAULTS)
     for key, value in spec["route"].items():
-        if key == "placeholder":
+        if key in ("placeholder", "steady"):
             continue
         if key not in DEFAULTS and key != "up_sweep_deg":
             raise house.HouseError("refused", "route: unknown setting %s" % key)
@@ -60,6 +64,21 @@ def params(spec):
     if not 0 <= p.get("up_sweep_deg", 0) <= UP_SWEEP_MAX_DEG:
         raise house.HouseError("refused", "route: up sweep %s deg is outside 0 to %d deg" % (p["up_sweep_deg"], UP_SWEEP_MAX_DEG))
     return p
+
+
+def walk_params(spec):
+    p = params(spec)
+    steady = spec["route"].get("steady")
+    if steady is None:
+        return p, NORMAL_PACE
+    missing = [k for k in STEADY_KEYS if k not in steady]
+    if missing:
+        raise house.HouseError("refused", "route: steady has no %s" % ", ".join(missing))
+    p.update({k: steady[k] for k in STEADY_KEYS})
+    p["level"] = steady.get("level", False)
+    if not PAN_S[0] <= p["pan_s"] <= PAN_S[1]:
+        raise house.HouseError("refused", "route: pan %s s is outside %d to %d s" % (p["pan_s"], PAN_S[0], PAN_S[1]))
+    return p, STEADY_PACE
 
 
 def stride_in(p):
@@ -88,12 +107,13 @@ def _path(spec, standoff):
     return {"pts": pts, "s": s, "edges": edges}
 
 
-def _corners(path):
+def _corners(path, pace=NORMAL_PACE):
     s, eds = path["s"], path["edges"]
     out = []
     for k in range(1, len(eds)):
         t = (_heading(eds[k]) - _heading(eds[k - 1]) + 180) % 360 - 180
-        r = min(TURN_IN, (s[k] - s[k - 1]) / 2.0, (s[k + 1] - s[k]) / 2.0)
+        # a steady corner beside the door turns as slowly as the others
+        r = float(pace["turn_in"]) if pace["steady"] else min(pace["turn_in"], (s[k] - s[k - 1]) / 2.0, (s[k + 1] - s[k]) / 2.0)
         out.append((s[k], t, max(r, 1e-6)))
     return out
 
@@ -147,32 +167,34 @@ def _surface(spec, path, stride):
     return lambda at: max([h * _smooth((at - lo + half) / stride) * (1 - _smooth((at - hi + half) / stride)) for lo, hi, h in merged] + [0.0])
 
 
-def _walk_at(tau, dur, dist):
-    ease = min(EASE_S, dur / 2.0)
+def _walk_at(tau, dur, dist, pace=NORMAL_PACE):
+    ease = min(pace["ease_s"], dur / 2.0)
     top = dist / (dur - ease)
     start = min(tau, ease)
     late = max(0.0, tau - dur + ease)
     return top * (tau - start + start * start / (2 * ease) - late * late / (2 * ease)), min(1.0, tau / ease, (dur - tau) / ease)
 
 
-def _pan_at(tau, p):
-    sweep_s, a = p["pan_s"] - 2 * PAN_TURN_S, SWEEP_DEG
-    if tau < PAN_TURN_S:
-        k = _smooth(tau / PAN_TURN_S)
+def _pan_at(tau, p, pace=NORMAL_PACE):
+    turn_s = pace["pan_turn_s"]
+    sweep_s, a = p["pan_s"] - 2 * turn_s, SWEEP_DEG
+    if tau < turn_s:
+        k = _smooth(tau / turn_s)
         return (180 - a) * k, k
-    if tau < PAN_TURN_S + sweep_s:
-        return 180 - a + 2 * a * _smooth((tau - PAN_TURN_S) / sweep_s), 1.0
-    k = _smooth((tau - PAN_TURN_S - sweep_s) / PAN_TURN_S)
+    if tau < turn_s + sweep_s:
+        return 180 - a + 2 * a * _smooth((tau - turn_s) / sweep_s), 1.0
+    k = _smooth((tau - turn_s - sweep_s) / turn_s)
     return 180 + a + (180 - a) * k, 1 - k
 
 
-def _sweep_at(tau):
-    if tau < UP_TURN_S:
-        k = _smooth(tau / UP_TURN_S)
+def _sweep_at(tau, pace=NORMAL_PACE):
+    turn_s, sweep_s = pace["up_turn_s"], pace["up_sweep_s"]
+    if tau < turn_s:
+        k = _smooth(tau / turn_s)
         return -UP_SPAN_DEG * k, k
-    if tau < UP_TURN_S + UP_SWEEP_S:
-        return -UP_SPAN_DEG + 2 * UP_SPAN_DEG * _smooth((tau - UP_TURN_S) / UP_SWEEP_S), 1.0
-    k = _smooth((tau - UP_TURN_S - UP_SWEEP_S) / UP_TURN_S)
+    if tau < turn_s + sweep_s:
+        return -UP_SPAN_DEG + 2 * UP_SPAN_DEG * _smooth((tau - turn_s) / sweep_s), 1.0
+    k = _smooth((tau - turn_s - sweep_s) / turn_s)
     return UP_SPAN_DEG * (1 - k), 1 - k
 
 
@@ -212,7 +234,7 @@ def ground_cover(spec):
     return tufts
 
 
-def _timeline(spec, p, path):
+def _timeline(spec, p, path, pace=NORMAL_PACE):
     lap = path["s"][-1]
     stops = []
     after = 0.0
@@ -221,11 +243,11 @@ def _timeline(spec, p, path):
             continue
         after = _stop_s(path, pan["at_in"], after)
         stops.append((after, pan))
-    t = lap / p["speed_in_s"] + EASE_S
+    t = lap / p["speed_in_s"] + pace["ease_s"]
     events, at = [{"kind": "loop", "t0": 0.0, "t1": t, "s0": 0.0, "s1": lap}], 0.0
     for stop_s, pan in stops + [(lap, None)]:
         if stop_s - at > 1e-6:
-            dur = (stop_s - at) / p["speed_in_s"] + EASE_S
+            dur = (stop_s - at) / p["speed_in_s"] + pace["ease_s"]
             events.append({"kind": "walk", "t0": t, "t1": t + dur, "s0": at, "s1": stop_s})
             t += dur
         at = stop_s
@@ -233,9 +255,44 @@ def _timeline(spec, p, path):
             events.append({"kind": "pan", "t0": t, "t1": t + p["pan_s"], "s0": at, "pan": pan})
             t += p["pan_s"]
             if p.get("up_sweep_deg"):
-                events.append({"kind": "sweep", "t0": t, "t1": t + 2 * UP_TURN_S + UP_SWEEP_S, "s0": at, "pan": pan})
+                events.append({"kind": "sweep", "t0": t, "t1": t + 2 * pace["up_turn_s"] + pace["up_sweep_s"], "s0": at, "pan": pan})
                 t = events[-1]["t1"]
     return events, t
+
+
+def _steady_pose(i, p, path, corners, surface, events, turns, pace):
+    t = events[0]["t0"] + i / float(p["fps"])
+    k = next((j for j, e in enumerate(events) if t < e["t1"]), len(events) - 1)
+    e = events[k]
+    spun = 360.0 * turns[k]
+    tilt = p["tilt_deg"]
+    if e["kind"] == "sweep":
+        at = e["s0"]
+        swing, lift = _sweep_at(t - e["t0"], pace)
+        heading = _wall_heading(path, corners, at) + spun + swing
+        tilt += (-p["up_sweep_deg"] - p["tilt_deg"]) * lift
+    elif e["kind"] == "pan":
+        at = e["s0"]
+        swing, out = _pan_at(t - e["t0"], p, pace)
+        heading = _wall_heading(path, corners, at) + spun + swing
+        tilt += (p["pan_tilt_deg"] - p["tilt_deg"]) * out
+    else:
+        d, _ = _walk_at(min(t - e["t0"], e["t1"] - e["t0"]), e["t1"] - e["t0"], e["s1"] - e["s0"], pace)
+        at = e["s0"] + d
+        heading = _wall_heading(path, corners, at) + spun
+    (x, y), _ = _locate(path, at)
+    pose = {
+        "frame": i + 1,
+        "t": round(i / float(p["fps"]), 6),
+        "pos_in": [round(x, 3), round(y, 3), round(p["height_in"] + surface(at), 3)],
+        "heading_deg": round(heading % 360, 4),
+        "tilt_deg": round(tilt, 4),
+        "roll_deg": 0.0,
+    }
+    if p.get("level"):
+        pose["shift_y"] = round(-math.tan(math.radians(pose["tilt_deg"])) * p["focal_mm"] / p["sensor_width_mm"], 6)
+        pose["tilt_deg"] = 0.0
+    return pose
 
 
 def _pose(i, p, path, corners, surface, events, turns):
@@ -289,33 +346,48 @@ def check_samples(spec, samples):
             raise house.HouseError("refused", "route: the heading jumps more than %d degrees at frame %d" % (MAX_TURN_DEG, b["frame"]))
 
 
-def _part(e, fps):
+def check_steady_turns(samples):
+    for a, b in zip(samples, samples[1:]):
+        turn = abs((b["heading_deg"] - a["heading_deg"] + 180) % 360 - 180)
+        if turn >= STEADY_MAX_TURN_DEG:
+            raise house.HouseError("refused", "route: at frame %d the steady path turns %.3f degrees a frame, the limit is under %s" % (a["frame"], turn, STEADY_MAX_TURN_DEG))
+
+
+def _part(e, fps, start=0.0):
     out = {"kind": e["kind"]}
     if e["kind"] not in ("pan", "sweep"):
         out["loop_in"] = [round(e["s0"], 6), round(e["s1"], 6)]
     else:
         out.update(side=e["pan"]["side"], bearing_deg=e["pan"]["bearing_deg"])
-    out.update(start_s=round(e["t0"], 6), end_s=round(e["t1"], 6), start_frame=round(e["t0"] * fps) + 1, end_frame=round(e["t1"] * fps))
+    t0, t1 = e["t0"] - start, e["t1"] - start
+    out.update(start_s=round(t0, 6), end_s=round(t1, 6), start_frame=round(t0 * fps) + 1, end_frame=round(t1 * fps))
     return out
 
 
 def build(spec):
-    p = params(spec)
+    p, pace = walk_params(spec)
     path = _path(spec, p["standoff_in"])
-    events, total = _timeline(spec, p, path)
-    if total > MAX_S:
-        raise house.HouseError("refused", "route: the walk runs %.1f s, over %d s" % (total, MAX_S))
-    corners = _corners(path)
+    events, total = _timeline(spec, p, path, pace)
+    if pace["steady"]:
+        events = [e for e in events if e["kind"] != "loop"]
+    start = events[0]["t0"] if pace["steady"] else 0.0
+    if total - start > MAX_S:
+        raise house.HouseError("refused", "route: the walk runs %.1f s, over %d s" % (total - start, MAX_S))
+    corners = _corners(path, pace)
     surface = _surface(spec, path, stride_in(p))
     turns = [sum(1 for x in events[:j] if x["kind"] == "pan") for j in range(len(events))]
-    n = int(math.ceil(total * p["fps"] - 1e-9))
-    samples = [_pose(i, p, path, corners, surface, events, turns) for i in range(n)]
+    n = int(math.ceil((total - start) * p["fps"] - 1e-9))
+    if pace["steady"]:
+        samples = [_steady_pose(i, p, path, corners, surface, events, turns, pace) for i in range(n)]
+        check_steady_turns(samples)
+    else:
+        samples = [_pose(i, p, path, corners, surface, events, turns) for i in range(n)]
     check_samples(spec, samples)
     camera = {k: p[k] for k in ("width_px", "height_px", "focal_mm", "sensor_width_mm")}
     hfov, vfov = geom.fov_deg(camera)
     camera.update(sensor_fit="horizontal", hfov_deg=round(hfov, 3), vfov_deg=round(vfov, 3))
     head = {"synthetic": True, "label": spec["label"], "scene": spec["id"], "fps": p["fps"], "frame_count": n, "duration_s": n / float(p["fps"])}
-    parts = [_part(e, p["fps"]) for e in events]
+    parts = [_part(e, p["fps"], start) for e in events]
     parts[-1]["end_frame"] = n
     motion_doc = dict(head, schema="emberwalk.motion/1", camera=camera, conventions=CONVENTIONS, samples=samples)
     motion_doc = {k: motion_doc[k] for k in ("schema", "synthetic", "label", "scene", "fps", "frame_count", "duration_s", "camera", "conventions", "samples")}

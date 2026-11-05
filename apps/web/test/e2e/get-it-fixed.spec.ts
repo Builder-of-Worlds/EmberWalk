@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { copy, draft } from "../../src/copy.ts";
+import { inspectionWords } from "../../src/draft-words.ts";
 import { approveFor, findingFor, fixFor, inspectionFor, resultsFor, ROUTES } from "../../src/router.ts";
 import { C1, C3, crew, J1, job, jobsView, K1, M1, M2, message, respond, standIn, WALK } from "../unit/fixed-fakes.ts";
 import type { StandIn } from "../unit/fixed-fakes.ts";
@@ -92,7 +93,7 @@ for (const [name, viewport] of [
       await expect(first).toContainText("2.3 miles away");
       await expect(first).toContainText("License status CLEAR on the state list of Oct. 28th, 2026");
       await expect(first.getByRole("link", { name: copy.fixed.call })).toHaveAttribute("href", "tel:+12095550101");
-      await expect(first.getByRole("link", { name: draft.fixed.text })).toHaveAttribute("href", /^sms:/);
+      await expect(first.getByRole("button", { name: draft.fixed.text })).toBeVisible();
       await expect(first.getByRole("link", { name: copy.fixed.checkLicense })).toHaveAttribute("target", "_blank");
       expect(await flat(page)).toBe(0);
       await expectCentred(page.locator("main h1, main h2"));
@@ -191,6 +192,17 @@ for (const [name, viewport] of [
       await expect(none.getByText(draft.inspection.noRequired)).toBeVisible();
       await expect(none.getByText(WALK)).toHaveCount(0);
       expect(await flat(none)).toBe(0);
+    });
+
+    test("Open CAL FIRE Form fits the width, centred, and opens CAL FIRE's form in a new tab", async ({ page }) => {
+      await serve(page, standIn());
+      await page.goto(`/${inspectionFor(WALK)}`);
+      const form = page.getByRole("link", { name: inspectionWords.openForm });
+      await expect(form).toHaveAttribute("href", "https://survey123.arcgis.com/share/a15c7706b4114e20b39d2a26294338ed");
+      await expect(form).toHaveAttribute("target", "_blank");
+      await withinViewport(page, form, viewport.width);
+      await expectCentred(form);
+      expect(await flat(page)).toBe(0);
     });
 
     test("the loading line of the Fix, record and Approve screens fits the width and goes when the answer comes", async ({ page }) => {

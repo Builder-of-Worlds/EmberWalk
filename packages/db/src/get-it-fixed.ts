@@ -207,6 +207,9 @@ export const cardsForJob = async (db: D1Database, jobId: string): Promise<Map<st
   return new Map(results.map((r) => [r.crew_id, CrewCard.parse(JSON.parse(r.card))]));
 };
 
+export const addressOptedOut = async (db: D1Database, address: string): Promise<boolean> =>
+  (await db.prepare("SELECT 1 AS x FROM mail_optouts WHERE address = ?").bind(address).first()) !== null;
+
 export const optOutAddress = async (db: D1Database, address: string, at: string): Promise<void> => {
   await db
     .prepare("INSERT INTO mail_optouts (address, requested_at) VALUES (?, ?) ON CONFLICT DO NOTHING")
@@ -230,9 +233,9 @@ export const markFinding = async (db: D1Database, input: FindingMark): Promise<F
 
 export const historyFor = async (db: D1Database, visitorId: string): Promise<HistoryWalk[]> => {
   const { results: walks } = await db
-    .prepare("SELECT id, created_at, synthetic, state FROM walks WHERE visitor_id = ? ORDER BY created_at DESC, id")
+    .prepare("SELECT id, created_at, walk_day, synthetic, state FROM walks WHERE visitor_id = ? ORDER BY created_at DESC, id")
     .bind(visitorId)
-    .all<{ id: string; created_at: string; synthetic: number; state: string }>();
+    .all<{ id: string; created_at: string; walk_day: string | null; synthetic: number; state: string }>();
   const { results: marks } = await db
     .prepare(
       "SELECT k.*, f.concept, f.walk_id FROM finding_marks k JOIN findings f ON f.id = k.finding_id JOIN walks w ON w.id = f.walk_id WHERE w.visitor_id = ? ORDER BY k.marked_at, k.id",
@@ -241,7 +244,7 @@ export const historyFor = async (db: D1Database, visitorId: string): Promise<His
     .all<MarkRow>();
   return walks.map((w) => ({
     walkId: w.id,
-    walkedOn: w.created_at.slice(0, 10),
+    walkedOn: w.walk_day ?? w.created_at.slice(0, 10),
     synthetic: w.synthetic === 1,
     state: w.state,
     marks: marks.filter((m) => m.walk_id === w.id).map(toMark),

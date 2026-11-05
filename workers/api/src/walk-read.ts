@@ -9,16 +9,20 @@ import {
   partOfWalk,
   partsOf,
   tagsForWalk,
+  walkedDay,
   type WalkRecord,
 } from "@emberwalk/db";
-import { CoverageRecord, coverageKey, RULES } from "@emberwalk/rules";
+import { CoverageRecord, coverageKey, RULES, templateInstruction, unplacedOf } from "@emberwalk/rules";
+import { managesWalk, reachesThroughSession, shouldSignInAgain } from "./account.ts";
 import {
   type Clip,
   type ClipKind,
   type Concept,
+  type Corner,
   Fingerprint,
   type Finding,
   Id,
+  type Language,
   type MapPin,
   PIN_SIDES_CLOCKWISE,
   type ResultFinding,
@@ -28,8 +32,10 @@ import {
   SecondCheck,
   secondCheckKey,
   type Side,
+  SIDES,
   stillPath,
   type Tag,
+  tagCorner,
   tagSide,
   VISITOR_HEADER,
   WalkResultsResponse,
@@ -40,10 +46,11 @@ export const READ_PATH = /^\/api\/walks\/([^/]+)(?:\/(results)|\/(stills|preview
 
 type SecondChecks = Record<string, SecondCheck>;
 
-type Failure = "invalid_request" | "unknown_walk" | "not_found" | "method_not_allowed" | "walk_not_done" | "server_error";
+type Failure = "invalid_request" | "sign_in_again" | "unknown_walk" | "not_found" | "method_not_allowed" | "walk_not_done" | "server_error";
 
 const STATUS: Record<Failure, number> = {
   invalid_request: 400,
+  sign_in_again: 401,
   unknown_walk: 404,
   not_found: 404,
   method_not_allowed: 405,
@@ -53,6 +60,7 @@ const STATUS: Record<Failure, number> = {
 
 const MESSAGE: Record<Failure, string> = {
   invalid_request: "The request is not valid.",
+  sign_in_again: "Sign in again to see this walk.",
   unknown_walk: "That walk does not exist.",
   not_found: "That picture does not exist.",
   method_not_allowed: "Use GET.",
@@ -61,7 +69,7 @@ const MESSAGE: Record<Failure, string> = {
 };
 
 const fail = (code: Failure): Response =>
-  Response.json({ error: { code, message: MESSAGE[code] } }, { status: STATUS[code], ...(code === "method_not_allowed" ? { headers: { allow: "GET" } } : {}) });
+  Response.json({ error: { code: code === "sign_in_again" ? "unknown_walk" : code, message: MESSAGE[code] } }, { status: STATUS[code], ...(code === "method_not_allowed" ? { headers: { allow: "GET" } } : {}) });
 
 export class ReadRefused extends Error {
   constructor(detail: string) {
@@ -75,7 +83,9 @@ export const ownWalk = async (request: Request, db: D1Database, walkId: string):
   const visitor = request.headers.get(VISITOR_HEADER);
   if (visitor === null || !Fingerprint.safeParse(visitor).success) return "invalid_request";
   const walk = await getWalk(db, walkId);
-  return walk === null || walk.visitorId !== visitor ? "unknown_walk" : walk;
+  if (walk === null) return "unknown_walk";
+  if (walk.visitorId === visitor || (await reachesThroughSession(request, db, walk.visitorId)) || (await managesWalk(request, db, walkId))) return walk;
+  return (await shouldSignInAgain(request, db, walk.visitorId, visitor)) ? "sign_in_again" : "unknown_walk";
 };
 
 export const clipStart = (tags: Tag[], kind: ClipKind): number => {
@@ -95,28 +105,52 @@ const sourcesOf = (ruleIds: string[]): ResultSource[] => {
   return [...seen.values()];
 };
 
-type Extras = { previewed: Set<string>; checks: SecondChecks };
+export type Extras = { previewed: Set<string>; checks: SecondChecks; language: Language };
 
-const resultOf = (f: Finding, clips: Clip[], detections: Map<string, Detections>, tags: Tag[], extras: Extras): ResultFinding => {
+const instructionsOf = (f: Finding, language: Language): { en: string; es: string } => {
+  const rule = RULES.find((r) => r.id === f.ruleIds[0]);
+  if (rule === undefined) throw new ReadRefused(`rule ${f.ruleIds[0]} is not in the rule table`);
+  const inLanguage = (wanted: Language) => (wanted === language ? f.instruction : templateInstruction(rule, f.plantState, wanted));
+  return { en: inLanguage("en"), es: inLanguage("es") };
+};
+
+// Dry grass is one finding per band around the whole house, so it names every side a sighting of it fell on.
+const sidesOf = (f: Finding, clips: Clip[], detections: Map<string, Detections>, tags: Tag[]): Side[] => {
+  const seen = new Set<Side>();
+  for (const clip of clips)
+    for (const track of (detections.get(clip.id)?.tracks ?? []).filter((t) => f.trackIds.includes(t.id)))
+      for (const fr of track.frames) {
+        const t = clipStart(tags, clip.kind) + fr.frame / clip.fps;
+        const tag = tags.find((g) => g.kind === clip.kind && t >= g.startSeconds && t <= g.endSeconds);
+        const side = tag === undefined ? null : tagSide(tag);
+        if (side !== null) seen.add(side);
+      }
+  return SIDES.filter((s) => seen.has(s));
+};
+
+export const resultOf = (f: Finding, clips: Clip[], detections: Map<string, Detections>, tags: Tag[], extras: Extras): ResultFinding => {
   const clip = clips.find((c) => c.id === f.proofFrame.clipId);
   if (clip === undefined) throw new ReadRefused(`finding ${f.id} names a clip the walk does not have`);
   const tracks = detections.get(clip.id)?.tracks ?? [];
-  const track = f.trackIds.map((id) => tracks.find((t) => t.id === id)).find((t) => t !== undefined);
-  const frame = track?.frames.find((fr) => fr.frame === f.proofFrame.frame);
+  const onProof = tracks.filter((t) => f.trackIds.includes(t.id)).flatMap((t) => t.frames.filter((fr) => fr.frame === f.proofFrame.frame));
+  const frame = onProof.reduce<(typeof onProof)[number] | undefined>((best, fr) => (best === undefined || fr.confidence > best.confidence ? fr : best), undefined);
   if (frame === undefined) throw new ReadRefused(`finding ${f.id} has no box on its proof frame`);
   return {
     id: f.id,
     concept: f.concept,
     band: f.band,
-    distanceFeet: f.distanceFeet,
+    distanceFeet: f.contact === "yes" ? { low: 0, high: 0 } : f.distanceFeet,
     label: f.label,
     instruction: f.instruction,
+    instructions: instructionsOf(f, extras.language),
+    ...(RULES.find((r) => r.id === f.ruleIds[0])?.advice === true ? { advice: true as const } : {}),
     sources: sourcesOf(f.ruleIds),
     confidence: frame.confidence,
     proof: { still: stillPath(f.walkId, f.id), frame: f.proofFrame.frame, seconds: clipStart(tags, clip.kind) + f.proofFrame.frame / clip.fps, marker: frame.box },
     voiceNote: f.voiceNote,
     ...(extras.previewed.has(f.id) ? { preview: previewPath(f.walkId, f.id) } : {}),
     ...(extras.checks[f.id] === undefined ? {} : { secondCheck: extras.checks[f.id] }),
+    ...(f.concept === "dry_grass" ? { sides: sidesOf(f, clips, detections, tags) } : {}),
   };
 };
 
@@ -138,10 +172,29 @@ const clockwise = (loop: SidedTag[]): boolean => {
   return turn >= 0 && PIN_SIDES_CLOCKWISE[(PIN_SIDES_CLOCKWISE.indexOf(loop[turn - 1]!.side) + 1) % PIN_SIDES_CLOCKWISE.length] === loop[turn]!.side;
 };
 
-const pinOf = (f: ResultFinding, kind: ClipKind, loop: SidedTag[], forward: boolean): MapPin | null => {
+const CORNER_SPOTS: Record<Corner, { side: Side; position: number }> = {
+  front_right: { side: "front", position: 0 },
+  front_left: { side: "left", position: 0 },
+  back_left: { side: "back", position: 0 },
+  back_right: { side: "right", position: 0 },
+};
+
+const panSpot = (at: number, tags: Tag[]): { side: Side; position: number } | null => {
+  const pans = tags.filter((tag) => tag.kind === "pan").sort((a, b) => a.startSeconds - b.startSeconds);
+  const own = pans.find((tag, i) => at >= tag.startSeconds && (at < tag.endSeconds || (i === pans.length - 1 && at === tag.endSeconds)));
+  if (own === undefined) return null;
+  const corner = tagCorner(own);
+  return corner === null ? null : CORNER_SPOTS[corner];
+};
+
+const pinOf = (f: ResultFinding, kind: ClipKind, tags: Tag[], loop: SidedTag[], forward: boolean): MapPin | null => {
   const feet = f.distanceFeet.low;
-  if (kind !== "loop" || feet >= PIN_FEET) return null;
+  if (feet >= PIN_FEET) return null;
   const at = f.proof.seconds;
+  if (kind === "pan") {
+    const spot = panSpot(at, tags);
+    return spot === null ? null : { findingId: f.id, band: f.band, feet, ...spot };
+  }
   const own = loop.find(({ tag }, i) => at >= tag.startSeconds && (at < tag.endSeconds || (i === loop.length - 1 && at === tag.endSeconds)));
   if (own === undefined) return null;
   const span = own.tag.endSeconds - own.tag.startSeconds;
@@ -168,13 +221,14 @@ const checkedOf = async (db: D1Database, media: R2Bucket, walkId: string): Promi
   const tags = await tagsForWalk(db, walkId);
   const detections = new Map(await Promise.all(clips.map(async (c) => [c.id, await detectionsForClip(db, c.id)] as const)));
   const notChecked = [...detections.values()].flatMap((d) => d.runs.filter((r) => r.outcome === "not_checked").map((r) => r.concept));
-  const extras = { previewed: await previewedOf(media, walkId, findings), checks: await secondChecksOf(media, walkId) };
+  const language = (await getWalk(db, walkId))?.language ?? "en";
+  const extras = { previewed: await previewedOf(media, walkId, findings), checks: await secondChecksOf(media, walkId), language };
   const results = findings.map((f) => resultOf(f, clips, detections, tags, extras));
   const loop = sidedLoop(tags);
   const forward = clockwise(loop);
   const pins = results.flatMap((r, i) => {
     const kind = clips.find((c) => c.id === findings[i]!.proofFrame.clipId)!.kind;
-    return pinOf(r, kind, loop, forward) ?? [];
+    return pinOf(r, kind, tags, loop, forward) ?? [];
   });
   return { findings: results, notChecked, pins };
 };
@@ -196,16 +250,22 @@ export const resultsFor = async (db: D1Database, media: R2Bucket, walk: WalkReco
   const record = await coverageRecordOf(media, walk.id);
   const gaps = [...own, ...partGaps.flat()].sort(byWalkingOrder);
   const notChecked = [...new Set(checked.flatMap((c) => c.notChecked))];
+  const unplaced = (await Promise.all([walk.id, ...parts.map((p) => p.walkId)].map((id) => unplacedOf(media, id))))
+    .flat()
+    .filter((u) => u.why === "not_measured")
+    .map(({ concept, side }) => ({ concept, side }))
+    .filter((u, i, all) => all.findIndex((v) => v.concept === u.concept && v.side === u.side) === i);
   return WalkResultsResponse.parse({
     walkId: walk.id,
-    walkedOn: walk.createdAt.slice(0, 10),
+    walkedOn: walkedDay(walk),
     synthetic: walk.synthetic,
-    coverage: record?.coverage === "checked" && gaps.length === 0 && notChecked.length === 0 ? "checked" : "not_checked",
+    coverage: record?.coverage === "checked" && gaps.length === 0 && notChecked.length === 0 && unplaced.every((u) => u.side === null) ? "checked" : "not_checked",
     loop: record?.loop ?? "not_checked",
     gaps,
     parts,
     findings: checked.flatMap((c) => c.findings),
     notChecked,
+    unplaced,
     pins: checked.flatMap((c) => c.pins),
   });
 };

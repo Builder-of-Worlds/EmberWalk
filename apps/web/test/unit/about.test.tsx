@@ -1,10 +1,10 @@
 import { DEFAULT_LIMITS, DELETE_EVERYTHING_PATH, limitsWith, VISITOR_HEADER } from "@emberwalk/shared";
 import type { DeleteEverythingResponse } from "@emberwalk/shared";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Answer } from "../../src/api.ts";
 import { App } from "../../src/App.tsx";
 import type { Deps } from "../../src/deps.ts";
-import { DRAFT_WORDS_KEY, deleteEverythingWords as words } from "../../src/draft-words.ts";
+import { accountLeftBehind, closePortfolio, deleteEverythingWords as words, openPortfolio } from "../../src/draft-words.ts";
 import { eraseApi } from "../../src/erase-api.ts";
 import type { Source } from "../../src/results.ts";
 import { ROUTES } from "../../src/router.ts";
@@ -23,7 +23,7 @@ const go = (hash: string) =>
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   });
 
-const buttons = (host: HTMLElement) => [...host.querySelectorAll("button")].map((b) => b.textContent);
+const buttons = (host: HTMLElement) => [...host.querySelectorAll("main button")].map((b) => b.textContent);
 
 const tap = (host: HTMLElement, label: string) =>
   settle(() => {
@@ -78,20 +78,15 @@ const confirmErase = async (host: HTMLElement) => {
   await tap(host, words.yes);
 };
 
-beforeEach(() => {
-  window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
-});
-
 afterEach(() => {
   vi.unstubAllEnvs();
-  window.localStorage.removeItem(DRAFT_WORDS_KEY);
   window.location.hash = "";
 });
 
 describe("the Delete Everything flag", () => {
   it("comes from the app's limits, so the build's own setting alone never shows Delete Everything", async () => {
     vi.stubEnv("VITE_EMBERWALK_LIMITS", FLAG_ON);
-    const { view, calls } = await openAbout(answering(), { limits: DEFAULT_LIMITS });
+    const { view, calls } = await openAbout(answering(), { limits: { ...DEFAULT_LIMITS, deleteEverythingOn: false } });
     expect(view.text()).not.toContain(words.heading);
     expect(buttons(view.host)).toEqual([]);
     expect(calls).toEqual([]);
@@ -106,7 +101,7 @@ describe("the Delete Everything flag", () => {
     expect(view.text()).not.toContain(words.heading);
     expect(view.text()).not.toContain(words.kept);
     expect(buttons(view.host)).toEqual([]);
-    await go(ROUTES.home);
+    await go(ROUTES.settings);
     expect(entry(view.host)?.getAttribute("href")).toBe(ROUTES.about);
     expect(calls).toEqual([]);
     await view.unmount();
@@ -121,18 +116,11 @@ describe("the Delete Everything flag", () => {
     await view.unmount();
   });
 
-  it("keeps the entry and the screen away while the draft words are off", async () => {
-    window.localStorage.removeItem(DRAFT_WORDS_KEY);
-    const { view } = await openAbout();
-    expect(view.text()).not.toContain(words.heading);
-    await go(ROUTES.home);
-    expect(entry(view.host)).toBeNull();
-    await view.unmount();
-  });
-
-  it("shows the About and Privacy entry on Home when both are on, and it opens the screen", async () => {
+  it("shows the About and Privacy entry in Settings, and not twice on a first open Home, and it opens the screen", async () => {
     const view = await render(<App deps={testDeps({ limits: ON })} />);
     await go(ROUTES.home);
+    expect(entry(view.host)).toBeNull();
+    await go(ROUTES.settings);
     expect(entry(view.host)?.getAttribute("href")).toBe(ROUTES.about);
     await go(ROUTES.about);
     expect(view.host.querySelector("h1")?.textContent).toBe(words.title);
@@ -142,9 +130,11 @@ describe("the Delete Everything flag", () => {
 });
 
 describe("what the About and Privacy screen says is kept", () => {
-  it("says, before anything is erased, that only an unlinked record of each check's cost is kept", async () => {
+  it("says, before anything is erased, what is kept: plan and payment records, the lists, and an unlinked record of each check's cost", async () => {
     const { view } = await openAbout();
-    expect(words.kept).toBe("After Delete Everything, we keep only a record of what each check cost, with no link to you or your walk.");
+    expect(words.kept).toBe(
+      "After Delete Everything, we keep your plan and payment records, the sign up list, the list of crews who asked not to be emailed, and a record of what each check cost, with no link to you or your walk.",
+    );
     expect(view.text()).toContain(words.kept);
     await view.unmount();
   });
@@ -184,15 +174,6 @@ describe("what the About and Privacy screen says about the check", () => {
     }
   });
 
-  it("shows neither line, and no entry on Home, while the draft words are off", async () => {
-    window.localStorage.removeItem(DRAFT_WORDS_KEY);
-    const { view } = await openAbout(undefined, { results: sampleReadOn("2026-10-25") });
-    expect(rulesLine(view.host)).toBeNull();
-    expect(view.text()).not.toContain(words.notInspection);
-    await go(ROUTES.home);
-    expect(entry(view.host)).toBeNull();
-    await view.unmount();
-  });
 });
 
 describe("the About and Privacy screen", () => {
@@ -275,6 +256,53 @@ describe("the About and Privacy screen", () => {
     await view.unmount();
   });
 
+  it("says to sign in first when the server refuses a signed out account, and clears nothing", async () => {
+    const refusing = answering();
+    const { view, forgot } = await openAbout(refusing, { erase: { everything: async () => ({ code: "sign_in_first" as const }) } });
+    await confirmErase(view.host);
+    expect(status(view.host)).toBe(words.signInFirst);
+    expect(forgot).toEqual([]);
+    await view.unmount();
+  });
+
+  it("after Sign Out on this phone, erases what the phone holds and says plainly the account's data stays, with the way to it", async () => {
+    closePortfolio();
+    const { view, calls, forgot } = await openAbout(answering({ value: { walks: 0, left: 0 } }));
+    await confirmErase(view.host);
+    expect(status(view.host)).toBe(words.doneAccountKept);
+    expect(status(view.host)).not.toBe(words.done);
+    expect(calls).toHaveLength(1);
+    expect(forgot).toHaveLength(1);
+    expect(view.host.querySelector(`a[href="${ROUTES.signIn}"]`)).not.toBeNull();
+    openPortfolio();
+    await view.unmount();
+  });
+
+  it("when the server says the account stayed, tells the phone so, and remembers it after the phone's id is renewed", async () => {
+    openPortfolio();
+    const { view, forgot } = await openAbout(answering({ value: { walks: 1, left: 0, accountKept: true } as DeleteEverythingResponse }));
+    await confirmErase(view.host);
+    expect(status(view.host)).toBe(words.doneAccountKept);
+    expect(forgot).toHaveLength(1);
+    expect(accountLeftBehind()).toBe(true);
+    openPortfolio();
+    await view.unmount();
+  });
+
+  it("says nothing of an account on a phone with none", async () => {
+    openPortfolio();
+    const { view } = await openAbout(answering({ value: { walks: 1, left: 0 } }));
+    await confirmErase(view.host);
+    expect(status(view.host)).toBe(words.done);
+    await view.unmount();
+  });
+
+  it("reads the server's account line through the real client", async () => {
+    const send = async () => Response.json({ walks: 1, left: 0, accountKept: true });
+    const answer = await eraseApi("http://localhost", send, () => "a".repeat(64)).everything();
+    expect(answer).toEqual({ value: { walks: 1, left: 0, accountKept: true } });
+  });
+
   it("says a walk is still being sent or checked when the server refuses with conflict, and clears nothing", async () => {
     const { view, forgot } = await openAbout(answering({ code: "conflict" }, { value: { walks: 1, left: 0 } }));
     await confirmErase(view.host);
@@ -324,6 +352,11 @@ describe("the erase call", () => {
     expect(new URL(sent[0]!.url).pathname).toBe(DELETE_EVERYTHING_PATH);
     expect(sent[0]!.headers.get(VISITOR_HEADER)).toBe(VISITOR);
     expect(await sent[0]!.json()).toEqual({ visitorId: VISITOR });
+  });
+
+  it("reads a 401 as sign in first", async () => {
+    const api = eraseApi("https://emberwalk.test", async () => Response.json({ error: { code: "sign_in_first", message: "x" } }, { status: 401 }), () => VISITOR);
+    expect(await api.everything()).toEqual({ code: "sign_in_first" });
   });
 
   it("reads a refusal as its code and a wrong answer as a server error", async () => {

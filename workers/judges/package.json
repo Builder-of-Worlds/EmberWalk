@@ -1,0 +1,14 @@
+{
+  "name": "@emberwalk/judges",
+  "private": true,
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "wrangler": "4.153.0"
+  }
+}

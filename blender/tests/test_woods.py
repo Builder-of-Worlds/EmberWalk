@@ -243,13 +243,25 @@ class Assets(unittest.TestCase):
 
 
 class Answer(unittest.TestCase):
-    def test_the_yard_block_is_optional_and_other_houses_have_none(self):
+    def test_the_mobile_and_apartment_yards_are_gravel_with_no_shrubs_and_no_hazard_in_them(self):
         for name in ("mobile-before", "apartment-before"):
             spec = spec_of(name)
-            self.assertEqual(yard.bed_polygon(spec), [])
-            self.assertEqual(yard.shrubs(spec), [])
-            self.assertEqual(yard.walk_polygon(spec), [])
-            self.assertFalse(yard.contains(spec, 0, 0))
+            self.assertGreaterEqual(len(yard.bed_polygon(spec)), 3, name)
+            self.assertEqual(yard.shrubs(spec), [], name)
+            after = dict(spec, state="after")
+            for state in (spec, after):
+                self.assertEqual(yard.bed_material(state), "polyhaven:gravel_ground_01", name)
+            for key, b in route.hazard_boxes(spec).items():
+                if b[2] > 12:
+                    continue
+                for x in range(int(b[0]), int(b[3]) + 1, 6):
+                    for y in range(int(b[1]), int(b[4]) + 1, 6):
+                        self.assertFalse(yard.contains(spec, x, y), (name, key, x, y))
+        self.assertEqual(yard.walk_polygon(spec_of("apartment-before")), [])
+        self.assertEqual(len(yard.walk_polygon(spec_of("mobile-before"))), 4)
+
+    def test_the_yard_is_optional(self):
+        self.assertFalse(yard.contains({"look": {}}, 0, 0))
 
 
 if __name__ == "__main__":

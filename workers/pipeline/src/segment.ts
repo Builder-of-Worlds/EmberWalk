@@ -5,9 +5,10 @@ import type { Clip, Track } from "@emberwalk/shared";
 import { type PendingTally, settleFrames, settleUnseen } from "./catalog-step.ts";
 import type { Deps } from "./deps.ts";
 import { type Outcome, pass, refuse } from "./outcome.ts";
-import { pointAndTrack } from "./point.ts";
+import { pointAndTrack, rareLooksOf } from "./point.ts";
 import { detectionsKey } from "./storage.ts";
 import { isWholeStepRefusal, retrying, whyNotChecked } from "./tracks.ts";
+import { stuck } from "./workflow.ts";
 
 const UPLOAD_EXPIRY_SECONDS = 3600;
 
@@ -46,7 +47,7 @@ export const dropUpload = async (deps: Deps, fileId: string): Promise<void> => {
 export const refusalOutcome = (error: MetaRefused): Outcome<never> =>
   error.reason === "daily_cap_reached"
     ? refuse("spend_limit", "EmberWalk has reached today's limit for live walks. Please try again tomorrow.")
-    : refuse("real_footage_not_allowed", "Real footage is not accepted yet.");
+    : { ok: false, failure: stuck("segment") };
 
 export const askSam = async (deps: Deps, walkId: string, clip: Clip, fileId: string, phrase: string, content: "synthetic" | "real") => {
   try {
@@ -67,11 +68,12 @@ export const segmentClip = async (deps: Deps, walkId: string, clip: Clip, fileId
   const walk = await getWalk(deps.db, walkId);
   if (walk === null) return refuse("walk_missing", "This walk no longer exists.");
   const content = walk.synthetic ? "synthetic" : "real";
-  const asked = rowsForClip(clip.kind);
+  const rareLooks = rareLooksOf(deps);
+  const asked = rowsForClip(clip.kind, rareLooks);
   let results;
   let pointed;
   try {
-    await checkWalkCost(deps.meta(), walkCost([clip]).nano);
+    await checkWalkCost(deps.meta(), walkCost([clip], rareLooks).nano);
     [results, pointed] = await Promise.all([
       Promise.all(asked.filter((row) => row.point === null).map((row) => runRow(deps, walkId, clip, fileId, row, content))),
       pointAndTrack(deps, walkId, clip, fileId, content),

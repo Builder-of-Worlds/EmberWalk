@@ -42,6 +42,7 @@ const FileRule = z.strictObject({
   statute: Tag.nullable(),
   when: When,
   unsure: Rule.shape.plain.nullable(),
+  advice: z.boolean().optional(),
 });
 
 type Shape = {
@@ -121,6 +122,7 @@ export function readState(input: unknown): LoadedState {
     statute: r.statute,
     when: r.when,
     unsure: r.unsure,
+    advice: r.advice === true,
   }));
   return { state, format, bands, jurisdictions, rows };
 }

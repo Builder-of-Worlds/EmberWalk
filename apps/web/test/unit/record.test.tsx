@@ -8,6 +8,7 @@ import { liveUpload } from "../../src/live-upload.ts";
 import { ROUTES } from "../../src/router.ts";
 import { Record } from "../../src/screens/Record.tsx";
 import { Send } from "../../src/screens/Send.tsx";
+import { GUIDED_ORDER } from "../../src/parts.ts";
 import { FALLBACK_RULES, walkRequest } from "../../src/sender.ts";
 import type { Take } from "../../src/take-store.ts";
 import { deniedError, fakeClock, fakeMotion, FakeRecorder, grantedMedia, heldLocate, memoryPrefs, memoryStorage, testDeps } from "./fakes.ts";
@@ -357,7 +358,7 @@ describe("Get ready and recording", () => {
     expect(enabled(view.host, copy.record.panYard)).toBe(false);
     await click(view.host, copy.record.stop);
     await until(() => window.location.hash === ROUTES.send);
-    expect((await (await deps.takes()).latest())?.marks.pans?.map((pan) => pan.side)).toEqual(["front", "right", "back", "left"]);
+    expect((await (await deps.takes()).latest())?.marks.pans?.map((pan) => pan.side)).toEqual(["front", "left", "back", "right"]);
     await view.unmount();
   });
 
@@ -654,6 +655,67 @@ describe("Send screen", () => {
     const view = await show(testDeps(), "send");
     await until(() => view.text().includes(copy.send.none));
     expect(view.host.querySelector(`a[href="${ROUTES.record}"]`)?.textContent).toBe(copy.send.recordWalk);
+    await view.unmount();
+  });
+});
+
+describe("reading the walk steps aloud", () => {
+  const walkWith = async (aloud: boolean | null, sound = false) => {
+    const said: string[] = [];
+    const prefs = memoryPrefs();
+    if (aloud !== null) prefs.setReadsStepsAloud(aloud);
+    const deps = testDeps({ prefs, voice: { say: async (text) => (said.push(text), "phone"), stop: () => undefined } });
+    const view = await startWalk(deps);
+    if (!sound) await click(view.host, copy.record.soundOff);
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("video") !== null);
+    await click(view.host, draft.guided.next);
+    return { view, said };
+  };
+
+  it("says each step as it shows, starting on a phone that never chose", async () => {
+    const { view, said } = await walkWith(null);
+    expect(said).toEqual([draft.guided.now(GUIDED_ORDER[0]!), draft.guided.now(GUIDED_ORDER[1]!)]);
+    await view.unmount();
+  });
+
+  it("says nothing while the microphone records, so the walk's sound holds only the person's own words", async () => {
+    const { view, said } = await walkWith(true, true);
+    expect(said).toEqual([]);
+    await view.unmount();
+  });
+
+  it("says nothing once Settings turned it off", async () => {
+    const { view, said } = await walkWith(false);
+    expect(said).toEqual([]);
+    await view.unmount();
+  });
+
+  it("starts saying the steps when the microphone is turned off part way through, from the step on screen", async () => {
+    const { view, said } = await walkWith(true, true);
+    expect(said).toEqual([]);
+    await click(view.host, copy.record.soundOff);
+    expect(said).toEqual([draft.guided.now(GUIDED_ORDER[1]!)]);
+    await click(view.host, draft.guided.next);
+    expect(said).toEqual([draft.guided.now(GUIDED_ORDER[1]!), draft.guided.now(GUIDED_ORDER[2]!)]);
+    await view.unmount();
+  });
+
+  it("says nothing on a walk of one side or corner", async () => {
+    const said: string[] = [];
+    const prefs = memoryPrefs();
+    prefs.setReadsStepsAloud(true);
+    const deps = testDeps({ prefs, voice: { say: async (text) => (said.push(text), "phone"), stop: () => undefined } });
+    const view = await render(
+      <DepsContext.Provider value={deps}>
+        <Record part={{ walkId: LIVE_WALK, side: "back_left" }} />
+      </DepsContext.Provider>,
+    );
+    await until(() => view.text().includes(copy.record.start));
+    await click(view.host, copy.record.soundOff);
+    await click(view.host, copy.record.start);
+    await until(() => view.host.querySelector("video") !== null);
+    expect(said).toEqual([]);
     await view.unmount();
   });
 });

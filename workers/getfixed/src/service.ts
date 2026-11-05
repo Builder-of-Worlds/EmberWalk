@@ -28,6 +28,10 @@ export class GetFixed extends WorkerEntrypoint<Env> {
     return act.approve(this.deps(), messageId, visitorId);
   }
 
+  textDraft(jobId: string, crewId: string) {
+    return act.textDraft(this.deps(), jobId, crewId);
+  }
+
   sentByPhone(messageId: string) {
     return act.sentByPhone(this.deps(), messageId);
   }
@@ -42,6 +46,22 @@ export class GetFixed extends WorkerEntrypoint<Env> {
 
   inspection(walkId: string) {
     return act.inspection(this.deps(), walkId);
+  }
+
+  approveInspection(messageId: string, visitorId: string) {
+    return act.approveInspection(this.deps(), messageId, visitorId);
+  }
+
+  crewSignup(input: unknown) {
+    return act.crewSignup(this.deps(), input);
+  }
+
+  crewConfirm(token: string) {
+    return act.crewConfirm(this.deps(), token);
+  }
+
+  addCrew(jobId: string, input: unknown) {
+    return act.addCrew(this.deps(), jobId, input);
   }
 
   optOut(token: string) {

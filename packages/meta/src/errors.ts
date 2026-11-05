@@ -1,5 +1,4 @@
 export type RefusalReason =
-  | "real_content_on_free_credits"
   | "daily_cap_reached"
   | "non_standard_model"
   | "missing_upload_expiry"

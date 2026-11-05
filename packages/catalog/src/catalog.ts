@@ -1,4 +1,4 @@
-import { type PhraseConcept, POINT_TARGETS, SAM_PHRASES, samPhrase } from "@emberwalk/meta";
+import { type PhraseConcept, POINT_TARGETS, RARE_POINT_TARGETS, SAM_PHRASES, samPhrase } from "@emberwalk/meta";
 import { RULES } from "@emberwalk/rules";
 import { type Band, LOOP_CONCEPTS, PAN_CONCEPTS } from "@emberwalk/shared";
 import { checkCatalog, type CatalogRow, type CatalogSource } from "./check.ts";
@@ -88,7 +88,10 @@ export const isPending = (row: CatalogRow): boolean => row.pending !== undefined
 export const samPhraseOf = (row: CatalogRow): string =>
   Object.hasOwn(SAM_PHRASES, row.concept) ? samPhrase(row.concept as PhraseConcept) : (row.phrases[0] ?? row.concept.replaceAll("_", " "));
 
-export const rowsForClip = (kind: "loop" | "pan"): CatalogRow[] => {
+export const rowsForClip = (kind: "loop" | "pan", rareLooks = 0): CatalogRow[] => {
   const listed: readonly string[] = kind === "loop" ? LOOP_CONCEPTS : PAN_CONCEPTS;
-  return CATALOG.filter((row) => isPending(row) || listed.includes(row.concept));
+  return CATALOG.filter((row) => isPending(row) || listed.includes(row.concept)).map((row) => {
+    const target = rareLooks > 0 && Object.hasOwn(RARE_POINT_TARGETS, row.concept) ? RARE_POINT_TARGETS[row.concept] : undefined;
+    return target === undefined ? row : { ...row, point: target, looks: rareLooks };
+  });
 };

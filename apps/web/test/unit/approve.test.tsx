@@ -180,7 +180,7 @@ describe("Approve, a text", () => {
     await view.unmount();
   });
 
-  it("offers Open the Text for a text that was approved earlier, without approving again", async () => {
+  it("offers Open the Text for a text that was approved earlier, fetching its link from the server", async () => {
     const earlier = message(M2, C3, { channel: "text", subject: null, body: TEXT.body, status: "approved", photos: [photo(1)] });
     const { phone, shared } = fakePhone({ canShareFiles: () => true });
     const view = await opened(M2, { phone }, state([earlier]));
@@ -188,7 +188,7 @@ describe("Approve, a text", () => {
     await tap(view.host, draft.approve.openText);
     await until(() => view.text().includes(draft.approve.sentPhone));
     expect(shared).toHaveLength(1);
-    expect(callsTo(view.state, "POST", `/api/messages/${M2}/approve`)).toHaveLength(0);
+    expect(callsTo(view.state, "POST", `/api/messages/${M2}/approve`)).toHaveLength(1);
     expect(callsTo(view.state, "POST", `/api/messages/${M2}/sent-by-phone`)).toHaveLength(1);
     await view.unmount();
   });

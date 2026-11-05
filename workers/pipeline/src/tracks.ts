@@ -6,7 +6,7 @@ import { maskKey } from "./storage.ts";
 const TRIES = 3;
 const MAX_WAIT_MS = 30_000;
 
-export const WHOLE_STEP_REFUSALS = new Set(["daily_cap_reached", "real_content_on_free_credits"]);
+export const WHOLE_STEP_REFUSALS = new Set(["daily_cap_reached"]);
 
 const retryable = (error: unknown): error is MetaHttpError =>
   error instanceof MetaHttpError && (error.status === 429 || error.status >= 500);

@@ -27,6 +27,15 @@ export type Presign = {
   service: string;
   now: Date;
   expiresSeconds: number;
+  devHttp?: boolean;
+};
+
+const REHEARSAL_HOST = /^(127\.0\.0\.1|localhost|host\.docker\.internal):\d{1,5}$/;
+
+const schemeOf = (input: Presign): string => {
+  if (input.devHttp !== true) return "https";
+  if (!REHEARSAL_HOST.test(input.host)) throw new Error(`http links are signed only for a local rehearsal host, not ${input.host}`);
+  return "http";
 };
 
 const stamp = (now: Date): string => now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
@@ -68,5 +77,5 @@ export const presign = async (input: Presign): Promise<string> => {
   for (const part of [input.region, input.service, "aws4_request"]) key = await hmac(key, part);
   const signature = hex(await hmac(key, toSign));
 
-  return `https://${input.host}${encodePath(input.path)}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+  return `${schemeOf(input)}://${input.host}${encodePath(input.path)}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 };

@@ -1,10 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const FRAME_HEIGHT = 720;
+
+export const rendersRoot = (): string => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: here }).toString().trim();
+  return path.join(path.dirname(path.dirname(common)), "emberwalk-renders");
+};
 
 export const frameDataUri = (video: string, seconds: number, height = FRAME_HEIGHT): string => {
   if (!Number.isFinite(seconds) || seconds < 0) throw new TypeError("a frame second is a number from 0");
@@ -26,7 +32,7 @@ export const frameDataUri = (video: string, seconds: number, height = FRAME_HEIG
 
 export const syntheticWalk = (yardFolder: string, yard: string): string => {
   const info = JSON.parse(readFileSync(path.join(yardFolder, "render.json"), "utf8")) as { synthetic: boolean; file: string; sha256: string };
-  const root = process.env["EMBERWALK_RENDERS"] ?? path.join(homedir(), "emberwalk-renders");
+  const root = process.env["EMBERWALK_RENDERS"] ?? rendersRoot();
   const file = path.join(root, info.file);
   const sha = createHash("sha256").update(readFileSync(file)).digest("hex");
   if (!info.synthetic || sha !== info.sha256) throw new Error(`${file} is not the synthetic render of ${yard}`);

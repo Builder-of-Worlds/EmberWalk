@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Id, Side, SIDES, Timestamp, type Concept, type Gap, type MotionSample } from "@emberwalk/shared";
+import { Concept as ConceptName, Id, Side, SIDES, Timestamp, type Concept, type Gap, type MotionSample } from "@emberwalk/shared";
 import { EDGE_MARGIN, MIN_CONFIDENCE, MIN_FRAMES } from "./observe.ts";
 
 export const SIDE_GAP_KINDS = ["missing", "dark", "first_five_feet"] as const;
@@ -8,6 +8,19 @@ export const WALK_GAP_KINDS = ["loop_open", "pans_missing"] as const;
 export const HORIZON_TILT_DEGREES = 10;
 
 export const coverageKey = (walkId: string): string => `coverage/${walkId}.json`;
+
+export const unplacedKey = (walkId: string): string => `coverage/${walkId}-unplaced.json`;
+
+// beyond_house: a tall thing seen only past the house, no gap in the walk; not_measured: a thing on the ground whose distance the walk could not give.
+export const Unplaced = z.strictObject({ concept: ConceptName, side: Side.nullable(), why: z.enum(["beyond_house", "not_measured"]) });
+export type Unplaced = z.infer<typeof Unplaced>;
+
+const StoredUnplaced = z.array(z.union([Unplaced, ConceptName.transform((concept): Unplaced => ({ concept, side: null, why: "beyond_house" }))]));
+
+export const unplacedOf = async (bucket: { get(key: string): Promise<{ json(): Promise<unknown> } | null> }, walkId: string): Promise<Unplaced[]> => {
+  const stored = await bucket.get(unplacedKey(walkId));
+  return stored === null ? [] : StoredUnplaced.parse(await stored.json());
+};
 
 export const gapHint = (kind: Gap["kind"], samples: readonly MotionSample[]): Gap["hint"] => {
   if (kind === "missing") return "walk_side";

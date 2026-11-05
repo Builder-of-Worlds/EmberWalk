@@ -1,4 +1,4 @@
-export const SETTLED_HOME = ["EmberWalk", "Walk My House", "See a Sample House", "Defensible Space Record", "Your Walks", "Send My Walk", "See Progress"];
+export const SETTLED_HOME = ["EmberWalk", "Walk My House", "See a Sample House", "Defensible Space Record", "About and Privacy", "Sign In", "Your Walks", "Send My Walk", "See Progress"];
 
 export const SETTLED_HOW = [
   "How Your Walk Works",
@@ -15,7 +15,7 @@ export const SETTLED_LEAVES = [
   "What Leaves Your Phone",
   "Sent: your walk video, and its sound if sound was on. It goes to EmberWalk's storage and to Meta's AI, which looks for what needs clearing.",
   "Never sent: your name, your address or your contacts.",
-  "Location: used on your phone to find your fire rules and help nearby. To show the aerial photo, the map point of your house is sent to Esri, the map provider. Your address is never sent.",
+  "Location: read once on your phone to find your fire rules. Only the rule area is kept and sent, never your coordinates. Your address is never sent.",
   "Meta does not use your walk to train its AI. EmberWalk sets your upload at Meta to delete itself within an hour and asks Meta not to save its answers.",
   "Send My Walk",
   "Not Now",
@@ -60,6 +60,8 @@ export const SETTLED_RESULTS = [
   "Inside 5 feet: nothing found.",
   "Inside 5 feet: 1 thing to clear.",
   "Inside 5 feet: 2 things to clear.",
+  "Close to the house: 1 thing to clear.",
+  "Close to the house: 2 things to clear.",
   "From 5 to 30 feet: nothing found.",
   "From 5 to 30 feet: 1 thing to clear.",
   "From 5 to 30 feet: 2 things to clear.",
@@ -91,7 +93,7 @@ export const SETTLED_NOT_CHECKED = {
   wood_pile: "Not checked on this walk: wood piles.",
 } as const;
 
-export const SETTLED_FINDING =["More", "Where This Comes From", "This Isn't Right", "Removed from your list.", "Undo"];
+export const SETTLED_FINDING = ["More", "Where This Comes From", "This Isn't Right", "Removed from your list.", "Undo", "Hear It", "Help Near You"];
 
 export const SETTLED_STATUS = ["Needs Fixing", "Fix Planned", "Done", "Rechecked", "Not rechecked yet", "Add a Note (optional)", "Save"];
 
@@ -119,9 +121,10 @@ export const NEVER_LABELLED = /synthetic/i;
 
 export const NEVER_SAID = ["we missed", "passed", "certified"];
 
-export const OFF_SCREEN =["English · Español", "Español"];
+export const OFF_SCREEN: string[] = [];
 
 export const shownLines = (host: HTMLElement): string[] =>
   [...host.querySelectorAll("h1, h2, p, li > span, li:not(:has(*)), a, button")]
+    .filter((el) => el.closest(".language, .top, .tabs") === null)
     .map((el) => el.textContent?.trim() ?? "")
     .filter((text) => text !== "");

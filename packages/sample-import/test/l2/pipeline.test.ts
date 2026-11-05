@@ -155,16 +155,16 @@ describe("steps 1 to 3 on an imported synthetic render", () => {
     expect(harness.clipped.map((c) => [c.start, c.end])).toEqual([[0, measured.duration_s]]);
   });
 
-  it("refuses a walk that is not synthetic at step 1 on free credits, before any video work, and sends nothing to Meta", async () => {
+  it("runs a walk that is not synthetic on free credits through to done, and sends it to Meta", async () => {
     const walkId = await imported();
     await env.DB.prepare("UPDATE walks SET synthetic = 0 WHERE id = ?").bind(walkId).run();
 
     await using instance = await runWorkflow(walkId);
 
-    expect(await instance.getOutput()).toMatchObject({ status: "failed", failure: { code: "real_footage_not_allowed" } });
-    expect(await getWalk(env.DB, walkId)).toMatchObject({ synthetic: false, state: { name: "failed", step: "prepare" } });
-    expect(harness.clipped).toEqual([]);
-    expect(harness.requests).toEqual([]);
-    expect(await spentNano()).toBe(0);
+    expect(await instance.getOutput()).toEqual({ status: "done" });
+    expect(await getWalk(env.DB, walkId)).toMatchObject({ synthetic: false, state: { name: "done" } });
+    expect(harness.clipped.length).toBeGreaterThan(0);
+    expect(samRequests()).toHaveLength(MODEL_CALLS);
+    expect(await spentNano()).toBeGreaterThan(0);
   });
 });

@@ -15,6 +15,18 @@
     "axes": {"type": "string", "minLength": 10},
     "visible_rule": {"type": "string", "minLength": 10},
     "box_source": {"type": "string", "minLength": 10},
+    "not_measured_sides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["side", "blocked_by"],
+        "properties": {
+          "side": {"type": "string", "pattern": "^[a-z]+(_[a-z]+)*$"},
+          "blocked_by": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}}
+        }
+      }
+    },
     "footprint": {
       "type": "array",
       "minItems": 4,
@@ -95,6 +107,7 @@
           "rule": {"type": "string", "minLength": 3},
           "rule_id": {"type": "string", "minLength": 3},
           "asset": {"type": "string", "minLength": 1},
+          "measured": {"type": "boolean"},
           "box_in": {
             "type": "object",
             "additionalProperties": false,

@@ -8,15 +8,13 @@ const APARTMENTS_GREEN = 0.086;
 
 const TEXT_BLOCKS = "main h1, main h2, main h3, main p:not(#signup-status), main .checks li, main .ring-step, main figcaption, main .eyebrow, main .figure, main .tip, main label, footer p";
 
-const BUILT_STEPS = ["Walk", "Your list"];
+const BUILT_STEPS = ["Walk", "Your list", "Crews near you", "Requests with your photos", "Follow ups", "Work done", "Inspection request"];
 const LOOP_STEPS = BUILT_STEPS.length;
-const ORDER_LINE = "It goes in order: you walk, you get your list, and each step after it shows here when it is built.";
 const UNBUILT_CLAUSES =["licensed crews", "keeps following up until the work gets done", "No chasing quotes", "We line up the work"];
 
-const NEAR = 14;
 
 const STATS = ["Eaton and Palisades fires", "2018 Camp Fire", "Californians live in the high"];
-const PROOF = ["came through undamaged 54 percent", "covered more than a quarter"];
+const PROOF = ["54% likelihood of avoiding damage", "covered more than a quarter"];
 const STEPS = ["^Film one walk$", "^Get your list$", "^Fix what matters first$"];
 
 async function loaded(page: Page) {
@@ -30,7 +28,7 @@ const onCard = (page: Page, scope: string) =>
 async function scrollOpeningTo(page: Page, p: number) {
   await page.evaluate((at) => {
     const opening = document.getElementById("opening")!;
-    window.scrollTo(0, opening.offsetTop + (opening.offsetHeight - innerHeight) * at);
+    window.scrollTo(0, opening.offsetTop + ((opening.offsetHeight - innerHeight) * at * 60) / 92);
   }, p);
 }
 
@@ -52,7 +50,11 @@ const ringState = (page: Page) =>
       p: getComputedStyle(ring).getPropertyValue("--p").trim(),
       live: ring.classList.contains("live"),
       spacers: document.querySelectorAll(".pin-spacer").length,
-      arrow: centre(ring.querySelector(".ring-arrow")!),
+      arrows: ring.querySelectorAll(".ring-arrow").length,
+      caption: (() => {
+        const el = ring.querySelector<HTMLElement>(".ring-caption");
+        return el && getComputedStyle(el).display !== "none" ? el.textContent!.replace(/\s+/g, " ").trim() : null;
+      })(),
       steps: [...ring.querySelectorAll(".ring-step")].map((step) => ({ at: centre(step), lit: step.classList.contains("lit"), opacity: getComputedStyle(step).opacity })),
     };
   });
@@ -70,6 +72,22 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("page", () => {
+  test("the opening's photo fills the screen's whole width", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForTimeout(1500);
+    const widths = await page.evaluate(() => ({ screen: document.documentElement.clientWidth, photo: document.querySelector(".ridge")!.getBoundingClientRect().width, frame: document.querySelector(".opening-frame")!.getBoundingClientRect().width }));
+    expect(widths.photo).toBeGreaterThanOrEqual(widths.screen);
+    expect(widths.frame).toBeGreaterThanOrEqual(widths.screen);
+  });
+
+  test("shows the judges' video play button in How EmberWalk works, in both languages, as shipped", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("#how figure.film .film-play")).toBeVisible();
+    await expect(page.locator("#how figure.film video")).toHaveCount(0);
+    await page.goto("/?lang=es");
+    await expect(page.locator("#how figure.film .film-play")).toHaveAttribute("aria-label", "Reproducir EmberWalk, un recorrido de tres minutos");
+  });
+
   test("has no sideways scroll and keeps every column off the left edge", async ({ page }) => {
     await page.goto("/");
     await settle(page);
@@ -110,7 +128,7 @@ test.describe("page", () => {
     await page.goto("/");
     const section = page.locator("section").filter({ hasText: /the finish line/i }).first();
     await expect(section.locator(".statement")).toHaveText(
-      "EmberWalk drafts your inspection request, with every fix listed and the CAL FIRE pages that find your local fire agency.",
+      "EmberWalk drafts your inspection request, with every fix listed and links to the CAL FIRE pages where you can request an inspection and find your local fire agency.",
     );
   });
 
@@ -174,7 +192,7 @@ test.describe("page", () => {
     for (const item of centered) {
       expect(Math.abs(item.boxCenter - item.pageCenter), `box of ${item.label}`).toBeLessThanOrEqual(1);
     }
-    const text = await centering(page, "h1, h2, .lead, .statement, .fine, .button");
+    const text = await centering(page, "h1, h2, .lead, .fine:not(.prices), .button");
     for (const item of text) {
       expect(Math.abs(item.textCenter - item.pageCenter), `text of ${item.label}`).toBeLessThanOrEqual(2);
     }
@@ -185,6 +203,12 @@ test.describe("page", () => {
     await settle(page);
     const columns = await centering(page, ".card");
     for (const item of columns) expect(Math.abs(item.boxCenter - item.pageCenter)).toBeLessThanOrEqual(1);
+    const running = ".stat > p:not(.source), .step p, .finish-card .statement, .card:has(.building) > p:not(.source), .card:has(.building) .checks li";
+    const aligned = await page.$$eval(running, (blocks) => blocks.map((el) => [el.textContent!.slice(0, 40), getComputedStyle(el).textAlign]));
+    expect(aligned.length).toBeGreaterThanOrEqual(20);
+    expect(aligned.filter(([, align]) => align !== "left" && align !== "start")).toEqual([]);
+    const held = await page.$$eval(".stat .figure, .stat .source, .eyebrow", (labels) => labels.map((el) => getComputedStyle(el).textAlign));
+    expect(new Set(held)).toEqual(new Set(["center"]));
   });
 
   test("lets a visitor reach and hit every control", async ({ page }) => {
@@ -248,7 +272,7 @@ test.describe("landing layout and motion", () => {
     await loaded(page);
     const vh = page.viewportSize()!.height;
     const reached = await page.evaluate(async (limit) => {
-      const re = /cost of not being ready/i;
+      const re = /cost of not being prepared/i;
       const el = [...document.querySelectorAll("body *")].find((node) => re.test(node.textContent ?? "") && ![...node.children].some((child) => re.test(child.textContent ?? "")))!;
       for (let y = 0; y <= limit; y += 40) {
         window.scrollTo(0, y);
@@ -293,10 +317,49 @@ test.describe("landing layout and motion", () => {
     expect(gaps, "no quarter screen without a card or image").toEqual([]);
   });
 
+  test("leaves no quarter screen empty inside How EmberWalk works while it arrives, pins and hands one step to the next", async ({ page }) => {
+    test.setTimeout(180_000);
+    await loaded(page);
+    await page.waitForSelector("#how.stepping");
+    const before = await page.evaluate(() => document.getElementById("how")!.getBoundingClientRect().top + scrollY - innerHeight);
+    await page.evaluate((y) => window.scrollTo(0, y), before);
+    await page.waitForTimeout(1000);
+    await page.mouse.move(195, 400);
+    const empty: string[] = [];
+    for (let stop = 0; stop < 60; stop++) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(700);
+      const seen = await page.evaluate(() => {
+        const how = document.getElementById("how")!;
+        const shown = (el: Element) => {
+          let alpha = 1;
+          for (let at: Element | null = el; at && at !== how; at = at.parentElement) if (!at.classList.contains("rise")) alpha *= Number(getComputedStyle(at).opacity);
+          return alpha >= 0.1;
+        };
+        const filled = [...how.querySelectorAll("*")]
+          .filter((el) => ["IMG", "CANVAS", "svg", "VIDEO"].includes(el.tagName) || [...el.childNodes].some((node) => node.nodeType === 3 && (node.textContent ?? "").trim() !== ""))
+          .filter(shown)
+          .map((el) => el.getBoundingClientRect())
+          .filter((box) => box.width > 0 && box.height > 0);
+        const box = how.getBoundingClientRect();
+        let run = 0;
+        let worst = 0;
+        for (let row = Math.max(0, box.top); row < Math.min(innerHeight, box.bottom); row += 4) {
+          run = filled.some((b) => b.top <= row && b.bottom > row) ? 0 : run + 4;
+          worst = Math.max(worst, run);
+        }
+        return { y: Math.round(scrollY), top: Math.round(box.top), worst };
+      });
+      if (seen.worst >= page.viewportSize()!.height / 4) empty.push(`${seen.worst} px empty at scrollY ${seen.y}`);
+      if (seen.top < -page.viewportSize()!.height) break;
+    }
+    expect(empty, "the backdrop alone is not something to look at").toEqual([]);
+  });
+
   test("statistics count up slowly to their totals, and 3.7 million comes in digit by digit and then spells out million", async ({ page, browser }, info) => {
     test.setTimeout(120_000);
     await loaded(page);
-    const from = (await headingTop(page, "cost of not being ready"))! - page.viewportSize()!.height;
+    const from = (await headingTop(page, "cost of not being prepared"))! - page.viewportSize()!.height;
     const to = (await headingTop(page, "Proof you did the work"))!;
     const histories = await page.evaluate(
       async ({ from, to }) => {
@@ -347,7 +410,7 @@ test.describe("landing layout and motion", () => {
     const calm = await context.newPage();
     await stubTurnstile(calm);
     await calm.goto("/");
-    await calm.getByText(/cost of not being ready/i).first().scrollIntoViewIfNeeded();
+    await calm.getByText(/cost of not being prepared/i).first().scrollIntoViewIfNeeded();
     const text = (await calm.locator("main").innerText()).replace(/\s+/g, " ");
     for (const total of ["16,264", "18,804", "3.7 million"]) expect(text, "reduced motion shows the totals at once").toContain(total);
     await context.close();
@@ -355,7 +418,7 @@ test.describe("landing layout and motion", () => {
 
   test("the statistic cards rotate through as a carousel while the page scrolls, each card holding still in front", async ({ page }) => {
     await loaded(page);
-    const from = (await headingTop(page, "cost of not being ready"))! - page.viewportSize()!.height;
+    const from = (await headingTop(page, "cost of not being prepared"))! - page.viewportSize()!.height;
     const to = (await headingTop(page, "Proof you did the work"))!;
     const samples = await sweep(page, STATS, from, to);
     expect(fronts(samples), "one statistic card in front at a time").toBeLessThanOrEqual(1);
@@ -365,7 +428,7 @@ test.describe("landing layout and motion", () => {
 
   test("the proof cards come through the same carousel after the statistics, and a sourced card states the benefit of getting ready", async ({ page }) => {
     await loaded(page);
-    const from = (await headingTop(page, "cost of not being ready"))! - page.viewportSize()!.height;
+    const from = (await headingTop(page, "cost of not being prepared"))! - page.viewportSize()!.height;
     const to = (await headingTop(page, "Proof you did the work"))!;
     const samples = await sweep(page, [...STATS, ...PROOF], from, to);
     expect(fronts(samples), "proof cards come through the same carousel, one in front at a time").toBeLessThanOrEqual(1);
@@ -373,7 +436,7 @@ test.describe("landing layout and motion", () => {
     for (const i of [3, 4]) expect(pinnedSpan(samples, i), `${PROOF[i - 3]} card holds still while the page scrolls`).toBeGreaterThanOrEqual(150);
     const benefit = await page.evaluate(() => {
       const words = /benefit|discount|lower|sav(e|es|ed|ing|ings)\b|cheaper|premium/i;
-      const proof = [...document.querySelectorAll("body *")].find((el) => /proof that getting ready works/i.test(el.textContent ?? "") && el.children.length === 0);
+      const proof = [...document.querySelectorAll("body *")].find((el) => /value of preparation/i.test(el.textContent ?? "") && el.children.length === 0);
       const stop = [...document.querySelectorAll("body *")].find((el) => /Proof you did the work/.test(el.textContent ?? "") && el.children.length === 0);
       if (!proof || !stop) return [];
       return [...document.querySelectorAll("body *")]
@@ -424,9 +487,9 @@ test.describe("landing layout and motion", () => {
     for (const name of [/record/i, /results/i, /finding/i]) expect(screens.some((alt) => name.test(alt)), `a ${name.source} screen`).toBe(true);
   });
 
-  test("the three steps come in and out from alternating sides as full screen cards", async ({ page }) => {
+  test("step one arrives in place, then the later steps come in from alternating sides, all as full screen cards", async ({ page }) => {
     await loaded(page);
-    const from = (await headingTop(page, "One walk with your phone"))! - page.viewportSize()!.height;
+    const from = (await headingTop(page, "One walk around your home"))! - page.viewportSize()!.height;
     const to = (await headingTop(page, "After the walk"))!;
     const samples = await sweep(page, STEPS, from, to);
     expect(firstFront(samples, 3), "each step comes to the front, in order").toEqual([0, 1, 2]);
@@ -441,8 +504,8 @@ test.describe("landing layout and motion", () => {
       const enter = samples.find((s) => s.items[i]?.inView)!;
       shifts.push(front[0].items[i]!.cx - enter.items[i]!.cx);
     }
-    for (const shift of shifts) expect(Math.abs(shift), "each step swipes in from a side").toBeGreaterThanOrEqual(samples[0].vw * 0.2);
-    expect(Math.sign(shifts[0]), "steps alternate sides").not.toBe(Math.sign(shifts[1]));
+    expect(Math.abs(shifts[0]), "step one is in place as it arrives").toBeLessThanOrEqual(2);
+    for (const shift of shifts.slice(1)) expect(Math.abs(shift), "each later step swipes in from a side").toBeGreaterThanOrEqual(samples[0].vw * 0.2);
     expect(Math.sign(shifts[1]), "steps alternate sides").not.toBe(Math.sign(shifts[2]));
   });
 
@@ -527,7 +590,7 @@ test.describe("landing layout and motion", () => {
       };
       const heading = (re: RegExp) => [...document.querySelectorAll("h1, h2, h3, h4")].find((h) => re.test((h.textContent ?? "").trim()));
       const others = [/^Roof and gutters$/, /^Vents and eaves$/, /^Against the walls$/, /^The first five feet$/].map((re) => cardOf(heading(re)!)!);
-      const head = heading(/same house,? made ready/i)!;
+      const head = heading(/same house with fixes in place/i)!;
       const card = cardOf(head)!;
       const c = card.getBoundingClientRect();
       const range = document.createRange();
@@ -599,7 +662,7 @@ test.describe("landing layout and motion", () => {
     expect(new Set(sentences).size, "no sentence repeats").toBe(sentences.length);
   });
 
-  test("draws the loop as the visitor scrolls, lights each step as the arrow arrives, and brings the arrow back to the first step", async ({ page }) => {
+  test("draws the loop as the visitor scrolls, lights each step as the line arrives, and names the step it has reached in the middle, with no arrow", async ({ page }) => {
     test.setTimeout(120_000);
     await loaded(page);
     await settle(page);
@@ -613,8 +676,9 @@ test.describe("landing layout and motion", () => {
       await page.evaluate(({ start, end, at }) => window.scrollTo(0, start + (end - start) * at), { ...span!, at: want });
       await expect.poll(async () => Number((await ringState(page)).p), { timeout: 10_000 }).toBeCloseTo(want, 2);
       const state = await ringState(page);
-      const target = state.steps[k % LOOP_STEPS].at;
-      expect(Math.hypot(state.arrow[0] - target[0], state.arrow[1] - target[1]), `the arrow sits on step ${k % LOOP_STEPS + 1} at p ${want.toFixed(2)}`).toBeLessThanOrEqual(NEAR);
+      const reached = Math.min(k, LOOP_STEPS - 1);
+      expect(state.arrows, "no arrow rides the ring").toBe(0);
+      expect(state.caption, `the middle names the step reached at p ${want.toFixed(2)}`).toBe(`Step ${reached + 1} of ${LOOP_STEPS}: ${BUILT_STEPS[reached]}`);
       expect(state.steps.map((step) => step.lit), `steps lit at p ${want.toFixed(2)}`).toEqual(state.steps.map((_, i) => i <= k));
       expect(state.live).toBe(true);
       if (k === LOOP_STEPS) break;
@@ -622,8 +686,43 @@ test.describe("landing layout and motion", () => {
       await page.evaluate(({ start, end, at }) => window.scrollTo(0, start + (end - start) * at), { ...span!, at: before });
       await expect.poll(async () => Number((await ringState(page)).p), { timeout: 10_000 }).toBeCloseTo(before, 2);
       const early = await ringState(page);
-      expect(early.steps.map((step) => step.lit), `no step lit before the arrow reaches it, at p ${before.toFixed(2)}`).toEqual(early.steps.map((_, i) => i <= k));
+      expect(early.steps.map((step) => step.lit), `no step lit before the line reaches it, at p ${before.toFixed(2)}`).toEqual(early.steps.map((_, i) => i <= k));
+      expect(early.caption, `the middle still names step ${k + 1} just before the next`).toBe(`Step ${k + 1} of ${LOOP_STEPS}: ${BUILT_STEPS[k]}`);
     }
+  });
+
+  test("starts the drawn line at the first step at the top of the ring and draws it clockwise", async ({ page }) => {
+    test.setTimeout(120_000);
+    await loaded(page);
+    await settle(page);
+    const span = await page.evaluate(() => {
+      const pinned = (window as unknown as { ScrollTrigger: { getAll(): { pin: unknown; start: number; end: number }[] } }).ScrollTrigger.getAll().find((trigger) => trigger.pin instanceof Element && trigger.pin.contains(document.getElementById("after")));
+      return pinned ? { start: pinned.start, end: pinned.end } : null;
+    });
+    await page.evaluate(({ start, end }) => window.scrollTo(0, start + (end - start) * 0.1), span!);
+    await expect.poll(async () => Number((await ringState(page)).p), { timeout: 10_000 }).toBeCloseTo(0.1, 2);
+    await page.waitForTimeout(700);
+    const shot = (await page.locator("#after .ring").screenshot()).toString("base64");
+    const gold = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      [canvas.width, canvas.height] = [img.width, img.height];
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const ring = document.querySelector("#after .ring")!.getBoundingClientRect();
+      const scale = img.width / ring.width;
+      const inset = parseFloat(getComputedStyle(document.querySelector("#after .ring-drawn")!).top);
+      const radius = (ring.width / 2 - inset - 3) * scale;
+      const at = (degrees: number) => {
+        const a = (degrees * Math.PI) / 180;
+        const [r, g, b] = ctx.getImageData(Math.round(img.width / 2 + radius * Math.sin(a)), Math.round(img.height / 2 - radius * Math.cos(a)), 1, 1).data;
+        return r > 200 && g > 150 && b < 120;
+      };
+      return { justPastTop: at(25), bottom: at(180), left: at(270) };
+    }, shot);
+    expect(gold, "a tenth of the loop drawn: gold just clockwise of the top, nowhere at the bottom or the left").toEqual({ justPastTop: true, bottom: false, left: false });
   });
 
   test("shows only the loop steps that are built, in order", async ({ page }) => {
@@ -645,20 +744,10 @@ test.describe("landing layout and motion", () => {
     }
   });
 
-  test("says above the loop, centred, the order its steps go in", async ({ page }) => {
+  test("says nothing above the loop about steps still to be built", async ({ page }) => {
     await loaded(page);
-    const line = page.locator("#after p.order");
-    await expect(line).toHaveText(ORDER_LINE, { useInnerText: true });
-    const place = await line.evaluate((el) => {
-      const box = el.getBoundingClientRect();
-      return { bottom: box.bottom, ringTop: document.querySelector("#after .ring")!.getBoundingClientRect().top, align: getComputedStyle(el).textAlign };
-    });
-    expect(place.bottom, "the order line sits above the loop").toBeLessThanOrEqual(place.ringTop);
-    expect(place.align, "the order line is centred").toBe("center");
-    for (const c of await centering(page, "#after p.order")) {
-      expect(Math.abs(c.boxCenter - c.pageCenter), "the order line's column is centred on the page").toBeLessThanOrEqual(2);
-      expect(Math.abs(c.textCenter - c.pageCenter), "the order line's words are centred on the page").toBeLessThanOrEqual(2);
-    }
+    await expect(page.locator("#after")).not.toContainText("when it is built");
+    await expect(page.locator("#after")).toContainText("No calling around. Nothing goes out without your okay.");
   });
 
   test("holds after the walk mid screen at full size through its pin, and lets go of it with the next section right below", async ({ page }) => {
@@ -691,7 +780,7 @@ test.describe("landing layout and motion", () => {
     expect(Math.abs(let_go.below), "the next section starts right below the card's section").toBeLessThanOrEqual(2);
   });
 
-  test("shows the whole loop at once, every step lit and the arrow home, when the visitor asks for less motion", async ({ browser }, info) => {
+  test("shows the whole loop at once, every step lit and no step named in the middle, when the visitor asks for less motion", async ({ browser }, info) => {
     const context = await browser.newContext({ ...info.project.use, reducedMotion: "reduce" });
     const page = await context.newPage();
     await stubTurnstile(page);
@@ -699,7 +788,7 @@ test.describe("landing layout and motion", () => {
     const state = await ringState(page);
     expect({ p: state.p, live: state.live, spacers: state.spacers }).toEqual({ p: "1", live: false, spacers: 0 });
     expect(state.steps.map((step) => step.opacity)).toEqual(Array(LOOP_STEPS).fill("1"));
-    expect(Math.hypot(state.arrow[0] - state.steps[0].at[0], state.arrow[1] - state.steps[0].at[1])).toBeLessThanOrEqual(NEAR);
+    expect({ arrows: state.arrows, caption: state.caption }).toEqual({ arrows: 0, caption: null });
     await context.close();
   });
 
@@ -793,6 +882,82 @@ test.describe("landing layout and motion", () => {
     expect(Math.max(...frames.map((frame) => frame.words)), "never two cards' words showing at once").toBeLessThan(0.05);
   });
 
+  for (const path of ["/", "/?lang=es"]) {
+    test(`keeps every ring step clear of the others, the card edge and the step named in the middle, its words inset and the line hidden under it, at ${path}`, async ({ page }) => {
+      await page.goto(path);
+      await page.waitForSelector("#after .ring.live");
+      await page.evaluate(() => document.fonts.ready);
+      const seen = await page.evaluate(() => {
+        const card = document.getElementById("after")!.getBoundingClientRect();
+        const steps = [...document.querySelectorAll("#after .ring-step")].map((step) => {
+          const span = step.querySelector("span")!;
+          const box = span.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(span);
+          const text = [...range.getClientRects()];
+          return {
+            word: span.textContent!,
+            box,
+            inset: Math.min(...text.map((r) => Math.min(r.left - box.left, box.right - r.right, r.top - box.top, box.bottom - r.bottom))),
+            lines: new Set(text.map((r) => Math.round(r.top))).size,
+            opacity: Number(getComputedStyle(step).opacity) * Number(getComputedStyle(span).opacity),
+            opaque: getComputedStyle(span).backgroundColor.match(/[\d.]+/g)!.length === 3 || Number(getComputedStyle(span).backgroundColor.match(/[\d.]+/g)![3]) === 1,
+          };
+        });
+        const caption = document.querySelector<HTMLElement>("#after .ring-caption")!;
+        const name = caption.querySelector<HTMLElement>(".ring-name")!;
+        const middles = steps.map((step) => {
+          name.textContent = step.word;
+          const box = caption.getBoundingClientRect();
+          const near = Math.min(...steps.map((s) => Math.max(s.box.left - box.right, box.left - s.box.right, s.box.top - box.bottom, box.top - s.box.bottom)));
+          return { word: step.word, near, shown: getComputedStyle(caption).display !== "none" && box.width > 0 };
+        });
+        return { card: { left: card.left, right: card.right }, steps, middles };
+      });
+      const { card, steps, middles } = seen;
+      for (const middle of middles) {
+        expect(middle.shown, `the middle can name ${middle.word}`).toBe(true);
+        expect(middle.near, `the middle naming ${middle.word} touches no step`).toBeGreaterThanOrEqual(4);
+      }
+      for (const [k, a] of steps.entries()) {
+        expect(a.opacity, `${a.word} is not see-through`).toBe(1);
+        expect(a.opaque, `${a.word} hides the line under it`).toBe(true);
+        expect(a.inset, `${a.word} has room inside its bubble`).toBeGreaterThanOrEqual(6);
+        expect(a.lines, `${a.word} fits in three lines or fewer`).toBeLessThanOrEqual(3);
+        expect(a.box.left - card.left, `${a.word} clear of the card's left edge`).toBeGreaterThanOrEqual(12);
+        expect(card.right - a.box.right, `${a.word} clear of the card's right edge`).toBeGreaterThanOrEqual(12);
+        for (const b of steps.slice(k + 1)) {
+          const apart = Math.max(b.box.left - a.box.right, a.box.left - b.box.right, b.box.top - a.box.bottom, a.box.top - b.box.bottom);
+          expect(apart, `${a.word} and ${b.word} do not touch`).toBeGreaterThanOrEqual(4);
+        }
+      }
+    });
+
+    test(`keeps every house apart card whole on the screen while the section holds, at ${path}`, async ({ page }) => {
+      await page.goto(path);
+      await page.waitForSelector("#apart.pinned");
+      await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(() => window.scrollTo(0, document.getElementById("apart")!.getBoundingClientRect().top + scrollY + innerHeight));
+      await page.waitForTimeout(800);
+      const cards = await page.$$eval("#apart .apart-cards .card", (all) =>
+        all.map((card) => {
+          const own = getComputedStyle(card);
+          const content = [...card.children].reduce((sum, child) => {
+            const s = getComputedStyle(child);
+            return sum + child.getBoundingClientRect().height + parseFloat(s.marginTop) + parseFloat(s.marginBottom);
+          }, parseFloat(own.paddingTop) + parseFloat(own.paddingBottom));
+          const box = card.getBoundingClientRect();
+          return { bottom: Math.round(box.bottom), contentBottom: Math.round(box.top + content), photoBottom: Math.round(document.querySelector("#apart .apart-box")!.getBoundingClientRect().bottom), vh: innerHeight };
+        }),
+      );
+      for (const [k, card] of cards.entries()) {
+        expect(card.bottom, `card ${k} ends on the screen`).toBeLessThanOrEqual(card.vh);
+        expect(card.contentBottom, `card ${k} text ends inside the card`).toBeLessThanOrEqual(card.bottom + 1);
+        expect(card.photoBottom, `the photo keeps most of the screen above card ${k}`).toBeGreaterThanOrEqual(card.vh * 0.35);
+      }
+    });
+  }
+
   test("sets the house apart cards' paragraphs left inside a centred card", async ({ page }) => {
     await page.goto("/");
     await page.waitForSelector("#apart.pinned");
@@ -809,8 +974,10 @@ test.describe("landing layout and motion", () => {
         const inner = { left: box.left + parseFloat(style.paddingLeft), right: box.right - parseFloat(style.paddingRight) };
         const left = Math.min(...lines.flat().map((line) => line.left)) - inner.left;
         const right = inner.right - Math.max(...lines.flat().map((line) => line.right));
-        const wraps = lines.some((rects) => new Set(rects.map((line) => Math.round(line.top))).size > 1);
-        const balanced = wraps ? left <= 1 : Math.abs(left - right) <= 2;
+        const centred = [...card.children].map((child) => getComputedStyle(child).textAlign === "center");
+        const wraps = lines.some((rects, n) => !centred[n] && new Set(rects.map((line) => Math.round(line.top))).size > 1);
+        const titleLinesCentred = lines.every((rects, n) => !centred[n] || rects.every((line) => Math.abs(line.left - inner.left - (inner.right - line.right)) <= 2));
+        const balanced = titleLinesCentred && (wraps ? left <= 1 : Math.abs(left - right) <= 2);
         return { paragraphs: align("p"), titles: align(".eyebrow, h2, h3"), offCentre: Math.abs(box.left + box.width / 2 - innerWidth / 2), balanced, gaps: [Math.round(left), Math.round(right)] };
       }),
     );
@@ -823,7 +990,7 @@ test.describe("landing layout and motion", () => {
     }
   });
 
-  test("sets the insurance paragraphs left inside its centred card, heading and source line centred", async ({ page }) => {
+  test("sets the insurance paragraph left inside its centred card, heading centred", async ({ page }) => {
     await page.goto("/");
     const card = page.locator("section .card").filter({ has: page.locator("h2", { hasText: "Proof you did the work" }) });
     await card.scrollIntoViewIfNeeded();
@@ -839,9 +1006,9 @@ test.describe("landing layout and motion", () => {
       const align = (selector: string) => [...el.querySelectorAll(selector)].map((node) => getComputedStyle(node).textAlign.replace("start", "left"));
       return { paragraphs: align("p:not(.source)"), titles: align(".eyebrow, h2, .source"), starts, offCentre: Math.abs(box.left + box.width / 2 - innerWidth / 2) };
     });
-    expect(look.paragraphs, "two running paragraphs, left aligned").toEqual(["left", "left"]);
+    expect(look.paragraphs, "one running paragraph, left aligned").toEqual(["left"]);
     expect(Math.max(...look.starts), "every line starts at the card's inner left edge").toBeLessThanOrEqual(1);
-    expect(look.titles, "eyebrow, heading and source line centred").toEqual(["center", "center", "center"]);
+    expect(look.titles, "eyebrow and heading centred").toEqual(["center", "center"]);
     expect(look.offCentre, "card centred on the screen").toBeLessThanOrEqual(1);
   });
 
@@ -872,10 +1039,13 @@ test.describe("landing layout and motion", () => {
 });
 
 test.describe("landing copy details", () => {
-  test("shows the stats eyebrow as Why It Matters, each word capitalised", async ({ page }) => {
+  test("shows every eyebrow in all caps, the stats eyebrow included", async ({ page }) => {
     await page.goto("/");
-    const eyebrow = page.locator("section").filter({ has: page.getByRole("heading", { name: /cost of not being ready/i }) }).locator(".eyebrow").first();
-    expect(await eyebrow.innerText()).toBe("Why It Matters");
+    const shown = await page.$$eval(".eyebrow", (all) => all.map((el) => ({ text: (el as HTMLElement).innerText, typed: el.textContent ?? "" })));
+    expect(shown.length).toBeGreaterThan(5);
+    for (const { text, typed } of shown) expect(text, typed).toBe(typed.toUpperCase());
+    const eyebrow = page.locator("section").filter({ has: page.getByRole("heading", { name: /cost of not being prepared/i }) }).locator(".eyebrow").first();
+    expect(await eyebrow.innerText()).toBe("WHY IT MATTERS");
   });
 
   test("shows no synthetic sample line anywhere, the footer included", async ({ page }) => {

@@ -1,4 +1,5 @@
 import {
+  BillingErrorBody,
   ErrorBody,
   FaultReportResponse,
   PartLinkResponse,
@@ -12,9 +13,17 @@ import type { CompletedPart, ErrorCode, FaultReportRequest, StartWalkRequest, Ta
 
 export type Fetch = (request: Request) => Promise<Response>;
 
-export type Failure = ErrorCode | "offline";
+const WALK_GATE_CODES = ["plan_needed", "walks_used"] as const;
 
-export type Answer<T> = { value: T; code?: undefined } | { value?: undefined; code: Failure };
+export type WalkGateCode = (typeof WALK_GATE_CODES)[number];
+
+export const isWalkGate = (code: string): code is WalkGateCode => (WALK_GATE_CODES as readonly string[]).includes(code);
+
+export type ApiFailure = ErrorCode | "offline" | "sign_in_needed" | WalkGateCode;
+
+export type Failure = ApiFailure | "storage_blocked";
+
+export type Answer<T> = { value: T; code?: undefined } | { value?: undefined; code: ApiFailure };
 
 export type Completed = { walkId: string; bytes: number };
 
@@ -73,12 +82,15 @@ export const ask = async <T>(send: Fetch, request: Request, read: Read<T>): Prom
   } catch {
     return { code: "offline" };
   }
+  if (response.status === 0 || (response.status >= 300 && response.status < 400)) return { code: "sign_in_needed" };
   if (response.ok) {
     const value = read(body);
     return value === null ? { code: "server_error" } : { value };
   }
   const error = ErrorBody.safeParse(body);
-  return { code: error.success ? error.data.error.code : "server_error" };
+  if (error.success) return { code: error.data.error.code };
+  const gate = BillingErrorBody.safeParse(body);
+  return { code: gate.success && isWalkGate(gate.data.error.code) ? gate.data.error.code : "server_error" };
 };
 
 const poster = (base: string) => (path: string, body: unknown) =>
@@ -86,10 +98,11 @@ const poster = (base: string) => (path: string, body: unknown) =>
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    redirect: "manual",
   });
 
 export const getter = (visitorId: () => string) => (url: string | URL) =>
-  new Request(url, { method: "GET", headers: { [VISITOR_HEADER]: visitorId() } });
+  new Request(url, { method: "GET", headers: { [VISITOR_HEADER]: visitorId() }, redirect: "manual" });
 
 export const walkApi = (base: string, send: Fetch, visitorId: () => string = () => ""): WalkApi => {
   const post = poster(base);

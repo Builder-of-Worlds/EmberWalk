@@ -4,8 +4,8 @@
   "label": "Synthetic sample house",
   "scene": "apartment-after",
   "file": "apartment-after/walk.mp4",
-  "size_bytes": 198975788,
-  "sha256": "a8541c7ed57cc158604dbf013a3a20be6f444630f358084c6f679cbb9188ff39",
+  "size_bytes": 536287494,
+  "sha256": "478cae7ab7adc8589254878b36bc4ecb4845312a8f570c27ba5f02c6dcb326fd",
   "codec": "h264",
   "pix_fmt": "yuv420p",
   "width": 1280,
@@ -16,9 +16,9 @@
   "settings": {
     "engine": "CYCLES",
     "samples": 64,
-    "render_seconds": 2982.8,
+    "render_seconds": 14211.0,
     "blender": "5.2.3 LTS",
-    "machine": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "machine": "macOS-27.2-arm64-arm-64bit-Mach-O",
     "chunk_order": [
       [
         2701,

@@ -7,7 +7,7 @@ import { RULES } from "@emberwalk/rules";
 import { expect, test } from "@playwright/test";
 import type { Frame, Page, TestInfo } from "@playwright/test";
 import { PDF_OPTIONS, reportHtml, STILL_DATA } from "../../../../workers/api/src/report.ts";
-import { DRAFT_WORDS_KEY, reportWords } from "../../src/draft-words.ts";
+import { reportWords } from "../../src/draft-words.ts";
 import { reportFor, resultsFor } from "../../src/router.ts";
 import { LIVE_WALK, liveBody, liveFindingId } from "../unit/result-fakes.ts";
 import { offCentre, sideways } from "./geometry.ts";
@@ -37,7 +37,6 @@ const serve = async (page: Page) => {
   const html = await reportPage();
   let approvedAt: string | null = null;
   let shared: string | null = null;
-  await page.addInitScript((key) => window.localStorage.setItem(key, "on"), DRAFT_WORDS_KEY);
   await page.route("**/*", async (route) => {
     const { pathname } = new URL(route.request().url());
     if (pathname === `/api/walks/${LIVE_WALK}/results`) return route.fulfill({ json: liveBody(LIVE_WALK, 3) });
@@ -126,7 +125,21 @@ for (const width of [390, 1440]) {
 
 const HERO = (view: string) => readFile(new URL(`../../../../fixtures/synthetic/hero-look/synthetic-hero-${view}.jpg`, import.meta.url));
 
-const sampleReport = async () => {
+const portraitStill = async (page: Page): Promise<string> => {
+  const hero = `${STILL_DATA}${(await HERO("front")).toString("base64")}`;
+  return page.evaluate(async (source) => {
+    const img = new Image();
+    img.src = source;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [540, 960];
+    const wide = (img.naturalHeight * 540) / 960;
+    canvas.getContext("2d")!.drawImage(img, (img.naturalWidth - wide) / 2, 0, wide, img.naturalHeight, 0, 0, 540, 960);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }, hero);
+};
+
+const sampleReport = async (firstStill?: string) => {
   const ruleOf = (id: string) => RULES.find((r) => r.id === id)!;
   const picked: [ReturnType<typeof ruleOf>, number, number, Promise<Buffer>][] = [
     [ruleOf("ca-wood-pile-uncovered-ccr-z0"), 2, 4, HERO("front")],
@@ -150,7 +163,7 @@ const sampleReport = async () => {
       { findingId: brush!, status: "done", doneOn: "2026-10-29", markedAt: "2026-10-29T18:00:00.000Z" },
     ],
     rechecks: [{ findingId: brush!, result: "cleared", createdAt: "2026-10-30T15:00:00.000Z" }],
-    stills: new Map(findings.map((f, i) => [f.id, stills[i]!])),
+    stills: new Map(findings.map((f, i) => [f.id, i === 0 && firstStill !== undefined ? firstStill : stills[i]!])),
     removed: new Set([far!]),
     approvedAt: "2026-10-30T16:00:00.000Z",
     templates: new Map(),
@@ -303,6 +316,24 @@ test("the sample PDF puts each photo above its words, centred in its column, at 
   });
   expect(boxes).toHaveLength(4);
   for (const box of boxes) expect([box.above, box.off <= 1, box.wide >= 240]).toEqual([true, true, true]);
+});
+
+test("the sample PDF fits each photo's card to the photo's own shape, so a portrait phone photo is a tall card, not a strip in a wide one", async ({ page }) => {
+  await page.setViewportSize({ width: 816, height: 1056 });
+  await page.emulateMedia({ media: "print" });
+  const portrait = await portraitStill(page);
+  await page.setContent(await sampleReport(portrait), { waitUntil: "load" });
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll("li[data-finding] .photo")].map((card) => {
+      const box = card.getBoundingClientRect();
+      const img = card.querySelector("img")!;
+      const pic = img.getBoundingClientRect();
+      return { shape: box.height / box.width, own: img.naturalHeight / img.naturalWidth, fills: Math.min(pic.width / box.width, pic.height / box.height), wide: box.width, tall: box.height };
+    }),
+  );
+  expect(cards).toHaveLength(4);
+  expect(cards.filter((card) => card.own > 1.5)).toHaveLength(1);
+  for (const card of cards) expect([Math.abs(card.shape - card.own) < 0.02, card.fills > 0.99, card.wide >= 240, card.tall <= 5 * 96]).toEqual([true, true, true, true]);
 });
 
 test("the sample PDF carries the EmberWalk lockup, the walk's day, Page N of M and the not an inspection line on every page", async ({ page }, info) => {

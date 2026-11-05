@@ -1,4 +1,5 @@
 import type { ErrorCode, Part, WalkState, WalkStatusResponse } from "@emberwalk/shared";
+import { isWalkGate } from "./api.ts";
 import type { Answer, Failure } from "./api.ts";
 
 export const POLL_MS = 2_000;
@@ -17,7 +18,7 @@ export type Watched =
   | { kind: "checking"; state: WalkState }
   | { kind: "done" }
   | { kind: "failed"; code: string | null; message: string | null; part: Part | null }
-  | { kind: "waiting" }
+  | { kind: "waiting"; signIn?: true }
   | { kind: "held"; code: ErrorCode }
   | { kind: "lost" };
 
@@ -39,8 +40,8 @@ export const watchWalk = (
     const later = (ms = POLL_MS) => {
       cancel = clock.later(() => void ask(), ms);
     };
-    if (answer.code === "offline") {
-      onState({ kind: "waiting" });
+    if (answer.code === "offline" || answer.code === "sign_in_needed") {
+      onState(answer.code === "offline" ? { kind: "waiting" } : { kind: "waiting", signIn: true });
       const again = () => {
         cancel();
         void ask();
@@ -54,7 +55,7 @@ export const watchWalk = (
       return;
     }
     if (answer.code !== undefined) {
-      if (ASK_AGAIN.has(answer.code)) return later();
+      if (ASK_AGAIN.has(answer.code) || isWalkGate(answer.code)) return later();
       if (answer.code === "unknown_walk") return onState({ kind: "lost" });
       onState({ kind: "held", code: answer.code });
       return later(HELD_RETRY_MS);

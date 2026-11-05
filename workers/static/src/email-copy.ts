@@ -32,3 +32,35 @@ export function finishEmail(message: Message, postalFooter: string | undefined):
     footer,
   ].join("\n");
 }
+
+export function welcomeMessageEs(to: string, unsubscribeUrl: string, env: object): Message {
+  const launchLine = launchDateShown(env)
+    ? "EmberWalk sale el 4 de noviembre de 2026. Le enviaremos un correo cuando salga."
+    : "Le enviaremos un correo cuando EmberWalk salga.";
+  return {
+    to,
+    unsubscribeUrl,
+    subject: "Ya está en la lista",
+    body: [
+      "Gracias por inscribirse. Ya está en la lista de EmberWalk.",
+      "",
+      launchLine,
+      "",
+      "Le enviaremos correos sobre el lanzamiento y las novedades de EmberWalk.",
+      "",
+      "Preguntas: hello@emberwalk.app",
+    ].join("\n"),
+  };
+}
+
+export function finishEmailEs(message: Message, postalFooter: string | undefined): string {
+  const footer = postalFooter?.trim();
+  if (!footer) throw new Error("no postal address is set, so no email is sent");
+  return [
+    message.body,
+    "",
+    `Para salir de la lista, use este enlace, o responda a este correo y avísenos: ${message.unsubscribeUrl}`,
+    "",
+    footer,
+  ].join("\n");
+}

@@ -29,6 +29,8 @@ export type FoundItem = {
   band: BandName;
   contact: FoundContact | null;
   label: Label | null;
+  sides?: string[] | null;
+  confidence?: number | null;
 };
 
 const TruthFile = z.object({
@@ -58,6 +60,8 @@ const FoundSchema = z.object({
   distanceFeet: z.object({ low: z.number().nonnegative(), high: z.number().nonnegative() }).refine((d) => d.low <= d.high, "low must not pass high"),
   contact: z.enum(["yes", "no", "not_checked"]).optional(),
   label: LabelSchema.optional(),
+  sides: z.array(Name).max(8).optional(),
+  confidence: z.number().min(0).max(1).optional(),
 });
 const FoundFile = z.union([z.array(FoundSchema).max(1000), z.object({ findings: z.array(FoundSchema).max(1000) })]);
 
@@ -102,29 +106,66 @@ export function parseFindings(input: unknown): FoundItem[] {
     band: f.band,
     contact: f.contact ?? null,
     label: f.label ?? null,
+    sides: f.sides ?? null,
+    confidence: f.confidence ?? null,
   }));
 }
 
-type Orderable = { id: string; label: Label | null; low: number; high: number };
+type Orderable = { id: string; label: Label | null; low: number; high: number; confidence: number };
 
 const nearOrder = (a: Orderable, b: Orderable): number =>
   a.low - b.low ||
   a.high - b.high ||
   Number(a.label !== "required_now") - Number(b.label !== "required_now") ||
+  b.confidence - a.confidence ||
   (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 const fixFirst = (items: Orderable[]): string[] => items.filter((i) => i.low < FIX_FIRST_FEET).sort(nearOrder).map((i) => i.id);
 
-export const fixFirstOfFound = (found: FoundItem[]): string[] => fixFirst(found.map((f) => ({ id: f.id, label: f.label, low: f.feet.low, high: f.feet.high })));
+export const fixFirstOfFound = (found: FoundItem[]): string[] =>
+  fixFirst(found.map((f) => ({ id: f.id, label: f.label, low: f.feet.low, high: f.feet.high, confidence: f.confidence ?? 0 })));
 
-export const topThreeFromTruth = (truth: TruthItem[]): string[] =>
-  fixFirst(truth.map((t) => ({ id: t.id, label: t.label, low: t.feet, high: t.feet }))).slice(0, TOP_COUNT);
+// The app lists dry grass once per band, so the truth's top three does too.
+export const topThreeFromTruth = (truth: TruthItem[]): string[] => {
+  const ordered = fixFirst(truth.map((t) => ({ id: t.id, label: t.label, low: t.feet, high: t.feet, confidence: 1 })));
+  const held = new Set<string>();
+  return ordered
+    .filter((id) => {
+      const t = truth.find((item) => item.id === id)!;
+      if (!ONE_PER_BAND.includes(t.concept)) return true;
+      const key = `${t.concept} ${t.band}`;
+      if (held.has(key)) return false;
+      held.add(key);
+      return true;
+    })
+    .slice(0, TOP_COUNT);
+};
 
 export type Match = { truth: TruthItem; found: FoundItem };
 
 const reach = (f: FoundItem, feet: number) => (feet < f.feet.low ? f.feet.low - feet : feet > f.feet.high ? feet - f.feet.high : 0);
 
+// One mowing fixes dry grass, so one finding per band answers every dry grass item in that band on a side it names.
+const ONE_PER_BAND = ["dry_grass"];
+
+// An item with no finding in its own band pairs with the nearest band on its side, so a wrong band is counted, never hidden as a miss.
+const bandMatches = (truth: TruthItem[], found: FoundItem[]): Match[] =>
+  truth.flatMap((t) => {
+    const onSide = found.filter((f) => f.concept === t.concept && (f.sides == null || t.side === null || f.sides.includes(t.side)));
+    const apart = (f: FoundItem) => Math.abs(BAND_ORDER.indexOf(f.band) - BAND_ORDER.indexOf(t.band));
+    const f = onSide.reduce<FoundItem | undefined>((best, f) => (best === undefined || apart(f) < apart(best) ? f : best), undefined);
+    return f === undefined ? [] : [{ truth: t, found: f }];
+  });
+
 export function matchItems(truth: TruthItem[], found: FoundItem[]): Match[] {
+  const banded = bandMatches(
+    truth.filter((t) => ONE_PER_BAND.includes(t.concept)),
+    found.filter((f) => ONE_PER_BAND.includes(f.concept)),
+  );
+  return [...banded, ...matchOneToOne(truth.filter((t) => !ONE_PER_BAND.includes(t.concept)), found.filter((f) => !ONE_PER_BAND.includes(f.concept)))];
+}
+
+function matchOneToOne(truth: TruthItem[], found: FoundItem[]): Match[] {
   const pairs: { ti: number; fi: number; gap: number }[] = [];
   truth.forEach((t, ti) =>
     found.forEach((f, fi) => {
@@ -155,6 +196,7 @@ export type Counts = {
   truth: number;
   findings: number;
   matched: number;
+  real: number;
   bandRight: number;
   tooFar: number;
   muchTooFar: number;
@@ -179,7 +221,7 @@ export function markConcept(found: Share, right: Share, zoneZeroFarther: number,
 
 export function scoreCounts(counts: Counts, bars: Bars): ConceptScore {
   const found = share(counts.matched, counts.truth);
-  const right = share(counts.matched, counts.findings);
+  const right = share(counts.real, counts.findings);
   return {
     ...counts,
     measures: {
@@ -198,6 +240,7 @@ const emptyCounts = (name: string): Counts => ({
   truth: 0,
   findings: 0,
   matched: 0,
+  real: 0,
   bandRight: 0,
   tooFar: 0,
   muchTooFar: 0,
@@ -258,8 +301,12 @@ export function scoreHouse(truth: TruthItem[], found: FoundItem[], options: { ba
       } else c.contactNotReported++;
     }
   }
+  for (const f of new Set(matches.map((m) => m.found))) counts(f.concept).real++;
   const concepts = [...byConcept.values()].sort((a, b) => (a.concept < b.concept ? -1 : 1)).map((c) => scoreCounts(c, bars));
-  const truthOfFinding = new Map(matches.map((m) => [m.found.id, m.truth.id]));
+  // A finding that answers several items stands for the one the top three names, if any.
+  const given = new Set(options.topThree ?? []);
+  const truthOfFinding = new Map<string, string>();
+  for (const m of matches) if (!truthOfFinding.has(m.found.id) || given.has(m.truth.id)) truthOfFinding.set(m.found.id, m.truth.id);
   const order = options.topThree === undefined ? null : scoreOrder(options.topThree, fixFirstOfFound(found).map((id) => truthOfFinding.get(id) ?? null));
   return {
     truthItems: truth.length,

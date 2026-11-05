@@ -17,7 +17,7 @@ import {
 } from "@emberwalk/db";
 import { MetaHttpError, MetaNetworkError, MetaRefused, type MetaClient, sparkToolCall, type Tool, type ToolTurn, type ToolUse, withToolResults } from "@emberwalk/meta";
 import type { AgentJob, Crew, Finding, Trade } from "@emberwalk/shared";
-import { lengthRefusal, missingReason, missingStills, type PhotoStore, withWork } from "./drafts.ts";
+import { bodyRefusal, missingReason, missingStills, type PhotoStore, withWork } from "./drafts.ts";
 import { AGENT_TOOLS, type DraftRequestArgs, type FindCrewsArgs } from "./tools.ts";
 
 type Json = ToolTurn["output"][number];
@@ -217,9 +217,9 @@ export async function runJob(deps: AgentDeps, jobId: string): Promise<JobOutcome
     if (!channelsOf(crew).includes(args.channel)) return refuse(`crew ${crew.id} has no ${args.channel}; use ${channelsOf(crew).join(" or ")}`);
     const missing = await missingStills(deps.photos, findings);
     if (missing.length > 0) return refuse(`${missingReason(missing)}; this job cannot be drafted yet`);
-    const tooLong = lengthRefusal(args.body, findings);
-    if (tooLong !== null) return refuse(tooLong);
-    const body = withWork(args.body, findings);
+    const bad = bodyRefusal(args.body, findings);
+    if (bad !== null) return refuse(bad);
+    const body = withWork(args.body, findings, job.zip);
     const message = await saveDraft(db, { id: deps.newId(), jobId: job.id, crewId: crew.id, channel: args.channel, subject: args.subject, body, createdAt: at() });
     drafted.add(crew.id);
     return { ran: true, output: { draftId: message.id, status: "draft" }, detail: `drafted a ${args.channel} to crew ${crew.id}` };

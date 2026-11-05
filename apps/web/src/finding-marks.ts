@@ -8,7 +8,7 @@ export type RecheckResult = (typeof RECHECK_RESULTS)[number];
 
 export type Recheck = { photo: string; atMs: number; result: RecheckResult };
 
-export type FindingStatus = { kind: StatusKind; note: string; recheck: Recheck | null; doneOn?: string };
+export type FindingStatus = { kind: StatusKind; note: string; recheck: Recheck | null; doneOn?: string; plannedOn?: string };
 
 export const NEEDS_FIXING: FindingStatus = { kind: "needs_fixing", note: "", recheck: null };
 
@@ -57,6 +57,7 @@ const statusIn = (value: unknown): FindingStatus | null => {
     note: kind === "fix_planned" && typeof value.note === "string" ? value.note : "",
     recheck: kind === "done" ? recheckIn(value.recheck) : null,
     ...(kind === "done" && typeof value.doneOn === "string" && DAY.test(value.doneOn) ? { doneOn: value.doneOn } : {}),
+    ...(kind === "fix_planned" && typeof value.plannedOn === "string" && DAY.test(value.plannedOn) ? { plannedOn: value.plannedOn } : {}),
   };
 };
 
@@ -134,6 +135,7 @@ export const storageFindingMarks = (storage: () => Storage): FindingMarks => {
           note: kind === "fix_planned" ? note.trim() : "",
           recheck: null,
           ...(kind === "done" && doneOn !== undefined ? { doneOn } : {}),
+          ...(kind === "fix_planned" && doneOn !== undefined ? { plannedOn: doneOn } : {}),
         };
       write(resultsId, { ...stored, status });
     },

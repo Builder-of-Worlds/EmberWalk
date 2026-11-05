@@ -1,5 +1,8 @@
 import {
+  type CrewSignupRequest,
+  CrewSignupResponse,
   ErrorBody,
+  type FixedNamedCrewRequest,
   FIXED_ROUTE_CODES,
   type FixedApprovalResponse,
   FixedApprovalResponse as ApprovalSchema,
@@ -8,6 +11,7 @@ import {
   FixedHistoryResponse,
   type FixedInspectionResponse,
   FixedInspectionResponse as InspectionSchema,
+  FixedInspectionSentResponse,
   type FixedJob,
   FixedJobsResponse,
   type FixedMarkRequest,
@@ -64,11 +68,15 @@ export type FixedApi = {
   jobs(walkId: string): Promise<FixedAnswer<JobsView>>;
   draft(jobId: string): Promise<FixedAnswer<JobsView>>;
   addEmail(jobId: string, crewId: string, email: string): Promise<FixedAnswer<JobsView>>;
+  textDraft(jobId: string, crewId: string): Promise<FixedAnswer<JobsView>>;
   approve(messageId: string): Promise<FixedAnswer<FixedApprovalResponse>>;
   sentByPhone(messageId: string): Promise<FixedAnswer<{ status: "sent_by_phone" }>>;
   logReply(messageId: string, text: string): Promise<FixedAnswer<JobsView>>;
   followUps(walkId: string): Promise<FixedAnswer<JobsView>>;
   inspection(walkId: string): Promise<FixedAnswer<InspectionRequest>>;
+  inspectionApprove(messageId: string): Promise<FixedAnswer<{ status: "sent" }>>;
+  crewSignup(signup: CrewSignupRequest): Promise<FixedAnswer<CrewSignupResponse>>;
+  addCrew(jobId: string, crew: FixedNamedCrewRequest): Promise<FixedAnswer<JobsView>>;
   history(): Promise<FixedAnswer<History>>;
   mark(findingId: string, mark: MarkRequest): Promise<FixedAnswer<{ saved: true }>>;
 };
@@ -121,12 +129,16 @@ export const fixedApi = (base: string, send: Fetch, visitorId: () => string): Fi
     plan: (walkId, zip) => askFixed(send, request("POST", `/api/walks/${enc(walkId)}/get-it-fixed`, { zip }), jobs),
     jobs: (walkId) => askFixed(send, request("GET", `/api/walks/${enc(walkId)}/jobs`), jobs),
     draft: (jobId) => askFixed(send, request("POST", `/api/jobs/${enc(jobId)}/drafts`), jobs),
+    textDraft: (jobId, crewId) => askFixed(send, request("POST", `/api/jobs/${enc(jobId)}/crews/${enc(crewId)}/text`), jobs),
     addEmail: (jobId, crewId, email) => askFixed(send, request("PUT", `/api/jobs/${enc(jobId)}/crews/${enc(crewId)}/email`, { email }), jobs),
     approve: (messageId) => askFixed(send, request("POST", `/api/messages/${enc(messageId)}/approve`), bySchema(ApprovalSchema)),
     sentByPhone: (messageId) => askFixed(send, request("POST", `/api/messages/${enc(messageId)}/sent-by-phone`), bySchema(FixedSentByPhoneResponse)),
     logReply: (messageId, text) => askFixed(send, request("POST", `/api/messages/${enc(messageId)}/replies`, { text }), jobs),
     followUps: (walkId) => askFixed(send, request("POST", `/api/walks/${enc(walkId)}/followups`), jobs),
     inspection: (walkId) => askFixed(send, request("POST", `/api/walks/${enc(walkId)}/inspection-request`), bySchema(InspectionSchema)),
+    crewSignup: (signup) => askFixed(send, request("POST", "/api/crew-signups", signup), bySchema(CrewSignupResponse)),
+    addCrew: (jobId, crew) => askFixed(send, request("POST", `/api/jobs/${enc(jobId)}/crews`, crew), jobs),
+    inspectionApprove: (messageId) => askFixed(send, request("POST", `/api/inspections/${enc(messageId)}/approve`), bySchema(FixedInspectionSentResponse)),
     history: () => askFixed(send, request("GET", "/api/history"), bySchema(FixedHistoryResponse)),
     mark: (findingId, mark) => askFixed(send, request("POST", `/api/findings/${enc(findingId)}/status`, mark), readSaved),
   };

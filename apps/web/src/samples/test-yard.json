@@ -30,6 +30,10 @@
       },
       "label": "required_now",
       "instruction": "Stack the firewood at least 30 feet from the house, or keep it completely covered with sheet metal.",
+      "instructions": {
+        "en": "Stack the firewood at least 30 feet from the house, or keep it completely covered with sheet metal.",
+        "es": "Apile la leña por lo menos a 30 pies de la casa, o manténgala tapada por completo con lámina de metal."
+      },
       "sources": [
         {
           "citation": "14 CCR 1299.03(a)(3)",
@@ -58,6 +62,15 @@
           0.714
         ]
       }
+    }
+  ],
+  "pins": [
+    {
+      "findingId": "wood-pile-1",
+      "side": "back",
+      "band": "zone_0",
+      "position": 0.25,
+      "feet": 0
     }
   ]
 }

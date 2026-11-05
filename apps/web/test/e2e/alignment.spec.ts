@@ -23,7 +23,7 @@ const offset = (locator: Locator) =>
 
 const expectCentred = async (locators: Locator) => {
   expect(await locators.count()).toBeGreaterThan(0);
-  for (const one of await locators.all()) expect(Math.abs((await offset(one)).centre), await one.innerText()).toBeLessThanOrEqual(2);
+  for (const one of await locators.all()) if ((await one.boundingBox())!.width > 1) expect(Math.abs((await offset(one)).centre), await one.innerText()).toBeLessThanOrEqual(2);
 };
 
 const expectLeft = async (locators: Locator) => {

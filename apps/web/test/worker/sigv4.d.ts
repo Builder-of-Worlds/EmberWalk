@@ -10,6 +10,7 @@ export type Presign = {
   service: string;
   now: Date;
   expiresSeconds: number;
+  devHttp?: boolean;
 };
 
 export function presign(input: Presign): Promise<string>;

@@ -75,12 +75,24 @@
   ],
   "lot": {"min_in": [-1500, -1380], "max_in": [2220, 1716]},
   "look": {
-    "siding": {"material": "polyhaven:weathered_plank_siding", "colour": "#cfc8b6", "tint": [1.0, 1.0, 1.0]},
-    "trim": {"colour": "#f2efe8"},
-    "roof": {"material": "polyhaven:grey_roof_01", "colour": "#8f9296", "tint": [1.0, 1.0, 1.0]},
-    "ground": {"material": "polyhaven:withered_grass", "tint": [1.0, 0.95, 0.85]},
-    "concrete": {"material": "polyhaven:concrete_floor_02", "tint": [0.85, 0.83, 0.8]},
-    "light": {"hdri": "polyhaven:goegap", "rotation_deg": -94}
+    "siding": {"material": "polyhaven:exterior_wall_cladding_03", "colour": "#a29a86", "tint": [1.0, 1.0, 1.0]},
+    "trim": {"colour": "#d4d0c4"},
+    "roof": {"material": "polyhaven:grey_roof_01", "colour": "#2e2d2c", "tint": [1.0, 1.0, 1.0]},
+    "ground": {"material": "polyhaven:withered_grass", "tint": [0.74, 0.65, 0.52], "mix": [
+      {"material": "polyhaven:park_dirt", "share": 0.4, "tint": [0.95, 0.8, 0.66]},
+      {"material": "polyhaven:leafy_grass", "share": 0.05, "tint": [0.8, 0.75, 0.4]}]},
+    "concrete": {"material": "polyhaven:concrete_floor_02", "tint": [2.4, 2.35, 2.3]},
+    "light": {"hdri": "polyhaven:belfast_farmhouse", "rotation_deg": 160, "warm": [0.82, 0.78, 0.72], "fill": 4.0,
+              "haze": {"colour": "#e4dccb", "density_per_m": 0.0024},
+              "sky": {"horizon": "#f6f0e2", "zenith": "#a3b9d8", "strength": 1.0, "zenith_at": 0.15,
+                      "clouds": {"colour": "#f6f1e6", "cover": 0.3, "scale": 2.5}}},
+    "woods": {},
+    "front_yard": {
+      "bed": {"corners_in": [[330, -6], [330, -54], [470, -54], [470, -6]],
+              "before": "polyhaven:gravel_ground_01", "after": "polyhaven:gravel_ground_01"},
+      "walk": {"from_in": [246, -120], "to_in": [246, -520], "width_in": 48}},
+    "finish": 2,
+    "photoscans": true
   },
   "hazards": [
     {

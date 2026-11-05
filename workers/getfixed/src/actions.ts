@@ -15,36 +15,52 @@ import {
   runJob,
   SendRefused,
   sendApproved,
+  sendInspection,
+  withWork,
 } from "@emberwalk/agent";
 import {
+  approveInspection as approveStored,
+  addNamedCrew,
+  addressOptedOut,
   approveMessage,
   CapReached,
+  confirmCrewSignup,
   DbRefused,
   findingsForWalk,
   followUpsForJob,
+  getInspection,
   getJob,
   getMessage,
   getWalk,
+  inspectionRepliesFor,
+  jobAddress,
   jobCrews,
   jobsForWalk,
+  licenseOnStateList,
   markSent,
   messagesForJob,
+  saveDraft,
   optOutAddress,
+  removeCrewSignup,
   removeLicense,
   saveCrewCards,
+  saveCrewSignup,
+  saveInspectionDraft,
   saveReply,
   setCrewEmail,
   setJobStatus,
 } from "@emberwalk/db";
+import { fireContactFor } from "@emberwalk/directory";
 import { MetaHttpError, MetaRefused } from "@emberwalk/meta";
-import type { FixedApprovalResponse, FixedCode, FixedInspectionResponse, FixedSentByPhoneResponse, OutgoingMessage } from "@emberwalk/shared";
+import { CrewSignupRequest, type CrewSignupResponse, type FixedApprovalResponse, type FixedCode, type FixedInspectionResponse, type FixedInspectionSentResponse, FixedNamedCrewRequest, type FixedSentByPhoneResponse, type OutgoingMessage } from "@emberwalk/shared";
 import { z } from "zod";
 import { type Deps, ModelOff } from "./deps.ts";
 import { directoryFor } from "./directory.ts";
-import { MailFailed, MailOff, mailConfig, messageOfToken, resendOutbox } from "./mail.ts";
+import { MailFailed, MailOff, mailConfig, messageOfToken, resendInspection, resendOutbox, sendCrewConfirm, signupOfToken } from "./mail.ts";
 import { jobsView, type JobsView } from "./view.ts";
 
 export const MAX_APPROVED_EMAILS_PER_DAY = 25;
+export const MAX_SIGNUPS_PER_DAY = 100;
 
 export type Answer<T> = { value: T } | { code: FixedCode; message: string };
 
@@ -267,15 +283,97 @@ export const inspection = (d: Deps, walkId: string): Promise<Answer<Inspection>>
       const walk = await walkOf(d, walkId);
       if (!(await findingsForWalk(d.db, walk.id)).some((f) => f.label === "required_now" && f.veto === null)) throw new Refused(`walk ${walk.id} has no Required Now item`);
     }
-    const request = await inspectionRequest({ enabled: d.enabled, db: d.db }, walkId);
-    return { subject: request.subject, body: request.body, links: request.links.map(({ label, url }) => ({ label, url })) };
+    const request = await inspectionRequest({ enabled: d.enabled, db: d.db, contactFor: fireContactFor }, walkId);
+    const links = request.links.map(({ label, url }) => ({ label, url }));
+    const { contact } = request;
+    if (contact === null) return { subject: request.subject, body: request.body, links, contact: null, messageId: null, sent: false, replies: [] };
+    const saved = await saveInspectionDraft(d.db, {
+      id: d.newId(),
+      walkId,
+      agency: contact.agency,
+      toAddress: contact.email,
+      source: contact.source,
+      readOn: contact.readOn,
+      subject: request.subject,
+      body: request.body,
+      createdAt: d.now().toISOString(),
+    });
+    return { subject: saved.subject, body: saved.body, links, contact, messageId: saved.id, sent: saved.status === "sent", replies: await inspectionRepliesFor(d.db, saved.id) };
+  });
+
+export const approveInspection = (d: Deps, messageId: string, visitorId: string): Promise<Answer<FixedInspectionSentResponse>> =>
+  answer(async () => {
+    const message = await getInspection(d.db, messageId);
+    if (message === null) throw notFound(`inspection message ${messageId}`);
+    const walk = await walkOf(d, message.walkId);
+    if (message.status === "sent") return { status: "sent" };
+    const config = mailConfig(d.env);
+    const firstJob = (await jobsForWalk(d.db, walk.id))[0];
+    if (firstJob === undefined) throw new Refused(`walk ${walk.id} has no job address`);
+    if (message.status === "draft") await approveStored(d.db, message.id, d.now().toISOString(), visitorId, MAX_APPROVED_EMAILS_PER_DAY);
+    const jobToken = await jobAddress(d.db, firstJob.id, d.newToken, d.now().toISOString());
+    await sendInspection({ db: d.db, outbox: resendInspection({ db: d.db, config, fetch: d.fetch, now: d.now, jobToken }), now: d.now }, message.id);
+    return { status: "sent" };
+  });
+
+export const crewSignup = (d: Deps, input: unknown): Promise<Answer<CrewSignupResponse>> =>
+  answer(async () => {
+    const signup = CrewSignupRequest.parse(input);
+    if (!(await licenseOnStateList(d.db, signup.licenseNumber, signup.licenseClass))) throw new Refused(`license ${signup.licenseNumber} ${signup.licenseClass} is not on the state list in good standing`);
+    const config = mailConfig(d.env);
+    const saved = await saveCrewSignup(d.db, signup, { id: d.newId(), at: d.now().toISOString(), perDay: MAX_SIGNUPS_PER_DAY });
+    if (saved.outcome === "license_listed" || saved.outcome === "license_waiting") return { status: saved.outcome };
+    if (saved.outcome === "send") await sendCrewConfirm({ config, fetch: d.fetch, now: d.now }, saved.id, saved.email);
+    return { status: "check_email" };
+  });
+
+export const crewConfirm = (d: Deps, token: string): Promise<Answer<{ listed: true }>> =>
+  answer(async () => {
+    const signupId = await signupOfToken(mailConfig(d.env).optoutSecret, token);
+    if (signupId === null || !(await confirmCrewSignup(d.db, signupId, d.now().toISOString()))) throw notFound("that link");
+    return { listed: true };
+  });
+
+// Draft words: they wait for the owner's approval.
+const TEXT_REQUEST: Record<string, string> = {
+  en: "Hello, I would like a quote for this work at my home.",
+  es: "Hola, quisiera un presupuesto para este trabajo en mi casa.",
+};
+
+export const textDraft = (d: Deps, jobId: string, crewId: string): Promise<Answer<JobsView>> =>
+  answer(async () => {
+    const job = await jobOf(d, jobId);
+    const walk = await walkOf(d, job.walkId);
+    const crew = (await jobCrews(d.db, job.id)).find((c) => c.id === crewId);
+    if (crew?.phone == null) throw new SendRefused(`crew ${crewId} has no phone number on this job`);
+    if (crew.email !== null && (await addressOptedOut(d.db, crew.email))) throw new SendRefused(`crew ${crewId} asked to be taken off the list`);
+    const waiting = (await messagesForJob(d.db, job.id)).some((m) => m.crewId === crewId && m.channel === "text" && (m.status === "draft" || m.status === "approved"));
+    if (!waiting) {
+      const findings = (await findingsForWalk(d.db, job.walkId)).filter((f) => job.findingIds.includes(f.id));
+      await saveDraft(d.db, { id: d.newId(), jobId: job.id, crewId, channel: "text", subject: null, body: withWork(TEXT_REQUEST[walk.language] ?? TEXT_REQUEST["en"]!, findings, job.zip), createdAt: d.now().toISOString() });
+    }
+    return jobsView(d.db, walk.id);
+  });
+
+export const addCrew = (d: Deps, jobId: string, input: unknown): Promise<Answer<JobsView>> =>
+  answer(async () => {
+    const job = await jobOf(d, jobId);
+    const named = FixedNamedCrewRequest.parse(input);
+    await addNamedCrew(d.db, job.id, { id: d.newId(), name: named.name, trade: job.trade, zip: job.zip, email: named.email, phone: named.phone, licenseNumber: null, sample: false });
+    return jobsView(d.db, job.walkId);
   });
 
 export const optOut = (d: Deps, token: string): Promise<Answer<{ removed: true }>> =>
   answer(async () => {
     const config = mailConfig(d.env);
     const messageId = await messageOfToken(config.optoutSecret, token);
-    if (messageId === null) throw notFound("that link");
+    if (messageId === null) {
+      const signupId = await signupOfToken(config.optoutSecret, token, "signup-optout");
+      const address = signupId === null ? null : await removeCrewSignup(d.db, signupId);
+      if (address === null) throw notFound("that link");
+      await optOutAddress(d.db, address, d.now().toISOString());
+      return { removed: true };
+    }
     const message = await messageOf(d, messageId);
     const crew = (await jobCrews(d.db, message.jobId)).find((c) => c.id === message.crewId);
     if (crew === undefined) throw notFound(`crew ${message.crewId}`);

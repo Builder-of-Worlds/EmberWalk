@@ -223,13 +223,13 @@ describe("runJob refusals", () => {
     expect(requests).toEqual([]);
   });
 
-  it("refuses a real walk on free credits before any request", async () => {
+  it("runs a real walk on free credits like any other", async () => {
     await setup({ synthetic: false });
-    const { deps, requests } = agentDeps({ answers: [toolAnswer(find)], crews: CREWS });
-    expect(await runJob(deps, JOB).catch(reason)).toBe("real_content_on_free_credits");
-    expect(requests).toEqual([]);
-    expect(await jobCrews(env.DB, JOB)).toEqual([]);
-    expect(await costRows()).toEqual([]);
+    const { deps, requests } = agentDeps({ answers: [toolAnswer(find), drafts(1, 2, 3), done], crews: CREWS });
+    expect(await runJob(deps, JOB)).toEqual({ jobId: JOB, status: "waiting_on_homeowner", ended: "finished", requests: 3, drafts: 3 });
+    expect(requests).toHaveLength(3);
+    expect((await jobCrews(env.DB, JOB)).map((c) => c.id)).toEqual([crewId(1), crewId(2), crewId(3)]);
+    expect((await costRows()).length).toBeGreaterThan(0);
   });
 
   it("passes daily_cap_reached to the caller before any request", async () => {

@@ -1,6 +1,6 @@
 import { type CatalogRow, POINT_LOOKS, rowsForClip } from "@emberwalk/catalog";
 import { gridToPixels, type Rect, samBoxVideoCall, type SparkBox, sparkBoxCall } from "@emberwalk/meta";
-import type { Clip, Concept } from "@emberwalk/shared";
+import { type Clip, type Concept, DEFAULT_LIMITS } from "@emberwalk/shared";
 import { type PendingTally, type Settled, settleFrames, settleUnseen, storedConcept } from "./catalog-step.ts";
 import type { Deps } from "./deps.ts";
 import { isWholeStepRefusal, retrying, whyNotChecked } from "./tracks.ts";
@@ -21,15 +21,17 @@ type Look = { frame: number; jpeg: Uint8Array };
 type Pointed = { frame: number; box: Rect | null; failure: string | null };
 type Pointing = CatalogRow & { point: string };
 
-export const lookFrames = (frameCount: number): number[] => [
-  ...new Set(Array.from({ length: POINT_LOOKS }, (_, i) => Math.floor(((i + LOOK_CENTRE) * frameCount) / POINT_LOOKS))),
+export const lookFrames = (frameCount: number, looks = POINT_LOOKS): number[] => [
+  ...new Set(Array.from({ length: looks }, (_, i) => Math.floor(((i + LOOK_CENTRE) * frameCount) / looks))),
 ];
+
+export const rareLooksOf = (deps: Deps): number => deps.rarePointLooks ?? DEFAULT_LIMITS.rarePointLooks;
 
 const pointKey = (walkId: string, clipId: string, frame: number): string => `clips/${walkId}/${clipId}/point/${frame}.jpg`;
 
 const area = (box: Rect): number => (box.right - box.left) * (box.bottom - box.top);
 
-const pointingRows = (clip: Clip): Pointing[] => rowsForClip(clip.kind).filter((row): row is Pointing => row.point !== null);
+const pointingRows = (clip: Clip, rareLooks: number): Pointing[] => rowsForClip(clip.kind, rareLooks).filter((row): row is Pointing => row.point !== null);
 
 const readLook = async (deps: Deps, frame: number, key: string): Promise<Look> => {
   const stored = await deps.bucket.get(key);
@@ -92,10 +94,26 @@ export const pointAndTrack = async (
   fileId: string,
   content: "synthetic" | "real",
 ): Promise<PointResult> => {
-  const rows = pointingRows(clip);
-  if (rows.length === 0) return { runs: [], tracks: [] };
+  const everyRow = pointingRows(clip, rareLooksOf(deps));
+  if (everyRow.length === 0) return { runs: [], tracks: [] };
+  const lookCounts = [...new Set(everyRow.map((row) => row.looks ?? POINT_LOOKS))];
+  // One look count at a time, since two counts can share a frame and each deletes its own stills when done.
+  const parts: PointResult[] = [];
+  for (const looks of lookCounts) parts.push(await lookAndTrack(deps, walkId, clip, fileId, everyRow.filter((row) => (row.looks ?? POINT_LOOKS) === looks), looks, content));
+  const pending = parts.flatMap((p) => p.pending ?? []);
+  return { runs: parts.flatMap((p) => p.runs), tracks: parts.flatMap((p) => p.tracks), ...(pending.length > 0 ? { pending } : {}) };
+};
 
-  const frames = lookFrames(clip.frameCount);
+const lookAndTrack = async (
+  deps: Deps,
+  walkId: string,
+  clip: Clip,
+  fileId: string,
+  rows: Pointing[],
+  looks: number,
+  content: "synthetic" | "real",
+): Promise<PointResult> => {
+  const frames = lookFrames(clip.frameCount, looks);
   const keys = frames.map((frame) => pointKey(walkId, clip.id, frame));
   try {
     const made = await deps.media.stills({

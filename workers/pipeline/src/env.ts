@@ -11,6 +11,7 @@ export type Env = {
   R2_BUCKET_NAME: string;
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
+  R2_DEV_HTTP?: string;
   META_API_KEY?: string;
   META_BASE_URL: string;
   META_BILLING: string;

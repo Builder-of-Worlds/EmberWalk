@@ -8,6 +8,8 @@ export const Limits = z
     dailySpendUsd: z.number().positive(),
     deleteEverythingOn: z.boolean(),
     liveWalksPerVisitorPerDay: count,
+    signInLinksPerHour: count,
+    signInLinksPerIpPerHour: count,
     maxFps: z.number().positive(),
     defaultFps: z.number().positive(),
     maxWalkSeconds: count,
@@ -25,6 +27,7 @@ export const Limits = z
     recheckPhotoBytes: count,
     rechecksPerFinding: count,
     paymentsOn: z.boolean(),
+    rarePointLooks: z.int().min(0).max(40),
   })
   .refine((l) => l.defaultFps <= l.maxFps, { message: "defaultFps must not pass maxFps", path: ["defaultFps"] })
   .refine((l) => l.uploadMinPartBytes <= l.uploadPartBytes, {
@@ -40,8 +43,10 @@ export type Limits = z.infer<typeof Limits>;
 
 export const DEFAULT_LIMITS: Limits = Limits.parse({
   dailySpendUsd: 20,
-  deleteEverythingOn: false,
+  deleteEverythingOn: true,
   liveWalksPerVisitorPerDay: 3,
+  signInLinksPerHour: 200,
+  signInLinksPerIpPerHour: 20,
   maxFps: 4,
   defaultFps: 2,
   maxWalkSeconds: 6 * 60,
@@ -55,10 +60,11 @@ export const DEFAULT_LIMITS: Limits = Limits.parse({
   faultCountMost: 1000,
   faultKeepDays: 30,
   faultRowsADay: 500,
-  recheckOn: false,
+  recheckOn: true,
   recheckPhotoBytes: 20 * MiB,
   rechecksPerFinding: 5,
   paymentsOn: false,
+  rarePointLooks: 0,
 });
 
 export const maxWalkBytes = (l: Limits): number => Math.ceil((l.maxWalkSeconds * l.maxVideoBitsPerSecond) / 8);

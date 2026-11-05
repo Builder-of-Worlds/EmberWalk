@@ -1,13 +1,15 @@
-import { findingsForWalk, getWalk } from "@emberwalk/db";
+import { findingsForWalk, getWalk, jobsForWalk } from "@emberwalk/db";
 import type { Finding, FindingStatus } from "@emberwalk/shared";
 import { CONCEPT_NAMES } from "./drafts.ts";
 import { AgentOff } from "./loop.ts";
 
 export type InspectionLink = { label: string; url: string; readOn: string };
 
-export type InspectionRequest = { walkId: string; subject: string; body: string; links: InspectionLink[]; findingIds: string[] };
+export type InspectionContact = { agency: string; email: string; source: string; readOn: string };
 
-export type InspectionDeps = { enabled: boolean; db: D1Database };
+export type InspectionRequest = { walkId: string; subject: string; body: string; links: InspectionLink[]; findingIds: string[]; contact: InspectionContact | null };
+
+export type InspectionDeps = { enabled: boolean; db: D1Database; contactFor?: (zip: string) => InspectionContact | null };
 
 export const SYNTHETIC_LABEL = "Synthetic sample house";
 
@@ -33,6 +35,14 @@ export class InspectionRefused extends Error {
 const fixedList = (findings: Finding[]): string => findings.map((f, i) => `${i + 1}. ${CONCEPT_NAMES[f.concept]}: ${f.instruction}`).join("\n");
 
 const linkList = (): string => CALFIRE_LINKS.map((l) => `- ${l.label}: ${l.url}`).join("\n");
+
+const departmentFor = async (deps: InspectionDeps, walkId: string, synthetic: boolean): Promise<InspectionContact | null> => {
+  if (synthetic || deps.contactFor === undefined) return null;
+  const zip = (await jobsForWalk(deps.db, walkId))[0]?.zip;
+  if (zip === undefined) return null;
+  const row = deps.contactFor(zip);
+  return row === null ? null : { agency: row.agency, email: row.email, source: row.source, readOn: row.readOn };
+};
 
 export async function inspectionRequest(deps: InspectionDeps, walkId: string): Promise<InspectionRequest> {
   if (!deps.enabled) throw new AgentOff();
@@ -61,5 +71,5 @@ export async function inspectionRequest(deps: InspectionDeps, walkId: string): P
     "",
     "Thank you.",
   ].join("\n");
-  return { walkId, subject, body, links: CALFIRE_LINKS, findingIds: required.map((f) => f.id) };
+  return { walkId, subject, body, links: CALFIRE_LINKS, findingIds: required.map((f) => f.id), contact: await departmentFor(deps, walkId, walk.synthetic) };
 }

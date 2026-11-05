@@ -1,7 +1,8 @@
-import { isCorner } from "@emberwalk/shared";
+import { isCorner, SIDES } from "@emberwalk/shared";
 import type { Band, ResultFinding, ResultSource, WalkResultsResponse } from "@emberwalk/shared";
 import { FONT_400_URL, FONT_700_URL, LOCKUP_URL } from "./report-assets.ts";
-import { type GapKind, type RecheckResult, longDay, reportWords as w, shortDay } from "./report-words.ts";
+import { type GapKind, type RecheckResult, type ReportWords, reportWords } from "./report-words.ts";
+import { reportWordsEs } from "./report-words-es.ts";
 
 export type MarkStatus = "needs_fixing" | "fix_planned" | "done";
 
@@ -12,15 +13,17 @@ export type RecheckAnswer = { findingId: string; result: RecheckResult; createdA
 export type ShownStatus = { kind: "needs_fixing" } | { kind: "fix_planned" } | { kind: "done"; doneOn: string | null } | { kind: "rechecked"; on: string };
 
 export type ReportInput = {
-  results: Pick<WalkResultsResponse, "walkedOn" | "findings" | "gaps" | "notChecked" | "coverage">;
+  results: Pick<WalkResultsResponse, "walkedOn" | "findings" | "gaps" | "notChecked" | "coverage" | "unplaced">;
   statuses: ReadonlyMap<string, MarkStatus>;
   marks: Mark[];
   rechecks: RecheckAnswer[];
   stills: ReadonlyMap<string, string>;
   removed: ReadonlySet<string>;
   approvedAt: string | null;
+  approvedDay?: string;
   templates: ReadonlyMap<string, string>;
   personal: readonly string[];
+  language?: string;
 };
 
 const anyCase = (words: string): string => words.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
@@ -95,17 +98,18 @@ const byLabel = (a: ResultFinding, b: ResultFinding) => Number(a.label !== "requ
 
 const byDistance = (a: ResultFinding, b: ResultFinding) => a.distanceFeet.low - b.distanceFeet.low || a.distanceFeet.high - b.distanceFeet.high;
 
-const fixOrder = (a: ResultFinding, b: ResultFinding): number => byLabel(a, b) || byDistance(a, b) || byId(a, b);
+const bySurer = (a: ResultFinding, b: ResultFinding) => b.confidence - a.confidence;
 
-const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, b) || byLabel(a, b) || byId(a, b);
+const fixOrder = (a: ResultFinding, b: ResultFinding): number => byLabel(a, b) || byDistance(a, b) || bySurer(a, b) || byId(a, b);
+
+const nearOrder = (a: ResultFinding, b: ResultFinding): number => byDistance(a, b) || byLabel(a, b) || bySurer(a, b) || byId(a, b);
 
 const blocksGreen = (f: ResultFinding): boolean => f.label === "required_now" || f.band === "zone_0";
 
 export const reportOrder = (results: Pick<WalkResultsResponse, "findings" | "gaps">, cleared: (f: ResultFinding) => boolean): Ordered => {
-  const sideGaps = results.gaps.filter((g) => !isCorner(g.side));
   const blocking = results.findings.filter((f) => blocksGreen(f) && !cleared(f));
   const near = results.findings.filter((f) => !cleared(f) && f.distanceFeet.low < FIX_FIRST_FEET).sort(nearOrder);
-  const first = sideGaps.length > 0 || blocking.length === 0 ? [] : near.length > 0 ? near : [...blocking].sort(nearOrder);
+  const first = results.gaps.length > 0 ? near : blocking.length === 0 ? [] : near.length > 0 ? near : [...blocking].sort(nearOrder);
   const rest = results.findings.filter((f) => !first.includes(f));
   return {
     first,
@@ -123,33 +127,34 @@ export const statusOf = (findingId: string, status: MarkStatus, marks: Mark[], r
   return { kind: "done", doneOn: done?.doneOn ?? null };
 };
 
-const esc = (text: string): string =>
+export const esc = (text: string): string =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
-const statusLines = (status: ShownStatus): string[] => {
+const statusLines = (w: ReportWords, status: ShownStatus): string[] => {
   if (status.kind === "rechecked") return [w.rechecked, w.recheckedOn(status.on)];
   if (status.kind !== "done") return [w.status[status.kind]];
   return [w.status.done, ...(status.doneOn === null ? [] : [w.doneOn(status.doneOn)]), w.notRechecked];
 };
 
-const pictureOf = (said: string, still: string | undefined, number?: number): string =>
+const pictureOf = (w: ReportWords, said: string, still: string | undefined, number?: number): string =>
   still !== undefined && still.startsWith(STILL_DATA)
     ? `<div class="photo"><img src="${still}" alt="${esc(w.photo(said))}">${number === undefined ? "" : `<span class="num">${number}</span>`}</div>`
     : "";
 
-const removedOf = (f: ResultFinding): string => w.removedItem(f.concept, f.distanceFeet.low, f.distanceFeet.high);
+const removedOf = (w: ReportWords, f: ResultFinding): string => w.removedItem(f.concept, f.distanceFeet.low, f.distanceFeet.high);
 
-const saidOf = (f: ResultFinding, input: Pick<ReportInput, "templates" | "personal">): string =>
-  holdsPersonal(f.instruction, input.personal) ? (input.templates.get(f.id) ?? removedOf(f)) : f.instruction;
+const saidOf = (w: ReportWords, f: ResultFinding, input: Pick<ReportInput, "templates" | "personal">): string =>
+  holdsPersonal(f.instruction, input.personal) ? (input.templates.get(f.id) ?? removedOf(w, f)) : f.instruction;
 
 const CHIP_OF_STATUS: Record<ShownStatus["kind"], string> = { needs_fixing: "needs", fix_planned: "planned", done: "done", rechecked: "rechecked" };
 
-const row = (f: ResultFinding, status: ShownStatus, still: string | undefined, said: string, number?: number): string => {
-  const [chip = "", ...notes] = statusLines(status);
+const row = (w: ReportWords, f: ResultFinding, status: ShownStatus, still: string | undefined, said: string, number?: number): string => {
+  const [chip = "", ...notes] = statusLines(w, status);
   return [
     `<li class="finding" data-finding="${esc(f.id)}" data-status="${status.kind}">`,
-    pictureOf(said, still, number),
+    pictureOf(w, said, still, number),
     `<p class="say">${esc(said)}</p>`,
+    ...(f.advice === true ? [`<p class="advice" data-part="advice">${esc(w.advice)}</p>`] : []),
     `<p class="where" data-part="distance">${esc(w.distance(f.distanceFeet.low, f.distanceFeet.high))}</p>`,
     '<div class="chips">',
     `<div><span class="cap">${esc(w.caption.band)}</span><p class="chip zone" data-part="band">${esc(w.bands[f.band])}</p></div>`,
@@ -163,29 +168,38 @@ const row = (f: ResultFinding, status: ShownStatus, still: string | undefined, s
 
 type Line = { day: string; at: string; words: string };
 
-const recordOf = (input: ReportInput, byId: ReadonlyMap<string, ResultFinding>): Line[] => {
+const approvedOn = (input: ReportInput, approvedAt: string): string => input.approvedDay ?? approvedAt.slice(0, 10);
+
+const recordOf = (w: ReportWords, input: ReportInput, byId: ReadonlyMap<string, ResultFinding>): Line[] => {
   const walk = input.results.walkedOn;
   const lines: Line[] = [{ day: walk, at: "", words: w.walked(walk) }];
-  if (input.approvedAt !== null) lines.push({ day: input.approvedAt.slice(0, 10), at: input.approvedAt, words: w.approved(input.approvedAt.slice(0, 10)) });
+  if (input.approvedAt !== null) {
+    const day = approvedOn(input, input.approvedAt);
+    lines.push({ day, at: input.approvedAt, words: w.approved(day) });
+  }
   for (const m of input.marks) {
     const f = byId.get(m.findingId);
     if (f === undefined) continue;
     const day = m.doneOn ?? m.markedAt.slice(0, 10);
-    lines.push({ day, at: m.markedAt, words: w.mark(w.status[m.status], day, saidOf(f, input)) });
+    lines.push({ day, at: m.markedAt, words: w.mark(w.status[m.status], day, saidOf(w, f, input)) });
   }
   for (const r of input.rechecks) {
     const f = byId.get(r.findingId);
     if (f === undefined) continue;
     const day = r.createdAt.slice(0, 10);
-    lines.push({ day, at: r.createdAt, words: w.recheck[r.result](day, saidOf(f, input)) });
+    lines.push({ day, at: r.createdAt, words: w.recheck[r.result](day, saidOf(w, f, input)) });
   }
   return lines.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 };
 
-const coverageLines = (input: ReportInput): string[] => {
-  const gaps = input.results.gaps.filter((g) => !isCorner(g.side)).map((g) => w.gap[g.kind as GapKind](g.side));
+const coverageLines = (w: ReportWords, input: ReportInput): string[] => {
+  const gaps = input.results.gaps.map((g) => (isCorner(g.side) ? w.cornerGap : w.gap)[g.kind as GapKind](g.side));
   const notChecked = input.results.notChecked.map((c) => w.notChecked(c));
-  const lines = [...gaps, ...notChecked];
+  const unplaced = [...SIDES, null].flatMap((side) => {
+    const concepts = (input.results.unplaced ?? []).filter((u) => u.side === side).map((u) => u.concept);
+    return concepts.length === 0 ? [] : [w.unplaced(side, concepts)];
+  });
+  const lines = [...gaps, ...notChecked, ...unplaced];
   return lines.length === 0 && input.results.coverage === "checked" ? [w.allChecked] : lines;
 };
 
@@ -239,10 +253,11 @@ const PAPER_STYLE = [
   "ol,ul{list-style:none;margin:0;padding:0}",
   ".keep{break-inside:avoid}",
   ".finding{break-inside:avoid;padding-top:12pt;margin:0 auto;max-width:5.4in}",
-  ".photo{position:relative;width:min(4.2in,100%);aspect-ratio:16/9;margin:0 auto;border-radius:8pt;overflow:hidden;background:var(--sand)}",
-  ".photo img{width:100%;height:100%;object-fit:contain;display:block}",
+  ".photo{position:relative;width:fit-content;max-width:min(4.2in,100%);margin:0 auto;border-radius:8pt;overflow:hidden;background:var(--sand)}",
+  ".photo img{display:block;width:auto;height:auto;max-width:100%;max-height:4.8in}",
   ".num{position:absolute;left:8pt;top:8pt;width:22pt;height:22pt;border-radius:50%;background:var(--forest);color:var(--paper);font-weight:700;font-size:11pt;line-height:22pt}",
   ".say{font-size:12.5pt;font-weight:700;line-height:1.3;margin:7pt auto 0;max-width:5in}",
+  ".advice{font-size:10.5pt;font-style:italic;margin:2pt auto 0;max-width:5in}",
   ".where{color:var(--muted);margin-top:3pt}",
   ".chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6pt 16pt;margin-top:6pt}",
   ".chips>div{font-size:7.5pt;color:var(--muted)}",
@@ -277,8 +292,8 @@ const PAPER_STYLE = [
   ".rule .read{font-size:8pt;color:var(--muted);margin-top:2pt}",
 ].join("");
 
-const styleOf = (walkedOn: string): string => {
-  const footer = `${w.title}    ${w.walkedLabel} ${shortDay(walkedOn)}    ${w.page} `;
+const styleOf = (w: ReportWords, walkedOn: string): string => {
+  const footer = `${w.title}    ${w.walkedLabel} ${w.shortDay(walkedOn)}    ${w.page} `;
   return [
     FACES,
     `@page{size:letter;margin:0.95in 0.75in 0.8in;@top-center{content:image-set(url("${LOCKUP_URL}") 4x);vertical-align:bottom;padding-bottom:7pt;border-bottom:1.5pt solid #c2561a}`,
@@ -289,13 +304,14 @@ const styleOf = (walkedOn: string): string => {
 };
 
 export const reportHtml = (input: ReportInput): string => {
+  const w: ReportWords = input.language === "es" ? reportWordsEs : reportWords;
   const findings = input.results.findings.filter((f) => !input.removed.has(f.id));
   const removed = input.results.findings.filter((f) => input.removed.has(f.id));
   const byId = new Map(findings.map((f) => [f.id, f]));
   const status = (f: ResultFinding): ShownStatus => statusOf(f.id, input.statuses.get(f.id) ?? "needs_fixing", input.marks, input.rechecks);
   const order = reportOrder({ findings, gaps: input.results.gaps }, (f) => status(f).kind === "rechecked");
   const rows = (list: ResultFinding[], numbered: boolean): string[] =>
-    list.map((f, i) => row(f, status(f), input.stills.get(f.id), saidOf(f, input), numbered ? i + 1 : undefined));
+    list.map((f, i) => row(w, f, status(f), input.stills.get(f.id), saidOf(w, f, input), numbered ? i + 1 : undefined));
   const listOf = (items: string[]): string => (items.length === 0 ? "" : `<ol class="findings">${items.join("")}</ol>`);
   const opened = (heading: string, lead: string, items: string[]): string =>
     `<div class="keep"><h2>${esc(heading)}</h2>${lead}${listOf(items.slice(0, 1))}</div>${listOf(items.slice(1))}`;
@@ -304,32 +320,32 @@ export const reportHtml = (input: ReportInput): string => {
       ? ""
       : `<section data-part="fix-first">${opened(w.fixFirst(order.first.length), `<p class="lead">${esc(w.lead)}</p>`, rows(order.first, true))}</section>`;
   const bands = order.bands.map((b) => `<section data-band="${b.band}">${opened(w.bands[b.band], "", rows(b.findings, false))}</section>`).join("");
-  const coverage = `<section data-part="coverage"><h2>${esc(w.coverage)}</h2><ul class="panel">${coverageLines(input).map((l) => `<li><p>${esc(l)}</p></li>`).join("")}</ul></section>`;
-  const record = `<div class="keep"><section data-part="record"><h2>${esc(w.record)}</h2><table class="record"><tbody>${recordOf(input, byId)
-    .map((l) => `<tr data-day="${l.day}"><td>${esc(shortDay(l.day))}</td><td><p>${esc(l.words)}</p></td></tr>`)
+  const coverage = `<section data-part="coverage"><h2>${esc(w.coverage)}</h2><ul class="panel">${coverageLines(w, input).map((l) => `<li><p>${esc(l)}</p></li>`).join("")}</ul></section>`;
+  const record = `<div class="keep"><section data-part="record"><h2>${esc(w.record)}</h2><table class="record"><tbody>${recordOf(w, input, byId)
+    .map((l) => `<tr data-day="${l.day}"><td>${esc(w.shortDay(l.day))}</td><td><p>${esc(l.words)}</p></td></tr>`)
     .join("")}</tbody></table></section></div>`;
   const rules = `<div class="keep"><section data-part="rules"><h2>${esc(w.rules)}</h2><ul class="rules">${sourcesOf(findings)
     .map(
       (s) =>
-        `<li class="rule"><p><a href="${esc(s.url)}">${esc(s.citation)}</a></p><p>${esc(s.words)}</p><p class="read" data-part="retrieved">${esc(w.retrieved(s.retrievedOn))} ${esc(hostOf(s.url))}</p></li>`,
+        `<li class="rule"><p><a href="${esc(s.url)}">${esc(s.citation)}</a></p>${w.quoteLabel === "" ? `<p>${esc(s.words)}</p>` : `<p>${esc(w.quoteLabel)}</p><p lang="en">${esc(s.words)}</p>`}<p class="read" data-part="retrieved">${esc(w.retrieved(s.retrievedOn))} ${esc(hostOf(s.url))}</p></li>`,
     )
     .join("")}</ul></section></div>`;
   const gone =
     removed.length === 0
       ? ""
       : `<section data-part="removed"><h2>${esc(w.removed)}</h2><p class="lead">${esc(w.removedLead)}</p><ul class="removed">${removed
-          .map((f) => `<li data-finding="${esc(f.id)}">${pictureOf(removedOf(f), input.stills.get(f.id))}<p>${esc(removedOf(f))}</p></li>`)
+          .map((f) => `<li data-finding="${esc(f.id)}">${pictureOf(w, removedOf(w, f), input.stills.get(f.id))}<p>${esc(removedOf(w, f))}</p></li>`)
           .join("")}</ul></section>`;
-  const walked = `<p data-part="walked"><span class="k">${esc(w.walkedLabel)}</span><strong>${esc(longDay(input.results.walkedOn))}</strong></p>`;
+  const walked = `<p data-part="walked"><span class="k">${esc(w.walkedLabel)}</span><strong>${esc(w.longDay(input.results.walkedOn))}</strong></p>`;
   const approved =
     input.approvedAt === null
       ? ""
-      : `<p data-part="approved"><span class="k">${esc(w.approvedLabel)}</span><strong>${esc(shortDay(input.approvedAt.slice(0, 10)))}</strong></p>`;
+      : `<p data-part="approved"><span class="k">${esc(w.approvedLabel)}</span><strong>${esc(w.shortDay(approvedOn(input, input.approvedAt)))}</strong></p>`;
   return [
-    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    `<!doctype html><html lang="${w.htmlLang}"><head><meta charset="utf-8">`,
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'">`,
-    `<title>${esc(w.title)}</title><style>${styleOf(input.results.walkedOn)}</style></head><body><main>`,
+    `<title>${esc(w.title)}</title><style>${styleOf(w, input.results.walkedOn)}</style></head><body><main>`,
     `<header class="cover"><img class="lockup" src="${LOCKUP_URL}" alt="${esc(w.lockupAlt)}"><h1>${esc(w.title)}</h1><p class="made">${esc(w.made)}</p>`,
     `<div class="facts">${walked}${approved}</div>`,
     `<div class="note" data-part="not-inspection"><p>${esc(w.notInspection)}</p><p>${esc(w.approximate)}</p><p>${esc(w.zoneZero)}</p></div></header>`,

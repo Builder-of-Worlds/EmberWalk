@@ -1,4 +1,5 @@
 node_modules/
+workers/static/public/vendor/hls.light.min.js
 dist/
 coverage/
 .wrangler/
@@ -15,3 +16,4 @@ renders/
 __pycache__/
 test-results/
 playwright-report/
+.playwright-mcp/

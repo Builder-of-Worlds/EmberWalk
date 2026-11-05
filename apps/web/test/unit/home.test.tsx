@@ -7,7 +7,7 @@ import { copy, draft, walkDate } from "../../src/copy.ts";
 import { INTRO_SEEN_KEY, storagePrefs } from "../../src/prefs.ts";
 import { checkingFor, resultsFor, resultsIdIn, routeFor, ROUTES, sendFor, takeIdIn, walkIdIn, WALK_START } from "../../src/router.ts";
 import { SAMPLES } from "../../src/samples.ts";
-import { HOW_LINES } from "../../src/screens/How.tsx";
+import { howLines } from "../../src/screens/How.tsx";
 import { OPENS_IN_MS } from "../../src/screens/Send.tsx";
 import { SENT_WALKS_KEY, storageSentWalks } from "../../src/sent-walks.ts";
 import type { SendResult } from "../../src/uploader.ts";
@@ -255,7 +255,7 @@ describe("Home, walks still being checked", () => {
 });
 
 describe("Home", () => {
-  it("shows only settled copy, with no language switch yet", async () => {
+  it("shows only settled copy, with the language switch beside it", async () => {
     const deps = testDeps();
     const takes = await deps.takes();
     const take = await takes.create("video/mp4", Date.UTC(2026, 9, 26, 18, 30));
@@ -326,13 +326,13 @@ describe("How Your Walk Works", () => {
     expect(view.host.querySelector("h1")?.textContent).toBe(copy.how.title);
     const lines = shownLines(view.host);
     for (const line of lines) expect(SETTLED_HOW, line).toContain(line);
-    expect(lines).toEqual([copy.how.title, ...HOW_LINES, copy.how.continue]);
+    expect(lines).toEqual([copy.how.title, ...howLines(), copy.how.continue]);
     await view.unmount();
   });
 
   it("names all four things the walk asks for, location last", () => {
-    expect(HOW_LINES).toEqual([copy.how.walk, copy.how.asks, copy.how.camera, copy.how.microphone, copy.how.motion, copy.how.location]);
-    expect(HOW_LINES.slice(HOW_LINES.indexOf(copy.how.asks) + 1)).toHaveLength(4);
+    expect(howLines()).toEqual([copy.how.walk, copy.how.asks, copy.how.camera, copy.how.microphone, copy.how.motion, copy.how.location]);
+    expect(howLines().slice(howLines().indexOf(copy.how.asks) + 1)).toHaveLength(4);
   });
 
   it("comes before the first walk, once, then Walk My House goes straight to the walk", async () => {

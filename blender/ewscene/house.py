@@ -22,8 +22,10 @@ FIXED_KEYS = ("distance_in", "along_in", "size_in", "elevation_in")
 AFTER_MAY_CHANGE = ("id", "state", "hazards", "fixed")
 FACING = {(0, 1): "north", (0, -1): "south", (1, 0): "east", (-1, 0): "west"}
 STANDOFF_IN = (120, 144)
+STEADY_STANDOFF_MAX_IN = 192
 NONCOMBUSTIBLE = ("fiber cement lap", "stucco", "metal")
 STRUCTURE_SAFE = ("concrete", "asphalt", "gravel", "masonry", "metal")
+LOT_TREE_ASSET = "scripted:lot_tree"
 WOOD = "wood"
 WOOD_KINDS = ("deck", "porch")
 WOOD_TEXTURE = "polyhaven:weathered_planks"
@@ -693,8 +695,9 @@ def _bearing(v):
 
 
 def loop(doc, standoff_in):
-    if not STANDOFF_IN[0] <= standoff_in <= STANDOFF_IN[1]:
-        raise HouseError("refused", "loop: standoff %d in is outside %d to %d in" % (standoff_in, STANDOFF_IN[0], STANDOFF_IN[1]))
+    top = STEADY_STANDOFF_MAX_IN if (doc.get("route") or {}).get("steady") else STANDOFF_IN[1]
+    if not STANDOFF_IN[0] <= standoff_in <= top:
+        raise HouseError("refused", "loop: standoff %d in is outside %d to %d in" % (standoff_in, STANDOFF_IN[0], top))
     eds = edges(doc)
     corners = [(e["start"][0] + standoff_in * (eds[i - 1]["n"][0] + e["n"][0]), e["start"][1] + standoff_in * (eds[i - 1]["n"][1] + e["n"][1]))
                for i, e in enumerate(eds)]
@@ -821,6 +824,8 @@ def used_assets(doc, catalog):
             ids.extend(photoscan.used_ids(catalog[item["asset"]]))
     if look.get("photoscans"):
         ids.extend(yard.asset_ids(doc, catalog))
+        if "woods" in look:
+            ids.extend(photoscan.used_ids(catalog[LOT_TREE_ASSET]))
     if any(burns(s) for s in doc["structures"]):
         ids.append(WOOD_TEXTURE)
     return [{"id": i, "kind": catalog[i]["kind"], "license": catalog[i]["license"], "source": catalog[i].get("source")} for i in dict.fromkeys(ids)]

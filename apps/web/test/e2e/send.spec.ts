@@ -63,7 +63,9 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   for (const line of [copy.leaves.sent, copy.leaves.never, copy.leaves.meta, copy.leaves.later]) await expect(page.getByText(line)).toBeVisible();
   expect(await page.evaluate(sideways)).toBe(0);
   await page.getByRole("link", { name: copy.leaves.notNow }).click();
-  expect(api.seen.filter((r) => r.url.pathname.startsWith("/api/"))).toEqual([]);
+  await expect(page.getByRole("link", { name: copy.home.walk })).toBeVisible();
+  const planCheck = (r: { url: URL; method: string; body: string }) => ["/api/billing/plan", "/api/history"].includes(r.url.pathname) && r.method === "GET" && r.body === "";
+  expect(api.seen.filter((r) => r.url.pathname.startsWith("/api/") && !planCheck(r))).toEqual([]);
 
   await page.locator(".walks").getByRole("link", { name: copy.home.send }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.leaves.title);
@@ -75,7 +77,7 @@ test("sends a walk kept with Not Now from Your Walks, at 390 px, and only the wa
   expect(await page.evaluate(sideways)).toBe(0);
 
   const walk = JSON.parse(api.seen.find((r) => r.url.pathname === "/api/walks")?.body ?? "{}") as Record<string, unknown>;
-  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId"]);
+  expect(Object.keys(walk).sort()).toEqual(["device", "jurisdiction", "language", "partOf", "startKey", "synthetic", "visitorId", "walkedOn"]);
   expect(walk.startKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   expect(walk).toMatchObject({ jurisdiction: "ca", language: "en", synthetic: false, partOf: null });
   expect(walk.visitorId).toMatch(/^[0-9a-f]{64}$/);

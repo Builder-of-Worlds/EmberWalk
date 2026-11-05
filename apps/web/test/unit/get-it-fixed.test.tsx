@@ -105,6 +105,23 @@ describe("Get It Fixed, the crews", () => {
     await view.unmount();
   });
 
+  it("Text goes to the approval screen when a text request waits for this crew, so the link is made only by the homeowner's tap", async () => {
+    const waiting = message(M2, C1, { channel: "text", subject: null, body: "Hi", photos: [] });
+    const view = await planned(standIn({ view: jobsView([job(J1, { messages: [waiting] })]) }));
+    expect(named(find(view.host, `[data-crew=${C1}]`), "Text", "a").getAttribute("href")).toBe(approveFor(WALK, M2));
+    await view.unmount();
+  });
+
+  it("Text with no request waiting asks for a draft, then opens its approval screen, and never opens a bare text", async () => {
+    const state = standIn({ view: jobsView([job(J1, { messages: [] })]) });
+    const view = await planned(state);
+    await tap(find(view.host, `[data-crew=${C1}]`), "Text");
+    await until(() => window.location.hash.startsWith(`${ROUTES.approve}/`));
+    expect(callsTo(state, "POST", `/api/jobs/${J1}/crews/${C1}/text`)).toHaveLength(1);
+    expect(window.location.hash.startsWith(`${ROUTES.approve}/`)).toBe(true);
+    await view.unmount();
+  });
+
   it("shows each crew's name, class, distance, license status with its list date, and Call, Text and Check This License", async () => {
     const view = await planned();
     const first = find(view.host, `[data-crew=${C1}]`);
@@ -114,7 +131,8 @@ describe("Get It Fixed, the crews", () => {
     expect(lines(first, "[data-part=license]")).toEqual(["License status CLEAR on the state list of Oct. 28th, 2026"]);
     const call = named(first, "Call", "a");
     expect(call.getAttribute("href")).toBe("tel:+12095550101");
-    expect(named(first, "Text", "a").getAttribute("href")).toBe("sms:+12095550101");
+    expect(first.querySelector("a[href^='sms:']")).toBeNull();
+    expect(named(first, "Text", "button")).not.toBeNull();
     const check = named(first, "Check This License", "a");
     expect(check.getAttribute("href")).toBe(`https://license.example/${C1}`);
     expect(check.getAttribute("target")).toBe("_blank");
@@ -237,7 +255,7 @@ describe("Get It Fixed, the requests", () => {
     const view = await planned(standIn({ view: jobsView([jobs]) }));
     expect(lines(view.host, "li.message [data-part=state]")).toEqual([
       "Written and waiting for your okay.",
-      "Approved. The email did not go through yet.",
+      "Approved. The email has not gone through yet.",
       "Sent on Oct. 29th, 2026.",
       "Sent from your phone on Oct. 30th, 2026.",
       "The crew replied.",

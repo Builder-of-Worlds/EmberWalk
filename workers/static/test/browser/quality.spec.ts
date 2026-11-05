@@ -31,7 +31,7 @@ const glide = (page: Page) =>
 async function scrollOpeningTo(page: Page, p: number) {
   await page.evaluate((at) => {
     const opening = document.getElementById("opening")!;
-    const span = opening.offsetHeight - innerHeight;
+    const span = ((opening.offsetHeight - innerHeight) * 60) / 92;
     window.scrollTo(0, opening.offsetTop + span * at);
   }, p);
 }

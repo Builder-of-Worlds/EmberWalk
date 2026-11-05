@@ -36,7 +36,8 @@ test("the fix first list runs out to 30 feet nearest first at 390 px, every row 
   await expect(rows.locator("[data-part=distance]")).toHaveText(["About 2 to 3 feet from the house.", "About 12 to 19 feet from the house.", "About 28 to 40 feet from the house."]);
   await expect(page.locator("section.band [data-part=distance]")).toHaveCount(0);
   await expect(page.getByText(/looking inside the first 5 feet/i)).toHaveCount(0);
-  await expect(page.getByRole("heading", { level: 2, name: copy.results.bands.zone_0 })).toBeVisible();
+  await expect(page.locator("main li.finding")).toHaveCount(3);
+  await expect(page.locator("section.band")).toHaveCount(0);
 });
 
 const serveResults = async (page: Page, body: unknown, lateMs = 0) =>
@@ -60,6 +61,7 @@ const PINS = [
 test("the house is drawn above the list with a numbered pin for each sided finding, every pin reachable, no sideways scroll, at 390 px", async ({ page }) => {
   await serveResults(page, liveBodyAt(RANGES, LIVE_WALK, PINS));
   await page.goto(`/${resultsFor(LIVE_WALK)}`);
+  await page.getByRole("button", { name: copy.results.detailed }).click();
   const map = page.locator("main > figure.house-map");
   await expect(map).toBeVisible();
   expect(page.viewportSize()?.width).toBe(390);
@@ -86,6 +88,16 @@ test("the house is drawn above the list with a numbered pin for each sided findi
   await expect(page.locator("main.one-finding")).toBeVisible();
 });
 
+test("the sample opens its map from the Map button on Simple, with its one pin and Fix This First on top, at 390 px", async ({ page }) => {
+  await page.goto(`/${resultsFor("sample-test-yard")}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.sample.partial);
+  await expect(page.locator("figure.house-map")).toHaveCount(0);
+  await page.getByRole("link", { name: copy.map.button }).click();
+  await expect(page.locator("section.fix-first h2")).toHaveText(copy.results.fixFirst(1));
+  await expect(page.locator("main.map-screen figure.house-map a.pin")).toHaveCount(1);
+  expect(await page.evaluate(sideways)).toBe(0);
+});
+
 test("a walk the coverage check could not clear heads What We Found So Far, holds green and says what was not checked, at 390 px", async ({ page }) => {
   await serveResults(page, liveBody(LIVE_WALK, 2));
   await page.goto(`/${resultsFor(LIVE_WALK)}`);
@@ -104,7 +116,9 @@ for (const sent of [false, true]) {
     await page.goto(`/${resultsFor(LIVE_WALK)}`);
     await page.waitForTimeout(1000);
     expect(new URL(page.url()).hash).toBe(resultsFor(LIVE_WALK));
-    await expect(page.locator("main > figure.house-map")).toBeVisible({ timeout: 8000 });
+    await page.getByRole("button", { name: copy.results.detailed }).click({ timeout: 8000 });
+    await expect(page.locator("main > figure.house-map")).toHaveCount(sent ? 1 : 0);
+    if (!sent) await expect(page.getByText(copy.map.noPins)).toBeVisible();
     await expect(page.locator("main > ul.findings > li.finding")).toHaveCount(3);
     await expect(page.locator("main > figure.house-map a.pin")).toHaveCount(sent ? 3 : 0);
     await expect(page.locator("main > ul.findings .number")).toHaveCount(sent ? 3 : 0);
@@ -117,7 +131,7 @@ for (const sent of [false, true]) {
 test("the sample house opens from Home in both views at 390 px, and the view is remembered", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: copy.home.sample }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.results.incomplete);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(copy.sample.partial);
   await expect(page.getByText(/synthetic/i)).toHaveCount(0);
   const photo = page.locator(".proof img");
   await expect(photo).toBeVisible();

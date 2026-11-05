@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { ErrorBody, LOOP_CONCEPTS, previewKey, previewPath, secondCheckKey, stillPath, VISITOR_HEADER, WalkResultsResponse, WalkStatusResponse } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
-import { coverageKey } from "@emberwalk/rules";
+import { coverageKey, RULES, unplacedKey } from "@emberwalk/rules";
 import { addTag, completeWalk, setVoiceNotes, setWalkProgress } from "@emberwalk/db";
 import { handleWalkRead, READ_PATH } from "../src/walk-read.ts";
 import { emptyBucket } from "./route.ts";
@@ -95,6 +95,13 @@ describe("GET /api/walks/{walkId}", () => {
 });
 
 describe("GET /api/walks/{walkId}/results", () => {
+  it("says a finding touching the wall is against the house, whatever range its far sightings gave, and keeps the range for the rest", async () => {
+    await env.DB.prepare("UPDATE findings SET distance_high = 14 WHERE id = ?").bind(walk.fence.id).run();
+    const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+    expect(body.findings.find((f) => f.id === walk.fence.id)!.distanceFeet).toEqual({ low: 0, high: 0 });
+    expect(body.findings.find((f) => f.id === walk.brush.id)!.distanceFeet).toEqual({ low: 6, high: 9 });
+  });
+
   it("gives the phone each open finding in rank order with sources, marker, seconds and what was not checked", async () => {
     const response = await get(`/api/walks/${WALK}/results`);
     expect(response.status).toBe(200);
@@ -118,6 +125,42 @@ describe("GET /api/walks/{walkId}/results", () => {
     });
     expect(brush!.sources).toEqual([expect.objectContaining({ citation: expect.stringContaining("1299.03"), status: "in_force" })]);
     expect(fence!.sources).toEqual([expect.objectContaining({ status: "recommended", url: expect.stringMatching(/^https:\/\//) })]);
+  });
+
+  describe("a finding's line in both languages", () => {
+    const BRUSH = "ca-dry-brush-ccr-z1";
+    const rule = RULES.find((r) => r.id === BRUSH)!;
+
+    const brushLines = async (ruleId = BRUSH) => {
+      await setFinding(walk.brush.id, "rule_ids", JSON.stringify([ruleId]));
+      const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+      return body.findings.find((f) => f.id === walk.brush.id)!;
+    };
+
+    it("keeps an English walk's written line and adds the rule's Spanish", async () => {
+      const brush = await brushLines();
+      expect(brush.instructions).toEqual({ en: brush.instruction, es: rule.plain.es });
+    });
+
+    it("keeps a Spanish walk's written line and adds the rule's English", async () => {
+      await env.DB.prepare("UPDATE walks SET language = 'es' WHERE id = ?").bind(WALK).run();
+      const brush = await brushLines();
+      expect(brush.instructions).toEqual({ en: rule.plain.en, es: brush.instruction });
+    });
+
+    it("marks a finding as our advice only when its rule is advice, and leaves the mark off otherwise", async () => {
+      expect(await brushLines()).not.toHaveProperty("advice");
+      const advised = RULES.find((r) => r.advice)!;
+      expect(await brushLines(advised.id)).toMatchObject({ advice: true });
+      expect(advised.plain.en.length).toBeGreaterThan(0);
+    });
+
+    it("says a plant judged unsure may be dead in the language added", async () => {
+      await env.DB.prepare("UPDATE findings SET plant_state = 'unsure' WHERE id = ?").bind(walk.brush.id).run();
+      const mayBeDead = RULES.find((r) => r.unsure !== null)!;
+      const brush = await brushLines(mayBeDead.id);
+      expect(brush.instructions!.es).toBe(mayBeDead.unsure!.es);
+    });
   });
 
   it("carries a finding's stored voice note, null where there is none, and never another walk's", async () => {
@@ -258,6 +301,33 @@ describe("results of a walk the coverage check has looked at", () => {
     }
   });
 
+  it("still sends checked when the score step could not place a tree behind the house, since that is no gap in the walk", async () => {
+    await everythingChecked();
+    await seedCoverage(WALK, { coverage: "checked" });
+    await env.MEDIA.put(unplacedKey(WALK), JSON.stringify(["tree"]));
+    expect(await results()).toMatchObject({ coverage: "checked", notChecked: [] });
+  });
+
+  it("sends a thing on the ground it could not measure as not checked on its side, and never says checked while one is left", async () => {
+    await everythingChecked();
+    await seedCoverage(WALK, { coverage: "checked" });
+    await env.MEDIA.put(
+      unplacedKey(WALK),
+      JSON.stringify([
+        { concept: "wooden_fence", side: "right", why: "not_measured" },
+        { concept: "tree", side: null, why: "beyond_house" },
+      ]),
+    );
+    expect(await results()).toMatchObject({ coverage: "not_checked", unplaced: [{ concept: "wooden_fence", side: "right" }] });
+  });
+
+  it("sends a thing it could not measure on no side, without holding the walk open", async () => {
+    await everythingChecked();
+    await seedCoverage(WALK, { coverage: "checked" });
+    await env.MEDIA.put(unplacedKey(WALK), JSON.stringify([{ concept: "wood_pile", side: null, why: "not_measured" }]));
+    expect(await results()).toMatchObject({ coverage: "checked", unplaced: [{ concept: "wood_pile", side: null }] });
+  });
+
   it("sends checked only when the record says so, no gap is left and nothing was not checked", async () => {
     await everythingChecked();
     await seedCoverage(WALK, { coverage: "checked" });
@@ -289,6 +359,15 @@ describe("results of a walk the coverage check has looked at", () => {
     }
     await env.MEDIA.put(coverageKey(WALK), "not json");
     await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
+  });
+});
+
+describe("the day a walk is dated", () => {
+  it("is the phone's day when it sent one, else the server's", async () => {
+    const read = async () => WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json()).walkedOn;
+    expect(await read()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    await env.DB.prepare("UPDATE walks SET walk_day = '2026-03-04' WHERE id = ?").bind(WALK).run();
+    expect(await read()).toBe("2026-03-04");
   });
 });
 
@@ -331,6 +410,32 @@ describe("pins on the drawing of the house", () => {
     const body = await results();
     expect(body.pins).toEqual([]);
     expect(body.findings.map((f) => f.id)).toEqual([walk.fence.id, walk.brush.id]);
+  });
+
+  it.each([
+    ["front right corner", "front", 0],
+    ["front left corner", "left", 0],
+    ["back left corner", "back", 0],
+    ["back right corner", "right", 0],
+  ] as const)("places a pan finding from a pan named %s at that spot on the house", async (label, side, position) => {
+    await env.DB.prepare("UPDATE tags SET label = ? WHERE walk_id = ? AND kind = 'pan'").bind(label, WALK).run();
+    const body = await results();
+    expect(body.pins).toEqual([expect.objectContaining({ findingId: walk.fence.id, side, position })]);
+  });
+
+  it("names the sides dry grass was seen on, since it is one finding around the whole house, and names none for anything else", async () => {
+    await nameLoop("back");
+    await env.DB.prepare("UPDATE findings SET concept = 'dry_grass' WHERE id = ?").bind(walk.brush.id).run();
+    const body = await results();
+    expect(body.findings.find((f) => f.id === walk.brush.id)?.sides).toEqual(["back"]);
+    expect(body.findings.find((f) => f.id === walk.fence.id)).not.toHaveProperty("sides");
+  });
+
+  it("guesses no spot for a pan named only by its side, and keeps its row", async () => {
+    await env.DB.prepare("UPDATE tags SET label = 'left' WHERE walk_id = ? AND kind = 'pan'").bind(WALK).run();
+    const body = await results();
+    expect(body.pins).toEqual([]);
+    expect(body.findings.map((f) => f.id)).toContain(walk.fence.id);
   });
 
   it("sends a pin as its finding, side, band, place and feet only, never a coordinate", async () => {
@@ -416,6 +521,21 @@ describe("walk reads that are refused", () => {
       await setFinding(walk.brush.id, "rule_ids", JSON.stringify(ruleIds));
       await refused(await get(`/api/walks/${WALK}/results`), 500, "server_error");
     }
+  });
+
+  it("finds the box on the proof frame in any of a finding's tracks, not only its first", async () => {
+    const { results: rows } = await env.DB.prepare("SELECT id, clip_id, frames FROM tracks WHERE clip_id = ?").bind(walk.loop.id).all<{ id: string; clip_id: string; frames: string }>();
+    const second = rows[0]!;
+    const [box] = JSON.parse(second.frames) as { frame: number }[];
+    const row = await env.DB.prepare("SELECT track_ids FROM findings WHERE id = ?").bind(walk.brush.id).first<{ track_ids: string }>();
+    const other = (JSON.parse(row!.track_ids) as string[]).includes(second.id) ? rows.find((r) => !(JSON.parse(row!.track_ids) as string[]).includes(r.id))! : second;
+    const held = JSON.parse(other.frames) as { frame: number }[];
+    await env.DB.prepare("UPDATE findings SET track_ids = ? WHERE id = ?").bind(JSON.stringify([...(JSON.parse(row!.track_ids) as string[]), other.id]), walk.brush.id).run();
+    const frame = (held[0] ?? box!).frame + 1000;
+    await env.DB.prepare("UPDATE tracks SET frames = ? WHERE id = ?").bind(JSON.stringify([{ ...held[0], frame }]), other.id).run();
+    await env.DB.prepare("UPDATE findings SET proof_frame = ?, proof_still = ? WHERE id = ?").bind(frame, `stills/${WALK}/${walk.loop.id}/${frame}.jpg`, walk.brush.id).run();
+    const body = WalkResultsResponse.parse(await (await get(`/api/walks/${WALK}/results`)).json());
+    expect(body.findings.find((f) => f.id === walk.brush.id)!.proof.frame).toBe(frame);
   });
 
   it("refuses results whose finding has no box on its proof frame", async () => {

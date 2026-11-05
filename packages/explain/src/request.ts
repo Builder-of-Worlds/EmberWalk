@@ -69,6 +69,7 @@ export type ExplainInput = {
 
 const Frame = z.union([
   z.url({ protocol: /^https$/ }),
+  z.string().regex(/^http:\/\/(127\.0\.0\.1|localhost|host\.docker\.internal):\d{1,5}\/\S+$/),
   z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).max(MAX_FRAME_CHARACTERS),
 ]);
 

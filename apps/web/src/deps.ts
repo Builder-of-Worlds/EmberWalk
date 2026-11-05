@@ -7,6 +7,7 @@ import { eraseApi } from "./erase-api.ts";
 import type { EraseApi } from "./erase-api.ts";
 import type { Awake } from "./awake.ts";
 import type { Fetch, WalkApi } from "./api.ts";
+import { demoFixed, withDemo } from "./demo-fixed.ts";
 import { fixedApi } from "./fixed-api.ts";
 import type { FixedApi } from "./fixed-api.ts";
 import { storageFindingMarks } from "./finding-marks.ts";
@@ -15,6 +16,7 @@ import type { ForgetSent } from "./forget-sent.ts";
 import type { FindingMarks } from "./finding-marks.ts";
 import { keptStills, browserShelf } from "./kept-stills.ts";
 import { apiResults, apiStills, samplesThenApi } from "./live-api.ts";
+import { notingSignInAgain } from "./noting-sign-in.ts";
 import type { Stills } from "./live-api.ts";
 import { browserLight } from "./light.ts";
 import type { LightEnv } from "./light.ts";
@@ -29,7 +31,12 @@ import type { MotionEnv } from "./motion.ts";
 import { browserPhone } from "./phone.ts";
 import type { PhoneEnv } from "./phone.ts";
 import { JUDGE } from "./judge.ts";
-import { noPortfolio, portfolioApi } from "./portfolio-api.ts";
+import { accountApi, noAccount } from "./account-api.ts";
+import type { AccountApi } from "./account-api.ts";
+import { billingApi, noBilling } from "./billing-api.ts";
+import type { BillingApi } from "./billing-api.ts";
+import { portfolioApi } from "./portfolio-api.ts";
+import { samplePortfolio } from "./samples/portfolio.ts";
 import type { PortfolioApi } from "./portfolio-api.ts";
 import { storagePrefs } from "./prefs.ts";
 import type { Prefs } from "./prefs.ts";
@@ -39,8 +46,11 @@ import type { RecheckApi } from "./recheck-api.ts";
 import { browserCopy, browserSave, reportApi } from "./report-api.ts";
 import type { ReportApi } from "./report-api.ts";
 import { keptResults, openResultsStore } from "./results-store.ts";
-import { sampleResults } from "./samples.ts";
-import type { LoadResults } from "./samples.ts";
+import { judgeDeps } from "./judge-demo.ts";
+import { SAMPLE_RECHECKS, SAMPLES, sampleResults } from "./samples.ts";
+import type { LoadResults, SampleRechecks } from "./samples.ts";
+import { browserVoice, browserVoiceEnv } from "./voice.ts";
+import type { Voice } from "./voice.ts";
 import { storageSentWalks } from "./sent-walks.ts";
 import type { SentWalks } from "./sent-walks.ts";
 import { walkSender } from "./sender.ts";
@@ -79,13 +89,15 @@ export type Deps = {
   sync: MarkSync;
   phone: PhoneEnv;
   portfolio: PortfolioApi;
+  account: AccountApi;
+  billing: BillingApi;
   awake: Awake;
   limits: Limits;
   rechecks: RecheckApi;
+  sampleRechecks: SampleRechecks;
+  voice: Voice;
   report?: ReportApi;
 };
-
-export const reportOn = (raw: string | undefined): boolean => raw === "on" && !JUDGE;
 
 export const MAX_WALK_MS = DEFAULT_LIMITS.maxWalkSeconds * 1000;
 
@@ -113,19 +125,23 @@ export const once = <T>(make: () => Promise<T>): (() => Promise<T>) => {
   return () => (made ??= make());
 };
 
+export const appDeps = (): Deps => (JUDGE ? judgeDeps(browserDeps(), SAMPLES[0]!) : browserDeps());
+
 export const browserDeps = (): Deps => {
   const takes = once(() => openTakeStore(indexedDB));
   const prefs = storagePrefs(() => localStorage);
   const put: Fetch = (request) => fetch(request);
   const base = window.location.origin;
-  const read = walkApi(base, put, prefs.visitorId);
-  const fixed = fixedApi(base, put, prefs.visitorId);
+  const noting = notingSignInAgain(put);
+  const read = walkApi(base, noting, prefs.visitorId);
+  const fixed = fixedApi(base, noting, prefs.visitorId);
   const aborts = pendingAborts(() => localStorage, (uploadId) => uploadApi(base, put).abort(uploadId));
   window.addEventListener("online", () => void aborts.retry());
   void aborts.retry();
   const kept = once(() => openResultsStore(indexedDB));
   const marks = storageFindingMarks(() => localStorage);
   const sentWalks = storageSentWalks(() => localStorage);
+  const results = keptResults(kept, samplesThenApi(sampleResults, apiResults(read, base)), realClock);
   const sync = storageMarkSync(() => localStorage, fixed.mark);
   return {
     media: { mediaDevices: navigator.mediaDevices, MediaRecorder: globalThis.MediaRecorder },
@@ -135,7 +151,7 @@ export const browserDeps = (): Deps => {
     clock: realClock,
     maxWalkMs: MAX_WALK_MS,
     send: aborts.before(
-      walkSender({ walks: walkApi(base, put), uploads: uploadApi(base, put), put, takes, visitorId: prefs.visitorId, abort: aborts.abort }),
+      walkSender({ walks: walkApi(base, noting), uploads: uploadApi(base, put), put, takes, visitorId: prefs.visitorId, abort: aborts.abort }),
     ),
     live: (store, takeId, ready) =>
       liveUpload({ base, send: put, put, takes: store, visitorId: prefs.visitorId }, takeId, ready),
@@ -144,21 +160,25 @@ export const browserDeps = (): Deps => {
     motion: browserMotion(window),
     light: browserLight(document),
     locate: browserLocate(navigator.geolocation),
-    results: keptResults(kept, samplesThenApi(sampleResults, apiResults(read, base)), realClock),
+    results,
     walkStatus: read.status,
     reportFault: read.reportFault,
     build: BUILD,
     stills: keptStills(apiStills(put, prefs.visitorId), browserShelf),
     marks,
     sentWalks,
-    fixed,
+    fixed: withDemo(fixed, demoFixed({ results, samples: SAMPLES, marks, now: () => new Date(realClock.now()), storage: localStorage }), results),
     sync,
     phone: browserPhone(navigator, (url) => window.location.assign(url)),
-    portfolio: JUDGE ? noPortfolio : portfolioApi(base, put, prefs.visitorId),
+    portfolio: JUDGE ? samplePortfolio : portfolioApi(base, put, prefs.visitorId),
+    account: JUDGE ? noAccount : accountApi(base, put, prefs.visitorId),
+    billing: JUDGE ? noBilling : billingApi(base, put, prefs.visitorId, (url) => window.location.assign(url)),
     awake: browserAwake(navigator, document),
     limits: limitsFrom(import.meta.env.VITE_EMBERWALK_LIMITS as string | undefined),
-    rechecks: recheckApi(base, put, prefs.visitorId),
-    ...(reportOn(import.meta.env.VITE_EMBERWALK_REPORT as string | undefined) ? { report: reportApi(base, put, prefs.visitorId, browserSave(document), browserCopy(navigator)) } : {}),
+    rechecks: recheckApi(base, noting, prefs.visitorId),
+    sampleRechecks: SAMPLE_RECHECKS,
+    voice: browserVoice(browserVoiceEnv(window)),
+    ...(!JUDGE ? { report: reportApi(base, noting, prefs.visitorId, browserSave(document), browserCopy(navigator)) } : {}),
   };
 };
 

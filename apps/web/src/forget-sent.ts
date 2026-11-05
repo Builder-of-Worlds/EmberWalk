@@ -1,3 +1,4 @@
+import { keepBoughtHere, keepPending } from "./billing-api.ts";
 import type { FindingMarks } from "./finding-marks.ts";
 import type { OpenShelf } from "./kept-stills.ts";
 import type { MarkSync } from "./mark-sync.ts";
@@ -23,6 +24,8 @@ export const forgetSent =
   (copies: SentCopies): ForgetSent =>
   async () => {
     copies.prefs.renewVisitorId();
+    keepPending(null);
+    keepBoughtHere(false);
     const takes = await copies.takes();
     for (const sent of copies.sentWalks.all()) {
       await takes.remove(sent.takeId);

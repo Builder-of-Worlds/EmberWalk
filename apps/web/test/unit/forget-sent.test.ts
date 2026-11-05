@@ -1,5 +1,6 @@
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
+import { keepPending, readPending } from "../../src/billing-api.ts";
 import { marksKey, storageFindingMarks } from "../../src/finding-marks.ts";
 import { forgetSent } from "../../src/forget-sent.ts";
 import type { Shelf } from "../../src/kept-stills.ts";
@@ -55,6 +56,12 @@ const phone = async () => {
 };
 
 describe("forgetting what this phone sent, after Delete Everything", () => {
+  it("forgets a purchase this phone was waiting on", async () => {
+    keepPending({ kind: "plan" });
+    await (await phone()).forget();
+    expect(readPending()).toBeNull();
+  });
+
   it("gives the phone a new visitor key, kept for the next visit", async () => {
     const p = await phone();
     const before = p.prefs.visitorId();

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { draft } from "../../src/copy.ts";
+import { draft, shortDay } from "../../src/copy.ts";
+import { inspectionWords } from "../../src/draft-words.ts";
 import { fixFor, inspectionFor } from "../../src/router.ts";
 import { fakePhone } from "./fakes.ts";
 import { standIn, WALK } from "./fixed-fakes.ts";
@@ -81,6 +82,77 @@ describe("the inspection request", () => {
     expect(view.text()).not.toContain(message);
     expect(view.host.querySelector(".problem")?.textContent).toBe(draft.fixed.problem(code === "boom" ? "server_error" : (code as "rate_limited")));
     await view.unmount();
+  });
+
+  describe("Email The Department", () => {
+    const MESSAGE = "fa0d3f1e-5a64-4c0e-9d57-1d0a3c9b7a01";
+    const CONTACT = { agency: "Test Fire District", email: "inspect@fire.example", source: "https://fire.example/inspections", readOn: "2026-10-31" };
+    const withContact = (over: Partial<ReturnType<typeof standIn>["inspection"]> = {}) => {
+      const state = standIn();
+      state.inspection = { ...state.inspection, contact: CONTACT, messageId: MESSAGE, ...over };
+      return state;
+    };
+    const ready = async (state: ReturnType<typeof standIn>) => {
+      const view = await mount(inspectionFor(WALK), state);
+      await until(() => view.host.querySelector("main.inspection[data-ready=true]") !== null);
+      return view;
+    };
+
+    it("names the department, links its source with the date it was read, and sends only on the tap", async () => {
+      const state = withContact();
+      const view = await ready(state);
+      expect(lines(view.host, "[data-part=department]")).toEqual([inspectionWords.goesTo(CONTACT.agency, CONTACT.email)]);
+      const source = find<HTMLAnchorElement>(view.host, "a[data-part=source]");
+      expect([source.textContent, source.getAttribute("href"), source.getAttribute("target")]).toEqual([inspectionWords.source, CONTACT.source, "_blank"]);
+      expect(lines(view.host, "[data-part=read-on]")).toEqual([inspectionWords.readOn(shortDay(CONTACT.readOn))]);
+      expect(callsTo(state, "POST", `/api/inspections/${MESSAGE}/approve`)).toEqual([]);
+      await tap(view.host, inspectionWords.email);
+      expect(callsTo(state, "POST", `/api/inspections/${MESSAGE}/approve`)).toHaveLength(1);
+      expect(view.text()).toContain(inspectionWords.sent(CONTACT.agency));
+      expect(has(view.host, inspectionWords.email)).toBe(false);
+      await view.unmount();
+    });
+
+    it("offers no email where no department lists one", async () => {
+      const view = await ready(standIn());
+      expect(has(view.host, inspectionWords.email)).toBe(false);
+      expect(view.host.querySelector("[data-part=department]")).toBeNull();
+      expect(view.text()).toContain(draft.inspection.copy);
+      await view.unmount();
+    });
+
+    it("says when the email did not go, and offers the tap again", async () => {
+      const state = withContact();
+      state.inspectionSendFails = true;
+      const view = await ready(state);
+      await tap(view.host, inspectionWords.email);
+      expect(view.text()).toContain(draft.approve.sendFailed);
+      expect(has(view.host, inspectionWords.email)).toBe(true);
+      await view.unmount();
+    });
+
+    it("shows it was sent and what the department answered when the request is opened again", async () => {
+      const view = await ready(withContact({ sent: true, replies: [{ id: MESSAGE, text: "We can come Thursday.", receivedAt: "2026-11-01T10:00:00.000Z" }] }));
+      expect(has(view.host, inspectionWords.email)).toBe(false);
+      expect(view.text()).toContain(inspectionWords.sent(CONTACT.agency));
+      expect(lines(view.host, "[data-part=department-reply]")).toEqual(["We can come Thursday."]);
+      await view.unmount();
+    });
+  });
+
+  describe("Open CAL FIRE Form", () => {
+    it("opens CAL FIRE's own inspection request form in a new tab once the request is ready", async () => {
+      const view = await mount(inspectionFor(WALK), standIn());
+      await until(() => view.host.querySelector("main.inspection[data-ready=true]") !== null);
+      const form = find<HTMLAnchorElement>(view.host, "a[data-part=calfire-form]");
+      expect([form.textContent, form.getAttribute("href"), form.getAttribute("target"), form.className]).toEqual([
+        inspectionWords.openForm,
+        "https://survey123.arcgis.com/share/a15c7706b4114e20b39d2a26294338ed",
+        "_blank",
+        "button",
+      ]);
+      await view.unmount();
+    });
   });
 
   it("says there is no signal and asks again on Try Again", async () => {

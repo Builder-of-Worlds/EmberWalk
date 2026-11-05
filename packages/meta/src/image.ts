@@ -4,7 +4,7 @@ import type { Call, ContentKind, CostLine, Step } from "./client.ts";
 import { MetaRefused } from "./errors.ts";
 import { MUSE_IMAGE_MODEL, PRICE_NANO_USD } from "./prices.ts";
 
-export const IMAGE_INPUT = /^(https:\/\/\S+|data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2})$/;
+export const IMAGE_INPUT = /^(https:\/\/\S+|http:\/\/(127\.0\.0\.1|localhost|host\.docker\.internal):\d{1,5}\/\S+|data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2})$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export type ImageEditRequest = {

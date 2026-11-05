@@ -94,6 +94,10 @@ const NOT_INSPECTION = "EmberWalk is not an inspection or certification.";
 
 // Every sentence of the report page is a draft: none ships until the owner approves a sample PDF.
 export const reportWords = {
+  longDay,
+  shortDay,
+  htmlLang: "en",
+  quoteLabel: "",
   title: "Defensible Space Record",
   made: "Made by the homeowner with EmberWalk",
   lockupAlt: "EmberWalk, wildfire home check",
@@ -101,13 +105,13 @@ export const reportWords = {
   walkedLabel: "Walked",
   approvedLabel: "Approved by the homeowner",
   notInspectionShort: NOT_INSPECTION,
-  notInspection: `${NOT_INSPECTION} Your local fire agency gives the official sign-off.`,
+  notInspection: `${NOT_INSPECTION} The local fire agency gives the official sign-off.`,
   page: "Page",
   pageOf: "of",
   caption: { band: "Zone", label: "Rule", status: "Status" },
   approximate: "Distances are approximate.",
   zoneZero: "The Zone 0 rules for the first 5 feet are not yet law.",
-  approved: (iso: string) => `The homeowner checked the blurred photos and approved this record on ${shortDay(iso)}.`,
+  approved: (iso: string) => `The blurred photos were shown to the homeowner, who approved this record on ${shortDay(iso)}.`,
   removed: "Removed by the homeowner",
   removedLead: "The homeowner marked these as not right, so they are left out of the lists above.",
   removedItem: (concept: string, low: number, high: number) => {
@@ -126,6 +130,7 @@ export const reportWords = {
   recheckedOn: (iso: string) => `Rechecked on ${shortDay(iso)}.`,
   distance: (low: number, high: number) => distanceLine(feetSaid({ low, high })),
   source: "Where This Comes From",
+  advice: "Our advice, not a rule",
   retrieved: (iso: string) => `Rules as read on ${shortDay(iso)}.`,
   rules: "Rules Used",
   coverage: "What Was Checked",
@@ -136,14 +141,29 @@ export const reportWords = {
     first_five_feet: (side: string) => `The first five feet on the ${side} side isn't in view yet.`,
     not_checked: (side: string) => `The ${side} side still needs checking.`,
   } satisfies Record<GapKind, (side: string) => string>,
+  cornerGap: {
+    missing: (corner: string) => `The ${corner.replace("_", " ")} corner isn't in your video yet.`,
+    dark: (corner: string) => `The ${corner.replace("_", " ")} corner is too dark to check.`,
+    first_five_feet: (corner: string) => `The first five feet at the ${corner.replace("_", " ")} corner isn't in view yet.`,
+    not_checked: (corner: string) => `The ${corner.replace("_", " ")} corner still needs checking.`,
+  } satisfies Record<GapKind, (corner: string) => string>,
   notChecked: (concept: string) => `Not checked on this walk: ${conceptWords(concept)}.`,
+  unplaced: (side: string | null, concepts: string[]) => {
+    const things = concepts.map(conceptWords).join(", ");
+    const base = concepts.length === 1 ? "its base" : "their base";
+    return side === null
+      ? `Not measured on this walk: ${things}. Next time, stay a few steps farther from the house so the ground at ${base} shows.`
+      : `Not measured on the ${side} side: ${things}. Walk that side again a few steps farther from the house, so the ground at ${base} shows.`;
+  },
   record: "Dated Record",
   mark: (status: string, iso: string, instruction: string) => `${status} on ${shortDay(iso)}: ${instruction}`,
   recheck: {
     cleared: (iso: string, instruction: string) => `Rechecked on ${shortDay(iso)}, looks cleared in the new photo: ${instruction}`,
     still_there: (iso: string, instruction: string) => `Rechecked on ${shortDay(iso)}, still shows in the new photo: ${instruction}`,
-    unsure: (iso: string, instruction: string) => `Rechecked on ${shortDay(iso)}, the new photo could not show it clearly: ${instruction}`,
+    unsure: (iso: string, instruction: string) => `Rechecked on ${shortDay(iso)}, the new photo was not clear enough to show it: ${instruction}`,
   } satisfies Record<RecheckResult, (iso: string, instruction: string) => string>,
   photo: (instruction: string) => `Photo from the walk: ${instruction}`,
   shareWaits: "This report changed and waits for the homeowner to approve it again.",
 };
+
+export type ReportWords = typeof reportWords;

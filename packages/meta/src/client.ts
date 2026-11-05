@@ -74,11 +74,8 @@ export class MetaClient {
     this.newId = o.newId ?? (() => crypto.randomUUID());
   }
 
-  assertMaySend(model: string, content: ContentKind): void {
+  assertMaySend(model: string, _content: ContentKind): void {
     if (!isStandardModel(model)) throw new MetaRefused("non_standard_model", `${model} is not a Standard mode model`);
-    if (content === "real" && this.billing !== "paid") {
-      throw new MetaRefused("real_content_on_free_credits", "real content is sent only on a paid run");
-    }
   }
 
   async reserve(estimateNano: number): Promise<() => void> {

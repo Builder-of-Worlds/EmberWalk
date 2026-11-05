@@ -1,4 +1,4 @@
-import { type AgentJobRecord, createJob, findingsForWalk, jobsForWalk } from "@emberwalk/db";
+import { type AgentJobRecord, createJob, findingsForWalk, jobsForWalk, moveJobWithNoCrews } from "@emberwalk/db";
 import { type Concept, type Finding, type Trade, Zip } from "@emberwalk/shared";
 import { type AgentDeps, AgentOff, type JobOutcome, runJob } from "./loop.ts";
 
@@ -61,8 +61,10 @@ export async function planJobs(deps: AgentDeps, walkId: string, zip: string): Pr
     if (trades.length === 0) homeowner.push(f);
     for (const trade of trades) byTrade.set(trade, [...(byTrade.get(trade) ?? []), f]);
   }
-  const held = new Set((await jobsForWalk(deps.db, walkId)).map((j) => j.trade));
+  const existing = await jobsForWalk(deps.db, walkId);
+  const held = new Set(existing.map((j) => j.trade));
   const at = deps.now().toISOString();
+  for (const job of existing) if (job.zip !== zip) await moveJobWithNoCrews(deps.db, job.id, zip, at);
   for (const [trade, findings] of byTrade) {
     if (held.has(trade)) continue;
     await createJob(deps.db, { id: deps.newId(), walkId, trade, findingIds: findings.map((f) => f.id), zip, status: "planning", createdAt: at, updatedAt: at });

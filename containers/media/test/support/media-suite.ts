@@ -1,6 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startFixtureServer } from "./fixture-server.ts";
 import { waitForIdle } from "./server-process.ts";
@@ -537,7 +538,8 @@ export const mediaSuite = (label: string, start: () => Promise<Target>): void =>
     });
 
     describe("walk render", () => {
-      const renders = process.env.EMBERWALK_RENDERS ?? join(homedir(), "emberwalk-renders");
+      const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: dirname(fileURLToPath(import.meta.url)) }).toString().trim();
+      const renders = process.env.EMBERWALK_RENDERS ?? join(dirname(dirname(common)), "emberwalk-renders");
       const walk = join(renders, "test-yard", "walk.mp4");
       const source = existsSync(walk) ? "the synthetic yard render" : "a clip made by the test";
 

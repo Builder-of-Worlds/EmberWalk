@@ -1,7 +1,10 @@
 import { DEFAULT_LIMITS } from "@emberwalk/shared";
 import type { Concept, Corner, FixedRouteCode, WalkState } from "@emberwalk/shared";
 import type { Failure } from "./api.ts";
+import { clockText } from "./clock-text.ts";
+import { conceptLabelEs, copyEs, draftEs, longDateEs, shortDayEs, unbackedEs, walkDateEs } from "./copy-es.ts";
 import type { FeetSaid } from "./distance.ts";
+import { follow, pick } from "./language.ts";
 import type { StatusKind } from "./finding-marks.ts";
 import { localDay } from "./mark-sync.ts";
 import type { FixedFailure, JobStatus, Message, Trade } from "./fixed-api.ts";
@@ -14,10 +17,7 @@ const STAYS = "Your walk is still saved on this phone.";
 const START_AGAIN = `Sending stopped. ${STAYS} Tap ${SEND} to start sending again.`;
 const TRY_AGAIN = `Sending paused. ${STAYS} Tap ${SEND} to try again.`;
 
-export const clockText = (ms: number): string => {
-  const seconds = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-};
+export { clockText };
 
 const WALK_DATE = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -27,7 +27,7 @@ const WALK_DATE = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-export const walkDate = (ms: number): string => WALK_DATE.format(ms);
+export const walkDate = pick((ms: number): string => WALK_DATE.format(ms), walkDateEs);
 
 const LONG_DATE = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -37,17 +37,17 @@ const ordinal = (day: number): string => {
   return `${day}${["th", "st", "nd", "rd"][day % 10] ?? "th"}`;
 };
 
-export const longDate = (day: Date): string => {
+export const longDate = pick((day: Date): string => {
   const parts = Object.fromEntries(LONG_DATE.formatToParts(day).map((p) => [p.type, p.value]));
   return `${parts.weekday}, ${parts.month} ${ordinal(day.getUTCDate())}, ${parts.year}`;
-};
+}, longDateEs);
 
 const MONTHS = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
 
-export const shortDay = (iso: string): string => {
+export const shortDay = pick((iso: string): string => {
   const [year, month, day] = iso.split("-").map(Number);
   return `${MONTHS[(month ?? 1) - 1] ?? ""} ${ordinal(day ?? 1)}, ${year}`;
-};
+}, shortDayEs);
 
 const GAP_LINES: Record<Gap["kind"], (side: Side) => string> = {
   missing: (side) => `The ${side} side isn't in your video yet.`,
@@ -93,17 +93,17 @@ const JOB_LINES: Record<JobStatus, string> = {
   closed: "This work is closed.",
 };
 
-const SOMETHING_WRONG = "Something went wrong on EmberWalk's side. Try again in a minute.";
+const SOMETHING_WRONG = "That did not finish. Try again in a minute.";
 
 const PROBLEMS: Record<FixedRouteCode | "offline", string> = {
   offline: "No signal. Try again when you have signal.",
   rate_limited: "EmberWalk has done that as many times as it allows for now.",
-  invalid_request: "EmberWalk could not read that. Check it and try again.",
-  not_found: "EmberWalk could not find that. Go back and open it again.",
+  invalid_request: "That did not come through clearly. Check it and try again.",
+  not_found: "That is not here. Go back and open it again.",
   method_not_allowed: SOMETHING_WRONG,
-  conflict: "That cannot be done now.",
+  conflict: "That is not available yet.",
   not_ready: "Mark every Required Now item done first.",
-  send_failed: "The email did not go out. Try again.",
+  send_failed: "The email has not gone out yet. Try again.",
   server_error: SOMETHING_WRONG,
 };
 
@@ -116,7 +116,7 @@ const messageLine = (message: Pick<Message, "status" | "channel" | "outbox" | "s
       return "Written and waiting for your okay.";
     case "approved":
       if (message.channel === "text") return "Approved. Waiting for you to send the text.";
-      return message.outbox?.state === "failed" ? "Approved. The email did not go through yet." : "Approved. The email is on its way.";
+      return message.outbox?.state === "failed" ? "Approved. The email has not gone through yet." : "Approved. The email is on its way.";
     case "sent":
       return `Sent${sent}.`;
     case "sent_by_phone":
@@ -126,15 +126,7 @@ const messageLine = (message: Pick<Message, "status" | "channel" | "outbox" | "s
   }
 };
 
-export const draft = {
-  portfolio: {
-    title: "Your Homes",
-    notWalked: "Not walked yet",
-    ready: "Ready for Inspection",
-    needsFixes: "Needs fixes",
-    seeResults: "See Results",
-    back: "Back to Home",
-  },
+export const draftEn = {
   detail: {
     mapTitle: "Your House From Above",
     mapEmpty: "Nothing to place on the map yet.",
@@ -145,7 +137,9 @@ export const draft = {
     nothingGoesOut: "Nothing goes out without your okay.",
     zipLabel: "Your ZIP code",
     zipButton: "Find Licensed Crews",
-    zipInvalid: "Enter a 5 digit ZIP code.",
+    zipInvalid: "Enter a 5 digit ZIP code, like 95969.",
+    zipOutside: (zip: string) => `ZIP ${zip} is outside California. EmberWalk's list of crews covers California only.`,
+    zipRetry: "Check the ZIP code, or try one nearby.",
     finding: "Finding licensed crews near your house.",
     trade: TRADE_NAMES,
     job: JOB_LINES,
@@ -196,6 +190,7 @@ export const draft = {
     title: "Approve This Request",
     byEmail: (email: string | null) => (email === null ? "This goes by email." : `This goes by email to ${email}.`),
     byText: (phone: string) => `This is sent by text from your phone to ${phone}.`,
+    textLink: "When you approve, EmberWalk makes a link to this request and these photos. Anyone with the link can open it, and the crew opens it from your text with no sign in. Delete Everything removes it.",
     subject: (subject: string) => `Subject: ${subject}`,
     photos: "Photos That Go With It",
     nothingSent: "Nothing is sent until you tap the button below.",
@@ -206,14 +201,15 @@ export const draft = {
     again: "Try Sending Again",
     sentEmail: "Your email was sent.",
     sentPhone: "Marked as sent from your phone.",
-    sendFailed: "The email did not go through. Nothing was lost. Tap Try Sending Again.",
+    sendFailed: "The email has not gone through yet. Nothing was lost. Tap Try Sending Again.",
     notSent: "The text was not sent. Tap Open the Text when you are ready.",
     markAgain: "Tell EmberWalk It Was Sent",
-    missing: "This request could not be found.",
+    missing: "This request is not on your list. Go back to Get It Fixed.",
   },
   history: {
     intro: "Every walk you have done and every mark you have made on its list, with the day.",
     empty: "No walks are on your record yet.",
+    sample: "This is the sample house. These marks stay on this phone.",
     noMarks: "No marks on this walk yet.",
     mark: (kind: string, day: string) => `${kind} on ${day}`,
   },
@@ -223,7 +219,7 @@ export const draft = {
     subject: (subject: string) => `Subject: ${subject}`,
     copy: "Copy",
     copied: "Copied.",
-    copyFailed: "Could not copy. Press and hold the text to copy it yourself.",
+    copyFailed: "Press and hold the text to copy it yourself.",
     links: "Links to Include",
     writing: "Writing your request.",
     notReady: "Not Ready Yet",
@@ -233,7 +229,7 @@ export const draft = {
     doneDay: "The day it was done",
     doneOn: (iso: string) => `Done on ${shortDay(iso)}.`,
     willSave: "Saved on this phone. It will be saved to EmberWalk when you have signal.",
-    refused: "EmberWalk could not save this mark to your record. It is still marked on this phone.",
+    refused: "This mark is saved on this phone only for now.",
     futureDay: "Pick today or an earlier day.",
   },
   home: { lead: "Film one walk around your house. EmberWalk checks what could carry fire to it." },
@@ -266,7 +262,7 @@ export const draft = {
   },
 } as const;
 
-const CONCEPT_WORDS: Record<Concept, string> = {
+export const CONCEPT_WORDS: Record<Concept, string> = {
   dry_brush: "dry brush",
   wood_pile: "wood piles",
   wooden_fence: "wooden fences",
@@ -295,10 +291,10 @@ const CONCEPT_WORDS: Record<Concept, string> = {
   wood_deck: "wood decks",
 };
 
-export const conceptLabel = (concept: string): string => {
+export const conceptLabel = pick((concept: string): string => {
   const words = CONCEPT_WORDS[concept as Concept] ?? concept.replaceAll("_", " ");
   return `${words[0]!.toUpperCase()}${words.slice(1)}`;
-};
+}, conceptLabelEs);
 
 const distanceLine = (said: FeetSaid): string => {
   switch (said.kind) {
@@ -315,16 +311,16 @@ const distanceLine = (said: FeetSaid): string => {
 
 const thingsToClear = (count: number): string => (count === 0 ? "nothing found." : `${count} ${count === 1 ? "thing" : "things"} to clear.`);
 
-export const unbacked = {
+export const unbackedEn = {
   leaves: {
     location:
-      "Location: used on your phone to find your fire rules and help nearby. To show the aerial photo, the map point of your house is sent to Esri, the map provider. Your address is never sent.",
+      "Location: read once on your phone to find your fire rules. Only the rule area is kept and sent, never your coordinates. Your address is never sent.",
   },
   pin: { side: (side: Side) => `The ${side} side.` },
 } as const;
 
-export const copy = {
-  app: { name: "EmberWalk", offline: "No signal. EmberWalk still works on this phone." },
+export const copyEn = {
+  app: { name: "EmberWalk", mark: "EmberWalk, Wildfire Home Check", offline: "No signal. EmberWalk still works on this phone." },
   home: {
     title: "EmberWalk",
     walk: "Walk My House",
@@ -352,8 +348,16 @@ export const copy = {
     lead: "Start closest to your home: the first 5 feet matter most, then out to 30 feet, then 100.",
     distance: distanceLine,
     inside: (count: number) => `Inside 5 feet: ${thingsToClear(count)}`,
+    close: (count: number) => `Close to the house: ${count} ${count === 1 ? "thing" : "things"} to clear.`,
     out: (count: number) => `From 5 to 30 feet: ${thingsToClear(count)}`,
     notChecked: (concept: Concept) => `Not checked on this walk: ${CONCEPT_WORDS[concept]}.`,
+    unplaced: (side: Side | null, concepts: Concept[]) => {
+      const things = concepts.map((c) => CONCEPT_WORDS[c]).join(", ");
+      const base = concepts.length === 1 ? "its base" : "their base";
+      return side === null
+        ? `Not measured on this walk: ${things}. Next time, stay a few steps farther from the house so the ground at ${base} shows.`
+        : `Not measured on the ${side} side: ${things}. Walk that side again a few steps farther from the house, so the ground at ${base} shows.`;
+    },
     bands: { zone_0: "First 5 Feet", zone_1: "5 to 30 Feet", zone_2: "30 to 100 Feet" },
     simple: "Simple",
     detailed: "Detailed",
@@ -366,6 +370,16 @@ export const copy = {
     honest: "Every licensed business on California's public contractor list, closest first. EmberWalk doesn't rank or recommend them.",
     call: "Call",
     checkLicense: "Check This License",
+  },
+  map: {
+    button: "See the Map",
+    noPins: "These things could not be placed on the map, so there are no pins to show. Everything is listed below.",
+    somePlaced: "Anything without a number could not be placed on the map.",
+  },
+  sample: {
+    label: "This is the sample house.",
+    partial: "Sample House, Partly Walked",
+    partialLine: "This sample walk films only part of the house, so the rest is not checked.",
   },
   history: { title: "Defensible Space Record" },
   status: {
@@ -383,6 +397,13 @@ export const copy = {
     seeFixed: "See It Fixed",
     aiPreview: "AI preview, not a photo",
     secondCheck: (reason: string) => `Second check disagrees: ${reason}`,
+    secondCheckAgrees: "Second check agrees.",
+    sides: (sides: Side[]) =>
+      new Set(sides).size === 4
+        ? "Seen on every side."
+        : sides.length === 1
+          ? `Seen on the ${sides[0]} side.`
+          : `Seen on the ${sides.slice(0, -1).join(", ")} and ${sides.at(-1)} sides.`,
     notRight: "This Isn't Right",
     removed: "Removed from your list.",
     undo: "Undo",
@@ -455,8 +476,14 @@ export const copy = {
     checked: "Checked. Opening what EmberWalk found.",
     savedMinutes: (minutes: number) =>
       `${minutes} ${minutes === 1 ? "minute" : "minutes"} saved on this phone.`,
+    signIn: "Sign In",
+    unreachable: `This phone has signal, but EmberWalk did not answer. ${STAYS} EmberWalk tries again every 30 seconds, or tap ${SEND}.`,
+    checkUnreachable: "This phone has signal, but EmberWalk did not answer. This page tries again by itself.",
+    checkSignIn: "This phone is not signed in, so EmberWalk cannot show how the check is going. Tap Sign In.",
     refused: {
       offline: "Waiting for Signal.",
+      sign_in_needed: `This phone is not signed in, so EmberWalk could not take your walk. ${STAYS} Tap Sign In, then tap ${SEND}.`,
+      storage_blocked: `This phone has signal, but EmberWalk's storage did not take your walk. ${STAYS} EmberWalk tries again every 30 seconds, or tap ${SEND}.`,
       invalid_size: "This walk has no video in it. Record the walk again.",
       too_large: "This walk is longer than a walk may be. Record a shorter walk.",
       too_many_parts: "This walk is longer than a walk may be. Record a shorter walk.",
@@ -482,7 +509,13 @@ export const copy = {
       walk_limit_reached: `You have sent as many walks as EmberWalk allows today. ${STAYS} Try again tomorrow.`,
       walk_not_done: "This walk is still being checked.",
       rate_limited: `Too many tries in a short time. ${STAYS} Wait a minute, then tap ${SEND}.`,
+      plan_needed: `A walk needs a plan. ${STAYS}`,
+      walks_used: `You have used this plan year's walks. ${STAYS}`,
       server_error: TRY_AGAIN,
     } satisfies Record<Failure, string>,
   },
 } as const;
+
+export const draft = follow(draftEn, draftEs);
+export const unbacked = follow(unbackedEn, unbackedEs);
+export const copy = follow(copyEn, copyEs);

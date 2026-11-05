@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/handler";
-import { welcomeMessage } from "../src/email-copy";
+import { finishEmailEs, welcomeMessage, welcomeMessageEs } from "../src/email-copy";
 import { clearSignups, deps, fakeMailer, fakeVerify, signupRequest, testEnv, validBody } from "./helpers";
 
 const SENTENCE = "EmberWalk launches Nov. 4th, 2026. We'll email you when it does.";
@@ -63,5 +63,34 @@ describe("welcome email launch date flag", () => {
 
   it("sends the date from a real signup while the flag is on", async () => {
     expect(await sentBody("on")).toContain(SENTENCE);
+  });
+});
+
+describe("the Spanish welcome email", () => {
+  const spanishFor = (env: object) => welcomeMessageEs("a@example.com", UNSUBSCRIBE, env);
+
+  it("follows the same launch date flag as the English", () => {
+    for (const env of [{}, { LAUNCH_DATE_SHOWN: "off" }, { LAUNCH_DATE_SHOWN: "On" }]) {
+      const body = spanishFor(env).body;
+      expect(body).not.toContain("2026");
+      expect(body).not.toMatch(/noviembre/i);
+    }
+    expect(spanishFor({ LAUNCH_DATE_SHOWN: "on" }).body).toContain("4 de noviembre de 2026");
+  });
+
+  it.each([{}, { LAUNCH_DATE_SHOWN: "on" }])("has a Spanish line for every English line, in the same place", (env) => {
+    const english = welcomeMessage("a@example.com", UNSUBSCRIBE, env).body.split("\n");
+    const spanish = spanishFor(env).body.split("\n");
+    expect(spanish).toHaveLength(english.length);
+    english.forEach((line, n) => expect(spanish[n] === "", line).toBe(line === ""));
+    expect(spanish[0]).not.toBe(english[0]);
+  });
+
+  it("ends with the same unsubscribe link and the postal address, and refuses to send without the address", () => {
+    const message = spanishFor({});
+    const finished = finishEmailEs(message, "1 Main St, Sacramento, CA");
+    expect(finished).toContain(`: ${UNSUBSCRIBE}`);
+    expect(finished.endsWith("1 Main St, Sacramento, CA")).toBe(true);
+    expect(() => finishEmailEs(message, "  ")).toThrow("no postal address");
   });
 });

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import { copy, draft } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { findingWords } from "../draft-words.ts";
 import { feetSaid } from "../distance.ts";
-import { BANDS, bandsOf, withoutRemoved } from "../results.ts";
+import { isRechecked } from "../finding-marks.ts";
+import { BANDS, bandsOf, drawnOrder, firstOf, instructionOf, verdictOf, withoutRemoved } from "../results.ts";
 import type { Band } from "@emberwalk/shared";
-import type { WalkResults } from "../results.ts";
+import type { ResultFinding, WalkResults } from "../results.ts";
 import { findingFor, resultsFor, ROUTES } from "../router.ts";
-import { HouseMap, numbering } from "./HouseMap.tsx";
+import { numbering, PlacedMap } from "./HouseMap.tsx";
 
 const EASE_MS = 450;
 
@@ -29,17 +31,38 @@ const easeDown = (event: MouseEvent<HTMLElement>) => {
   }, EASE_MS);
 };
 
-const HouseView = ({ results }: { results: WalkResults }) => {
+const HouseView = ({ results, first }: { results: WalkResults; first: ResultFinding[] }) => {
   const pins = results.pins ?? [];
   const bands = bandsOf(results.findings);
-  const numbers = numbering(results.findings, pins);
+  const order = drawnOrder(first, results.findings);
+  const numbers = numbering(order, pins);
   const inRing = (band: Band) => bands.find((b) => b.band === band)?.findings ?? [];
   return (
     <>
-      <div onClick={easeDown}>
-        <HouseMap findings={results.findings} pins={pins} resultsId={results.id} />
-      </div>
-      {results.findings.length === 0 ? <p>{draft.detail.mapEmpty}</p> : null}
+      {first.length > 0 ? (
+        <section className="band map-ring fix-first">
+          <h2>{copy.results.fixFirst(first.length)}</h2>
+          <p className="lead">{copy.results.lead}</p>
+          <ul className="lines">
+            {first.map((finding) => (
+              <li key={finding.id}>
+                <a className="marker-link" href={findingFor(results.id, finding.id)}>
+                  {numbers.has(finding.id) ? `${numbers.get(finding.id)}. ` : ""}
+                  {instructionOf(finding)}
+                </a>
+                {finding.advice ? <p className="advice" data-part="advice">{findingWords.advice}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {results.findings.length === 0 ? (
+        <p>{draft.detail.mapEmpty}</p>
+      ) : (
+        <div onClick={easeDown}>
+          <PlacedMap findings={order} pins={pins} resultsId={results.id} />
+        </div>
+      )}
       {BANDS.map((band) => (
         <section key={band} className="band map-ring" data-band={band}>
           <h2>
@@ -50,8 +73,9 @@ const HouseView = ({ results }: { results: WalkResults }) => {
               <li key={finding.id}>
                 <a className="marker-link" href={findingFor(results.id, finding.id)} data-finding={finding.id}>
                   {numbers.has(finding.id) ? `${numbers.get(finding.id)}. ` : ""}
-                  {finding.instruction}
+                  {instructionOf(finding)}
                 </a>
+                {finding.advice ? <p className="advice" data-part="advice">{findingWords.advice}</p> : null}
                 <p>{copy.results.distance(feetSaid(finding.distanceFeet))}</p>
               </li>
             ))}
@@ -79,10 +103,13 @@ export const MapScreen = ({ mapId }: { mapId: string | null }) => {
   }, [deps, mapId]);
 
   if (results === null) return null;
+  const cleared = (f: ResultFinding) => isRechecked(deps.marks.statusOf(results.id, f.id));
+  const first = firstOf(verdictOf(results, cleared), results.findings, cleared);
   return (
     <main className="screen map-screen">
       <h1>{draft.detail.mapTitle}</h1>
-      <HouseView results={results} />
+      {results.synthetic ? <p>{copy.sample.label}</p> : null}
+      <HouseView results={results} first={first} />
       <a className="button" href={resultsFor(results.id)}>
         {draft.detail.backToResults}
       </a>

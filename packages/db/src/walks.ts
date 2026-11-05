@@ -5,12 +5,19 @@ import { DbRefused } from "./errors.ts";
 export const Failure = z.strictObject({ code: Text(60), message: Text(300) });
 
 export type Failure = z.infer<typeof Failure>;
-export type WalkRecord = Walk & { failure: Failure | null };
+export type WalkRecord = Walk & { failure: Failure | null; walkDay?: string | null };
+
+export const walkedDay = (walk: Pick<WalkRecord, "createdAt" | "walkDay">): string => walk.walkDay ?? walk.createdAt.slice(0, 10);
+
+export const setWalkDay = async (db: D1Database, walkId: string, day: string): Promise<void> => {
+  await db.prepare("UPDATE walks SET walk_day = ? WHERE id = ? AND walk_day IS NULL").bind(day, walkId).run();
+};
 
 type WalkRow = {
   id: string;
   visitor_id: string;
   created_at: string;
+  walk_day: string | null;
   state: string;
   step: string | null;
   length_seconds: number;
@@ -35,6 +42,7 @@ const stateOf = (row: WalkRow) => {
 };
 
 const toRecord = (row: WalkRow): WalkRecord => ({
+  walkDay: row.walk_day ?? null,
   ...Walk.parse({
     id: row.id,
     visitorId: row.visitor_id,
@@ -77,19 +85,25 @@ export class PlanYearUsed extends Error {
 }
 
 export type DailyCap = { since: string; most: number };
-export type PlanYearCap = { since: string | null; most: number };
+export type PlanYearCap = { since: string | null; most: number; planVisitor?: string };
+
+export const onPlanOf = (visitorSql: string): string =>
+  `id IN (SELECT pw.walk_id FROM property_walks pw JOIN properties p ON p.id = pw.property_id JOIN portfolios o ON o.id = p.portfolio_id JOIN accounts a ON a.id = o.account_id WHERE a.owner_id = ${visitorSql} OR a.id IN (SELECT s.account_id FROM sessions s WHERE s.visitor_id = ${visitorSql}))`;
+
+const PLAN_COUNTED = `SELECT COUNT(*) AS n FROM walks WHERE (visitor_id = ? OR visitor_id = ? OR plan_visitor = ? OR ${onPlanOf("?")}) AND part_of IS NULL AND id NOT IN (SELECT walk_id FROM walk_parts) AND state <> 'failed' AND synthetic = 0`;
 
 const INSERT_WALK =
-  "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic) SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?";
+  "INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, synthetic, plan_visitor) SELECT ?, ?, 'uploading', ?, ?, ?, ?, ?, ?, ?";
 const WHOLE = "SELECT COUNT(*) AS n FROM walks WHERE visitor_id = ? AND part_of IS NULL AND id NOT IN (SELECT walk_id FROM walk_parts) AND state <> 'failed'";
-const COUNTED = `${WHOLE} AND synthetic = 0`;
 const UNDER_CAP = ` WHERE (${WHOLE} AND synthetic IN (0, ?) AND created_at >= ?) < ?`;
 const IN_PLAN_YEAR = ` AND (? IS NULL OR created_at >= ?)`;
-const UNDER_PLAN_YEAR = ` AND (${COUNTED}${IN_PLAN_YEAR}) < ?`;
+const UNDER_PLAN_YEAR = ` AND (${PLAN_COUNTED}${IN_PLAN_YEAR}) < ?`;
 const INSERT_PART = "INSERT INTO walk_parts (walk_id, part_of, part) SELECT ?, ?, ? WHERE changes() = 1";
 
-const planYearUsed = async (db: D1Database, visitorId: string, year: PlanYearCap): Promise<boolean> =>
-  ((await db.prepare(`${COUNTED}${IN_PLAN_YEAR}`).bind(visitorId, year.since, year.since).first<{ n: number }>())?.n ?? 0) >= year.most;
+const planYearUsed = async (db: D1Database, visitorId: string, year: PlanYearCap): Promise<boolean> => {
+  const on = year.planVisitor ?? visitorId;
+  return ((await db.prepare(`${PLAN_COUNTED}${IN_PLAN_YEAR}`).bind(on, visitorId, on, on, on, year.since, year.since).first<{ n: number }>())?.n ?? 0) >= year.most;
+};
 
 export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap, year?: PlanYearCap): Promise<WalkRecord> => {
   const walk = NewWalk.parse(input);
@@ -102,9 +116,11 @@ export const createWalk = async (db: D1Database, input: NewWalk, cap?: DailyCap,
     walk.device.width,
     walk.device.height,
     walk.synthetic ? 1 : 0,
+    year?.planVisitor ?? null,
   ];
   const yearSql = year === undefined ? "" : UNDER_PLAN_YEAR;
-  const yearValues = year === undefined ? [] : [walk.visitorId, year.since, year.since, year.most];
+  const on = year?.planVisitor ?? walk.visitorId;
+  const yearValues = year === undefined ? [] : [on, walk.visitorId, on, on, on, year.since, year.since, year.most];
   const insert =
     cap === undefined
       ? db.prepare(`${INSERT_WALK} WHERE true${yearSql} ON CONFLICT (id) DO NOTHING`).bind(...values, ...yearValues)

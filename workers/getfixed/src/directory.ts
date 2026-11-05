@@ -1,6 +1,6 @@
 import type { CrewDirectory } from "@emberwalk/agent";
-import type { CrewCard } from "@emberwalk/db";
-import { nearestCrews, type NearCrew, type Trade as LicenseClass, UnknownZip } from "@emberwalk/directory";
+import { type CrewCard, listedSignups } from "@emberwalk/db";
+import { CLASS_NAMES, checkLicenseUrl, milesBetween, nearestCrews, type NearCrew, type Trade as LicenseClass, UnknownZip } from "@emberwalk/directory";
 import { Crew, type Trade } from "@emberwalk/shared";
 
 export const TRADE_CLASSES: { [T in Trade]: LicenseClass[] } = {
@@ -13,6 +13,8 @@ export const TRADE_CLASSES: { [T in Trade]: LicenseClass[] } = {
 };
 
 export const SEARCH_LIMIT = 20;
+
+const SIGNUP_MILES = 150;
 
 export type CardedDirectory = CrewDirectory & { cards: Map<string, CrewCard> };
 
@@ -36,8 +38,28 @@ export const directoryFor = (o: { db: D1Database; newId: () => string }): Carded
       throw error;
     }
     const crews = [];
+    const centre = await o.db.prepare("SELECT lat, lng FROM zip_centres WHERE zip = ?").bind(zip).first<{ lat: number; lng: number }>();
+    const signups = centre === null ? [] : await listedSignups(o.db, TRADE_CLASSES[trade]);
+    const nearby = signups.map((s) => ({ s, miles: milesBetween(centre?.lat ?? 0, centre?.lng ?? 0, s.lat, s.lng) })).filter((r) => r.miles <= SIGNUP_MILES);
+    const listed = new Set<string>();
+    for (const { s, miles } of nearby.sort((a, b) => a.miles - b.miles)) {
+      if (crews.length === n) break;
+      const parsed = Crew.safeParse({ id: o.newId(), name: s.businessName, trade, zip: s.zip, email: s.email, phone: s.phone, licenseNumber: s.licenseNumber, sample: false });
+      if (!parsed.success) continue;
+      cards.set(parsed.data.id, {
+        className: `${CLASS_NAMES[s.licenseClass as LicenseClass]} (${s.licenseClass})`,
+        licenseStatus: s.licenseStatus,
+        listedOn: s.listedOn,
+        checkLicenseUrl: checkLicenseUrl(s.licenseNumber),
+        distanceMiles: Math.round(miles * 10) / 10,
+        approximate: s.approximate,
+      });
+      listed.add(s.licenseNumber);
+      crews.push(parsed.data);
+    }
     for (const c of found) {
       if (crews.length === n) break;
+      if (listed.has(c.licenseNumber)) continue;
       const parsed = Crew.safeParse({ id: o.newId(), name: c.businessName.slice(0, 120), trade, zip: c.zip, email: null, phone: c.phoneE164, licenseNumber: c.licenseNumber, sample: false });
       if (!parsed.success) continue;
       cards.set(parsed.data.id, cardOf(c));

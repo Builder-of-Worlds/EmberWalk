@@ -22,7 +22,7 @@ const bands = (from: number, to: number, row: number): Bands => Array.from({ len
 const inFrames = (row: Bands, frames = FRAMES) => Object.fromEntries(frames.map((frame) => [frame, row]));
 const WALL_BOX: Box = [0, 0.3, 1, 0.8];
 const BOX_TOUCHING: Box = [0.3, 0.6, 0.5, 0.8];
-const BOX_AWAY: Box = [0.3, 0.5, 0.5, 0.65];
+const BOX_AWAY: Box = [0.3, 0.85, 0.5, 0.95];
 
 const input = (masks: ObserveInput["masks"], pileBox: Box = BOX_TOUCHING, extra: Track[] = []): ObserveInput => ({
   clips: [loop],

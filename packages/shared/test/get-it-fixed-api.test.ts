@@ -100,7 +100,7 @@ describe("the Get It Fixed answers", () => {
     roundTrips(FixedApprovalResponse, { status: "sent" });
     roundTrips(FixedApprovalResponse, { status: "approved", phone: "+12095550101", body: "Hi" });
     roundTrips(FixedSentByPhoneResponse, { status: "sent_by_phone" });
-    roundTrips(FixedInspectionResponse, { subject: "Inspection request", body: "Please inspect.", links: [{ label: "Fire rules", url: "https://rules.example/a" }] });
+    roundTrips(FixedInspectionResponse, { subject: "Inspection request", body: "Please inspect.", links: [{ label: "Fire rules", url: "https://rules.example/a" }], contact: null, messageId: null, sent: false, replies: [] });
     roundTrips(FixedHistoryResponse, { walks: [{ walkId: WALK, walkedOn: "2026-10-27", synthetic: false, state: "done", marks: [{ ...mark, concept: "wood_pile" }] }] });
     roundTrips(FixedMarkResponse, { mark });
   });
@@ -122,7 +122,8 @@ describe("the Get It Fixed answers", () => {
     refuses(FixedApprovalResponse, { status: "sent", phone: "+12095550101" });
     refuses(FixedApprovalResponse, { status: "weird" });
     refuses(FixedSentByPhoneResponse, { status: "sent" });
-    refuses(FixedInspectionResponse, { subject: "S", body: "B", links: [{ label: "L", url: "javascript:alert(1)" }] });
+    refuses(FixedInspectionResponse, { subject: "S", body: "B", links: [{ label: "L", url: "javascript:alert(1)" }], contact: null, messageId: null, sent: false, replies: [] });
+    refuses(FixedInspectionResponse, { subject: "S", body: "B", links: [], contact: { agency: "A", email: "a@b.test", source: "http://plain.test", readOn: "2026-10-31" }, messageId: null, sent: false, replies: [] });
     refuses(FixedHistoryResponse, { walks: [{ walkId: WALK, walkedOn: "Oct 27", synthetic: false, state: "done", marks: [] }] });
     refuses(FixedHistoryResponse, { walks: [{ walkId: WALK, walkedOn: "2026-10-27", synthetic: false, state: "done", marks: [{ ...mark, concept: "moat" }] }] });
     refuses(FixedMarkResponse, {});

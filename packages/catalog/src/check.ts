@@ -7,6 +7,7 @@ export type CatalogRow = {
   concept: string;
   phrases: readonly string[];
   point: string | null;
+  looks?: number;
   why: string;
   source: CatalogSource;
   band: readonly Band[];

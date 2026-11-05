@@ -1,0 +1,103 @@
+{
+  "schema": "emberwalk.route-parts/1",
+  "synthetic": true,
+  "label": "Synthetic sample house",
+  "scene": "hero-before-steady",
+  "fps": 30,
+  "frame_count": 6057,
+  "duration_s": 201.9,
+  "standoff_in": 144,
+  "parts": [
+    {
+      "kind": "walk",
+      "loop_in": [
+        0.0,
+        1536.0
+      ],
+      "start_s": 0.0,
+      "end_s": 52.7,
+      "start_frame": 1,
+      "end_frame": 1581
+    },
+    {
+      "kind": "pan",
+      "side": "left",
+      "bearing_deg": 270,
+      "start_s": 52.7,
+      "end_s": 66.7,
+      "start_frame": 1582,
+      "end_frame": 2001
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        1536.0,
+        2574.0
+      ],
+      "start_s": 66.7,
+      "end_s": 102.8,
+      "start_frame": 2002,
+      "end_frame": 3084
+    },
+    {
+      "kind": "pan",
+      "side": "back",
+      "bearing_deg": 0,
+      "start_s": 102.8,
+      "end_s": 116.8,
+      "start_frame": 3085,
+      "end_frame": 3504
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        2574.0,
+        3462.0
+      ],
+      "start_s": 116.8,
+      "end_s": 147.9,
+      "start_frame": 3505,
+      "end_frame": 4437
+    },
+    {
+      "kind": "pan",
+      "side": "right",
+      "bearing_deg": 90,
+      "start_s": 147.9,
+      "end_s": 161.9,
+      "start_frame": 4438,
+      "end_frame": 4857
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        3462.0,
+        4026.0
+      ],
+      "start_s": 161.9,
+      "end_s": 182.2,
+      "start_frame": 4858,
+      "end_frame": 5466
+    },
+    {
+      "kind": "pan",
+      "side": "front",
+      "bearing_deg": 180,
+      "start_s": 182.2,
+      "end_s": 196.2,
+      "start_frame": 5467,
+      "end_frame": 5886
+    },
+    {
+      "kind": "walk",
+      "loop_in": [
+        4026.0,
+        4152.0
+      ],
+      "start_s": 196.2,
+      "end_s": 201.9,
+      "start_frame": 5887,
+      "end_frame": 6057
+    }
+  ]
+}

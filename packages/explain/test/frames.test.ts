@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { explainRequest } from "../src/index.ts";
-import { frameDataUri, syntheticWalk } from "./frames.ts";
+import { frameDataUri, rendersRoot, syntheticWalk } from "./frames.ts";
 import { yardTwoInput } from "./support.ts";
 
 const dir = mkdtempSync(path.join(tmpdir(), "explain-frames-"));
@@ -32,6 +32,14 @@ describe("a frame cut from a clip", () => {
 });
 
 describe("the synthetic walk file", () => {
+  it("is looked for in emberwalk-renders beside the main checkout, never in the home folder", () => {
+    const root = rendersRoot();
+    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"]).toString().trim();
+    expect(path.basename(root)).toBe("emberwalk-renders");
+    expect(existsSync(path.join(path.dirname(root), path.basename(path.dirname(common)), "package.json"))).toBe(true);
+    expect(path.dirname(root)).not.toBe(homedir());
+  });
+
   it("is refused when it is not the render the yard's record names", () => {
     const yard = mkdtempSync(path.join(tmpdir(), "explain-yard-"));
     const renders = mkdtempSync(path.join(tmpdir(), "explain-renders-"));

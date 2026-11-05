@@ -1,8 +1,10 @@
 # Pricing
 Description: Two yearly EmberWalk plans: {{individualPrice}} for individuals and {{landlordPrice}} for landlords and property managers, with extra walks at {{extraWalkPrice}} each.
-Last updated: 2026-10-31
+Last updated: 2026-11-03
 
-A walk is one filmed loop around a home. Every walk needs a plan, and a plan is paid for through Stripe. A plan renews on its own each year until you cancel; the [refund and cancellation policy](/refunds) says how.
+Plans go on sale when EmberWalk launches.
+
+A walk is one filmed loop around a home. Every walk needs a plan, and a plan is paid for through Stripe. A plan renews on its own each year until you cancel. Review the [refund and cancellation policy](/refunds) for details.
 
 ## Individuals
 
@@ -20,11 +22,11 @@ Unused extra walks carry over into the next plan year, on either plan. When a pl
 
 ## What counts as a walk
 
-A walk that fails does not count against your walks. You can try it again until it completes, at no cost to your plan.
+A walk that does not finish does not count against your walks. You can try it again until it completes, at no cost to your plan.
 
 ## What each plan includes
 
-Every plan includes the findings from each walk with the rule behind each one, blurred proof pictures, recheck photos that update a finding, Get It Fixed, and Delete Everything. Only a walk uses up one of your walks; recheck photos and Get It Fixed do not.
+Each plan comes complete with all findings from every walk, along with their governing rules, blurred proof pictures, recheck photos to update findings, Get It Fixed, and Delete Everything. Your walk balance is only consumed when performing a walk; recheck photos and Get It Fixed incur no walk usage.
 
 ## Payment, refunds and terms
 

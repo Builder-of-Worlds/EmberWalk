@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -97,7 +96,8 @@ export function iou(a: Rect, b: Rect): number {
 
 export function syntheticRender(yard = YARD_ONE): string {
   const info = renderInfo(yard);
-  const root = process.env["EMBERWALK_RENDERS"] ?? path.join(homedir(), "emberwalk-renders");
+  const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: REPO }).toString().trim();
+  const root = process.env["EMBERWALK_RENDERS"] ?? path.join(path.dirname(path.dirname(common)), "emberwalk-renders");
   const file = path.join(root, info.file);
   const sha = createHash("sha256").update(readFileSync(file)).digest("hex");
   if (!info.synthetic || sha !== info.sha256) throw new Error(`${file} is not the synthetic render named in render.json`);

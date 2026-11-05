@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { copy, draft } from "../copy.ts";
+import { isTenantWalk } from "../walk-claim.ts";
 import { useDeps } from "../deps.ts";
 import { STATUSES } from "../finding-marks.ts";
 import type { StatusKind } from "../finding-marks.ts";
 import type { MarkRequest } from "../fixed-api.ts";
 import { localDay } from "../mark-sync.ts";
+import { instructionOf } from "../results.ts";
 import type { ResultFinding, WalkResults } from "../results.ts";
-import { resultsFor, ROUTES } from "../router.ts";
+import { findingWords } from "../draft-words.ts";
+import { fixFor, resultsFor, ROUTES } from "../router.ts";
 import { isSample } from "../samples.ts";
 import type { FindingIds } from "../router.ts";
 import { DetailLines, useView, ViewSwitch } from "./Detail.tsx";
@@ -64,7 +67,7 @@ const StatusPicker = ({ results, finding }: Found) => {
 
   const choose = (kind: StatusKind, text = "", doneOn?: string) => {
     const before = deps.marks.statusOf(results.id, finding.id);
-    deps.marks.setStatus(results.id, finding.id, kind, text, doneOn);
+    deps.marks.setStatus(results.id, finding.id, kind, text, kind === "fix_planned" ? localDay(deps.clock.now()) : doneOn);
     const kept = deps.marks.statusOf(results.id, finding.id);
     setStatus(kept);
     const changed = kept.kind !== before.kind || kept.note !== before.note || kept.doneOn !== before.doneOn;
@@ -133,6 +136,26 @@ const StatusPicker = ({ results, finding }: Found) => {
   );
 };
 
+const HelpAndHear = ({ results, finding }: Found) => {
+  const { voice } = useDeps();
+  const [silent, setSilent] = useState(false);
+  useEffect(() => () => voice.stop(), [voice]);
+  const hear = async () => setSilent((await voice.say(instructionOf(finding))) === "none");
+  return (
+    <div className="actions" data-part="help-and-hear">
+      <button className="button" type="button" onClick={() => void hear()}>
+        {findingWords.hear}
+      </button>
+      {isTenantWalk(results.id) ? null : (
+        <a className="button" href={fixFor(results.id)}>
+          {findingWords.help}
+        </a>
+      )}
+      {silent ? <p role="status">{findingWords.cannotHear}</p> : null}
+    </div>
+  );
+};
+
 const OneFinding = ({ results, finding }: Found) => {
   const deps = useDeps();
   const [more, setMore] = useState(false);
@@ -153,10 +176,13 @@ const OneFinding = ({ results, finding }: Found) => {
       <ViewSwitch view={view} choose={choose} />
       <Photo proof={finding.proof} />
       <p className={`label ${finding.label}`}>{copy.results.label[finding.label]}</p>
-      <p className="sentence">{finding.instruction}</p>
+      <p className="sentence">{instructionOf(finding)}</p>
+      {finding.sides !== undefined && finding.sides.length > 0 ? <p className="sides">{copy.finding.sides(finding.sides)}</p> : null}
+      {finding.advice ? <p className="advice" data-part="advice">{findingWords.advice}</p> : null}
       {view === "detailed" ? <DetailLines finding={finding} /> : null}
       <SecondCheckNote check={finding.secondCheck} />
-      {removed ? null : <StatusPicker results={results} finding={finding} />}
+      <HelpAndHear results={results} finding={finding} />
+      {removed || isTenantWalk(results.id) ? null : <StatusPicker results={results} finding={finding} />}
       {removed ? (
         <div className="removed">
           <p role="status">{copy.finding.removed}</p>

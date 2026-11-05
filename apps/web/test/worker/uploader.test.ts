@@ -116,7 +116,7 @@ describe("sending a walk to the real API Worker", () => {
       return storage(request);
     };
 
-    expect(await sendTake(deps({ put: flaky }), await latest(), WALK)).toEqual({ code: "offline" });
+    expect(await sendTake(deps({ put: flaky }), await latest(), WALK)).toEqual({ code: "storage_blocked" });
     const kept = await latest();
     expect(kept.upload?.parts.map((p) => p.partNumber)).toEqual([1]);
 
@@ -246,7 +246,7 @@ describe("each refusal the Worker can give the phone", () => {
 
   it("invalid_part_number when the saved upload asks for a part the Worker does not have, then starts over and sends", async () => {
     await seedWalk(WALK, "uploading");
-    await refusedWith("offline", await recordTake(), { put: dropAt2 });
+    await refusedWith("storage_blocked", await recordTake(), { put: dropAt2 });
     const open = await latest();
     const upload = open.upload;
     if (upload === null) throw new Error("no saved upload");
@@ -290,7 +290,7 @@ describe("each refusal the Worker can give the phone", () => {
 
   it("upload_expired: a saved upload that ran out of time is stopped, and a fresh one on the same walk sends at once with no refusal", async () => {
     await seedWalk(WALK, "uploading");
-    await refusedWith("offline", await recordTake(), { put: dropAt2 });
+    await refusedWith("storage_blocked", await recordTake(), { put: dropAt2 });
     const old = (await latest()).upload?.uploadId ?? null;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + SESSION_MS + 1000);
@@ -300,7 +300,7 @@ describe("each refusal the Worker can give the phone", () => {
 
   it("upload_aborted: a saved upload that was stopped gives way to a fresh one on the same walk, sent at once with no refusal", async () => {
     await seedWalk(WALK, "uploading");
-    await refusedWith("offline", await recordTake(), { put: dropAt2 });
+    await refusedWith("storage_blocked", await recordTake(), { put: dropAt2 });
     const open = await latest();
     await uploadApi("https://api.test", worker).abort(open.upload?.uploadId ?? "");
     await sentFresh(open, open.upload?.uploadId ?? null);

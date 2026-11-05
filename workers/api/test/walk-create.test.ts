@@ -2,8 +2,9 @@ import { env, exports } from "cloudflare:workers";
 import { PartLinkResponse, StartUploadResponse, StartWalkResponse } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index.ts";
+import { handleCreateWalk } from "../src/walk-create.ts";
 import { MiB, call, link, start } from "./route.ts";
-import { partOfWalk } from "@emberwalk/db";
+import { getWalk, partOfWalk, walkedDay } from "@emberwalk/db";
 import { clearWalks, OWNER, seedGap, seedWalk, walkState } from "./seed.ts";
 
 const VISITOR = "c".repeat(64);
@@ -37,6 +38,62 @@ describe("creating a walk", () => {
       device_width: 1080,
       device_height: 1920,
       synthetic: 0,
+    });
+  });
+
+  it("keeps the phone's day for the walk, and leaves a day it cannot believe unset", async () => {
+    const dayOf = async (walkedOn: string) => {
+      const { walkId } = StartWalkResponse.parse((await call("/api/walks", body({ walkedOn }))).json);
+      return (await getWalk(env.DB, walkId))!;
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const kept = await dayOf(yesterday);
+    expect(kept.walkDay).toBe(yesterday);
+    expect(walkedDay(kept)).toBe(yesterday);
+    for (const odd of ["2099-01-01", "2020-01-01"]) {
+      const walk = await dayOf(odd);
+      expect(walk.walkDay).toBeNull();
+      expect(walkedDay(walk)).toBe(today);
+    }
+  });
+
+  describe("the phone's day", () => {
+    const NOW = new Date("2026-11-02T01:00:00.000Z");
+    const startAt = async (walkedOn: unknown, db: D1Database = env.DB) =>
+      handleCreateWalk(new Request("https://x.test/api/walks", { method: "POST", body: JSON.stringify(body({ walkedOn })) }), db, () => crypto.randomUUID(), () => NOW);
+    const dayKept = async (walkedOn: string) => {
+      const { walkId } = StartWalkResponse.parse(await (await startAt(walkedOn)).json());
+      return (await getWalk(env.DB, walkId))!.walkDay;
+    };
+
+    it("keeps a day up to tomorrow by the server's clock, for a phone east of it, and no later", async () => {
+      expect(await dayKept("2026-11-03")).toBe("2026-11-03");
+      expect(await dayKept("2026-11-04")).toBeNull();
+    });
+
+    it("keeps a day up to 30 days old, for a walk sent late from a phone with no signal, and no older", async () => {
+      expect(await dayKept("2026-10-04")).toBe("2026-10-04");
+      expect(await dayKept("2026-10-03")).toBeNull();
+    });
+
+    it("starts the walk with the server's day when the phone's day cannot be read", async () => {
+      const reply = await startAt("yesterday");
+      expect(reply.status).toBe(200);
+      const { walkId } = StartWalkResponse.parse(await reply.json());
+      expect((await getWalk(env.DB, walkId))!.walkDay).toBeNull();
+    });
+
+    it("starts the walk when the day cannot be saved, as before the migration has run", async () => {
+      const failing = Object.create(env.DB) as D1Database;
+      failing.prepare = (query: string) => {
+        if (query.includes("walk_day")) throw new Error("no such column: walk_day");
+        return env.DB.prepare(query);
+      };
+      failing.batch = env.DB.batch.bind(env.DB);
+      const reply = await startAt("2026-11-01", failing);
+      expect(reply.status).toBe(200);
+      expect(await walkState(StartWalkResponse.parse(await reply.json()).walkId)).toBe("uploading");
     });
   });
 

@@ -52,17 +52,27 @@ export function workList(findings: Finding[]): string {
   return [WORK_HEADING, ...lines].join("\n");
 }
 
-export const bodyRoom = (findings: Finding[]): number => MAX_BODY - workList(findings).length - 2;
+const ZIP_PART_LENGTH = "\n\nZIP: 00000\n\n".length;
 
-export function lengthRefusal(body: string, findings: Finding[]): string | null {
+export const bodyRoom = (findings: Finding[]): number => MAX_BODY - workList(findings).length - ZIP_PART_LENGTH;
+
+const PRIVATE_DETAILS = [
+  /(?:\+?1[-. ]?)?\(?\b\d{3}\)?[-. ]\d{3}[-. ]\d{4}\b/,
+  /\b\d{1,6}\s+(?:[A-Z][\w'-]*\s+){1,3}(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Way|Boulevard|Blvd|Place|Pl|Circle|Cir|Highway|Hwy)\b/,
+  /\b(?:Calle|Avenida|Camino)\s+[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*\s+\d{1,6}\b/,
+  /[^\s@]+@[^\s@]+\.[^\s@]+/,
+];
+
+export function bodyRefusal(body: string, findings: Finding[]): string | null {
+  if (PRIVATE_DETAILS.some((detail) => detail.test(body))) return "the body holds a private detail (a phone number, a street address or an email address); leave it out, the ZIP is added for you";
   const room = bodyRoom(findings);
   return body.length > room ? `the body is ${body.length} characters; with the work list EmberWalk adds, it may have at most ${room}` : null;
 }
 
-export function withWork(body: string, findings: Finding[]): string {
-  const refused = lengthRefusal(body, findings);
+export function withWork(body: string, findings: Finding[], zip: string): string {
+  const refused = bodyRefusal(body, findings);
   if (refused !== null) throw new DraftRefused(refused);
-  return `${body}\n\n${workList(findings)}`;
+  return `${body}\n\nZIP: ${zip}\n\n${workList(findings)}`;
 }
 
 export async function missingStills(photos: PhotoStore, findings: Finding[]): Promise<Finding[]> {

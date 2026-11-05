@@ -89,10 +89,11 @@ describe("prepareWalk decides on the server whether a walk is a sample house", (
     expect(harness.probed).toEqual([]);
   });
 
-  it("refuses real footage while billing is free credits, before any video work", async () => {
+  it("checks real footage while billing is free credits", async () => {
+    harness.syntheticRender = false;
     const walkId = await walkSeeded(false);
-    expect(await prepareWalk(deps(), walkId)).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
-    expect(harness.probed).toEqual([]);
+    expect((await prepareWalk(deps(), walkId)).ok).toBe(true);
+    expect(await synthetic(walkId)).toBe(false);
   });
 
   it("checks real footage once billing is paid", async () => {

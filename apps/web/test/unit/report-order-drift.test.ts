@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { LOOP_CONCEPTS } from "@emberwalk/shared";
-import { reportOn } from "../../src/deps.ts";
+import { CORNERS, GAP_KINDS, LOOP_CONCEPTS } from "@emberwalk/shared";
 import { reportOrder } from "../../../../workers/api/src/report.ts";
 import { reportWords } from "../../../../workers/api/src/report-words.ts";
-import { copy } from "../../src/copy.ts";
-import { bandsOf, verdictOf } from "../../src/results.ts";
+import { copy, draft } from "../../src/copy.ts";
+import { bandsOf, firstOf, verdictOf } from "../../src/results.ts";
 import type { Gap, Label, ResultFinding } from "../../src/results.ts";
 import { finding, walk } from "./result-fakes.ts";
 
@@ -47,14 +46,19 @@ describe("the report's fix first order and the results screen's", () => {
     expect(reportsOrder(list, cleared)).toEqual(appOrder(list, cleared));
   });
 
-  it("stay the same when the walk has gaps: a missing side empties the list, a corner gap alone does not", () => {
-    const list = findings(SPECS);
-    for (const gaps of [[{ side: "back", kind: "missing", hint: "walk_side" }], [{ side: "back_left", kind: "missing", hint: "pan_corner" }]] satisfies Gap[][]) {
-      const app = verdictOf({ ...walk(list), gaps }, () => false);
-      const report = reportOrder({ findings: list.map((f) => ({ ...f, voiceNote: f.voiceNote ?? null })), gaps }, () => false);
-      expect(report.first.map((f) => f.id)).toEqual(app.kind === "fix" ? app.first.map((f) => f.id) : []);
-    }
-    expect(reportOrder({ findings: list.map((f) => ({ ...f, voiceNote: f.voiceNote ?? null })), gaps: [{ side: "back_left", kind: "missing", hint: "pan_corner" }] }, () => false).first).not.toEqual([]);
+  it("stay the same when the walk has gaps: a missing side or a corner keeps every open finding inside 30 feet first", () => {
+    const cases = [findings(SPECS), findings(SPECS.filter((s) => s.id === "far" || s.id === "x"))];
+    for (const list of cases)
+      for (const gaps of [[{ side: "back", kind: "missing", hint: "walk_side" }], [{ side: "back_left", kind: "missing", hint: "pan_corner" }]] satisfies Gap[][]) {
+        const cleared = (f: ResultFinding) => f.id === "c";
+        const app = verdictOf({ ...walk(list), gaps }, cleared);
+        const report = reportOrder({ findings: list.map((f) => ({ ...f, voiceNote: f.voiceNote ?? null })), gaps }, (f) => cleared(list.find((g) => g.id === f.id)!));
+        expect(app.kind).toBe("incomplete");
+        expect(report.first.map((f) => f.id)).toEqual(firstOf(app, list, cleared).map((f) => f.id));
+      }
+    const near = findings(SPECS);
+    const gapped = reportOrder({ findings: near.map((f) => ({ ...f, voiceNote: f.voiceNote ?? null })), gaps: [{ side: "back_left", kind: "missing", hint: "pan_corner" }] }, () => false);
+    expect(gapped.first.map((f) => f.id)).toEqual(["z", "c", "m", "a", "b", "edge"]);
   });
 
   it("stay the same when only far findings block", () => {
@@ -68,11 +72,7 @@ describe("the report's words and the app's", () => {
   it("name every thing not checked the same way", () => {
     for (const concept of LOOP_CONCEPTS) expect(reportWords.notChecked(concept)).toBe(copy.results.notChecked(concept));
   });
-});
-
-describe("the report flag", () => {
-  it("is on only for the exact word on", () => {
-    expect(reportOn("on")).toBe(true);
-    for (const raw of [undefined, "", "off", "ON", "true", "1", " on"]) expect(reportOn(raw)).toBe(false);
+  it("name every corner gap the same way", () => {
+    for (const corner of CORNERS) for (const kind of GAP_KINDS) expect(reportWords.cornerGap[kind](corner)).toBe(draft.corners.gap[kind](corner));
   });
 });

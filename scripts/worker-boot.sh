@@ -217,4 +217,11 @@ boot static /
 code=$(answer "$port" /judge/)
 [ "$code" = 200 ] && cmp -s "$STATE/body" apps/web/dist/judge/index.html || red "emberwalk-static did not answer the judge copy at /judge/ (it answered $code)"
 echo "emberwalk-static answered the judge copy at /judge/"
-echo "WORKER BOOT green: under wrangler dev --local with no token, emberwalk-pipeline, emberwalk-getfixed and emberwalk-api answered 200 at /health, the media Container answered a /probe of the synthetic walk.mp4, through a probe Worker's binding to the pipeline's MediaContainer class, with its $SECONDS_FOUND second duration, emberwalk-api answered the app's page at / and /walk/record, and emberwalk-static answered / and the judge copy at /judge/"
+ASSETS_DIR=""
+boot judges /
+cmp -s "$STATE/body" apps/web/dist/judge/index.html || red "emberwalk-judges did not answer the judge copy at / (it answered $code)"
+echo "emberwalk-judges answered the judge copy at /"
+code=$(answer "$port" /api/walks)
+[ "$code" = 404 ] || red "emberwalk-judges answered $code at /api/walks, not 404"
+echo "emberwalk-judges answered 404 at /api/walks"
+echo "WORKER BOOT green: under wrangler dev --local with no token, emberwalk-pipeline, emberwalk-getfixed and emberwalk-api answered 200 at /health, the media Container answered a /probe of the synthetic walk.mp4, through a probe Worker's binding to the pipeline's MediaContainer class, with its $SECONDS_FOUND second duration, emberwalk-api answered the app's page at / and /walk/record, and emberwalk-static answered / and the judge copy at /judge/, and emberwalk-judges answered the judge copy at / and 404 at /api/walks"

@@ -9,6 +9,8 @@ import tempfile
 import urllib.error
 import urllib.request
 
+from . import paths as ew_paths
+
 CATALOG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets.json")
 API = "https://api.polyhaven.com/"
 DOWNLOAD_HOST = "https://dl.polyhaven.org/"
@@ -28,8 +30,7 @@ def load_catalog():
 
 
 def cache_dir():
-    root = os.environ.get("EMBERWALK_ASSETS") or os.path.expanduser("~/emberwalk-assets")
-    return os.path.join(root, "polyhaven")
+    return os.path.join(ew_paths.assets_dir(), "polyhaven")
 
 
 def used(spec, catalog):
@@ -107,10 +108,20 @@ def ensure(asset_id, entry, cache, opener=urllib.request.urlopen):
     return manifest or fetch(asset_id, entry, cache, opener)
 
 
+def _here(asset_root, name, p):
+    part = os.sep + name + os.sep
+    return os.path.join(asset_root, p.rsplit(part, 1)[1]) if part in p else p
+
+
 def _cached(path, res):
     try:
         with open(path, encoding="utf-8") as f:
             manifest = json.load(f)
+        root = os.path.dirname(path)
+        name = os.path.basename(root)
+        manifest["files"] = {k: _here(root, name, p) for k, p in manifest["files"].items()}
+        if "includes" in manifest:
+            manifest["includes"] = [_here(root, name, p) for p in manifest["includes"]]
         paths = list(manifest["files"].values()) + list(manifest.get("includes", []))
         if manifest["resolution"] == res and all(os.path.isfile(p) for p in paths):
             return manifest

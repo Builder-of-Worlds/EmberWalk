@@ -57,8 +57,9 @@ describe("the Get It Fixed client", () => {
       value: { status: "approved", phone: "+12095550101", body: "Hi" },
     });
     expect(await serving(() => Response.json({ status: "sent_by_phone" })).api.sentByPhone(M1)).toEqual({ value: { status: "sent_by_phone" } });
-    const request = { subject: "S", body: "B", links: [{ label: "L", url: "https://x.example" }] };
+    const request = { subject: "S", body: "B", links: [{ label: "L", url: "https://x.example" }], contact: null, messageId: null, sent: false, replies: [] };
     expect(await serving(() => Response.json(request)).api.inspection(WALK)).toEqual({ value: request });
+    expect(await serving(() => Response.json({ status: "sent" })).api.inspectionApprove(M1)).toEqual({ value: { status: "sent" } });
     const history = {
       walks: [{ walkId: WALK, walkedOn: "2026-10-27", synthetic: false, state: "done", marks: [{ id: K1, findingId: F1, concept: "wood_pile", status: "done", note: null, doneOn: "2026-10-28", markedAt: "2026-10-28T19:00:00.000Z" }] }],
     };

@@ -508,11 +508,11 @@ describe("the approved Privacy sentences (Oct. 26th)", () => {
   const APPROVED = [
     "When you sign up, you give us two things: your email address, and whether you are a homeowner, a landlord or property manager, or something else. We also keep the date and time you signed up. We do not ask for your name, your address, your phone number or your location.",
     "We use your email address to tell you when EmberWalk launches and to send you the confirmation email. We use your answer to understand who EmberWalk is for. We'll only email you about EmberWalk.",
-    "Your email address and answer are stored with Cloudflare, which hosts this site. The confirmation email is sent through Resend. Cloudflare Turnstile checks that a person, and not a program, is using the sign up form; it runs in your browser when you use the form. These companies handle your information only to do those jobs for us.",
+    "Your email address and answer are stored with Cloudflare, which hosts this site. The confirmation email is sent through Resend. Cloudflare Turnstile checks that a person, and not a program, is using the sign up form or asking for a sign in link; it runs in your browser when you use them. These companies handle your information only to do those jobs for us.",
     "We never sell your information, and we never share it for advertising.",
     "This site sets no cookies of its own and has no advertising and no analytics. We do not track you across other websites, so a Do Not Track signal from your browser changes nothing here.",
     "Cloudflare Turnstile sees your IP address and browser details, and may set a strictly necessary cookie, only to check you are a person. No other company tracks you across sites through EmberWalk.",
-    "Every email we send has an unsubscribe link. Using it removes you straight away, with nothing to sign in to. You can also write to hello@emberwalk.app from the address you signed up with and ask to be removed. We will delete your email address and your answer from the list. To see what we hold about you, or to correct it, write to the same address.",
+    "Every email we send to the sign up list has an unsubscribe link. The email that carries a sign in link goes only to an address that asked for it, and has none. Using the unsubscribe link removes you straight away, with nothing to sign in to. You can also write to hello@emberwalk.app from the address you signed up with and ask to be removed. We will delete your email address and your answer from the list. To see what we hold about you, or to correct it, write to the same address.",
     "EmberWalk is not meant for children under 13. If you tell us a child signed up, we delete it.",
     "If we change this page, we will change the date below.",
   ];
@@ -599,7 +599,7 @@ describe("pricing", () => {
     expect(OFFER_CONFIG.paidExtras).toBeNull();
     const text = bodyText(html());
     for (const item of [/blurred proof pictures/i, /recheck photos/i, /Get It Fixed/, /Delete Everything/]) expect(text).toMatch(item);
-    expect(text).toMatch(/only a walk uses up one of your walks/i);
+    expect(text).toMatch(/walk balance is only consumed when performing a walk; recheck photos and Get It Fixed incur no walk usage/i);
     expect(text).not.toMatch(/PDF|share link|Defensible Space Record/i);
     expect(P.readSources().pages.pricing).not.toMatch(/\[TBD: what each plan includes/);
   });
@@ -610,10 +610,15 @@ describe("refunds and terms", () => {
 
   const refunds = () => bodyText(P.renderAll(sources()).get("refunds.html") ?? "");
 
-  it("says a full refund of a plan stops new walks on that plan, only for the period it paid for, and cancels its renewal", () => {
+  it("says a full refund of a plan stops new walks on that plan, only for the period it paid for, and also cancels its renewal", () => {
     expect(refunds()).toMatch(/full refund of a plan stops new walks on that plan/i);
     expect(refunds()).toMatch(/only the plan period that charge paid for/i);
-    expect(refunds()).toMatch(/refund a plan, we also cancel its renewal/i);
+    expect(refunds()).toMatch(/If we refund a plan in full, we also cancel its renewal/i);
+    expect(refunds()).not.toMatch(/does not stop the renewal by itself/i);
+  });
+
+  it("says a refund of extra walks does not cancel the plan", () => {
+    expect(refunds()).toMatch(/refund of extra walks does not cancel your plan/i);
   });
 
   it("says any refund on an extra walk purchase, partial or full, voids that whole purchase", () => {
@@ -625,24 +630,28 @@ describe("refunds and terms", () => {
     expect(text).toMatch(/within 14 days of a charge/i);
     expect(text).toMatch(/extra walks[^.]*if you have not used any of them/i);
     expect(text).toMatch(/Stripe receipt/i);
-    expect(text).toMatch(/5 to 10 business days/i);
+    expect(text).toMatch(/how long your bank takes to show it is up to your bank/i);
+    expect(text).not.toMatch(/5 to 10 business days/i);
     expect(sources().pages.refunds).toMatch(/^\{\{contact\}\}$/m);
     expect(sources().pages.refunds).not.toMatch(/\[TBD: the refund window/);
   });
 
-  it("explains renewal, the notice before it, how to cancel and what happens to the rest of the year", () => {
+  it("explains renewal, where to see its date, how to cancel and what happens to the rest of the year", () => {
     const text = refunds();
     expect(text).toMatch(/renews on its own every year/i);
-    expect(text).toMatch(/30 days before/i);
+    expect(text).toMatch(/see the date your plan year ends on Your Plan in the app/i);
+    expect(text).not.toMatch(/we email you the renewal date/i);
+    expect(text).toMatch(/Manage or Cancel on Your Plan/);
     expect(text).toMatch(/cancel any time/i);
     expect(text).toMatch(/keep your walks until the end of the year you paid for/i);
     expect(text).toMatch(/rest of a paid year is not refunded/i);
     expect(sources().pages.refunds).not.toMatch(/\[TBD: whether a plan renews/);
   });
 
-  it("says users get an email at least 30 days before a change to the terms that matters", () => {
+  it("says a change to the terms that matters is posted on the page at least 30 days before it takes effect, with no email promise", () => {
     const text = bodyText(P.renderAll(sources()).get("terms.html") ?? "");
-    expect(text).toMatch(/We email you at least 30 days before a change to these terms that matters/);
+    expect(text).toMatch(/We post a change to these terms that matters on this page at least 30 days before it takes effect/);
+    expect(text).not.toMatch(/We email you/);
     expect(text).not.toMatch(/change the date below/i);
     expect(text).toMatch(/Each policy page on this site shows the date it was last updated/);
     expect(text).not.toMatch(/Each page on this site shows/);
@@ -669,9 +678,9 @@ describe("refunds and terms", () => {
     expect(text).not.toMatch(/train models/i);
   });
 
-  it("promises no report, PDF or share link on any page while the API Worker config has the report off", () => {
+  it("promises no report, PDF or share link on any page unless the API Worker config has the report on", () => {
     const config = readFileSync(`${STATIC}../api/wrangler.jsonc`, "utf8");
-    expect(config).toMatch(/"REPORT":\s*"off"/);
+    if (/"REPORT":\s*"on"/.test(config)) return;
     for (const name of PUBLIC_SET) {
       expect(bodyText(P.renderAll(sources()).get(`${name}.html`) ?? ""), name).not.toMatch(/your report|\bPDF\b|share link/i);
     }
@@ -684,9 +693,9 @@ describe("refunds and terms", () => {
     expect(sources().pages.accessibility).not.toMatch(/\[TBD:/);
   });
 
-  it("says a failed walk does not count and can be tried again until it completes", () => {
+  it("says a walk that does not finish does not count and can be tried again until it completes", () => {
     const text = bodyText(P.renderAll(sources()).get("pricing.html") ?? "");
-    expect(text).toMatch(/walk that fails does not count/i);
+    expect(text).toMatch(/walk that does not finish does not count/i);
     expect(text).toMatch(/until it completes/i);
   });
 

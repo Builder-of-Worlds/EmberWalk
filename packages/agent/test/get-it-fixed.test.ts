@@ -6,7 +6,8 @@ import { pickCrews } from "../src/crews.ts";
 import { AgentOff, RateLimited, runJob } from "../src/loop.ts";
 import { MAX_REPLY_READS_PER_MESSAGE, READ_REPLY_INSTRUCTIONS, readReplies } from "../src/replies.ts";
 import { finalAnswer, toolAnswer } from "./shaped/answers.ts";
-import { agentDeps, crew, crewId, findingId, HOMEOWNER, JOB, NOW, resetDb, seedJob, seedWalk, toolOutputs, uuid, ZIP } from "./support.ts";
+import { planJobs } from "../src/plan.ts";
+import { agentDeps, crew, crewId, findingId, HOMEOWNER, JOB, NOW, resetDb, seedJob, seedWalk, toolOutputs, uuid, WALK, ZIP } from "./support.ts";
 
 const BRUSH = findingId(1);
 const CREWS = [crew(1), crew(2), crew(3), crew(4, { sample: false })];
@@ -20,6 +21,21 @@ const setup = async (o: { synthetic?: boolean } = {}) => {
 };
 
 beforeEach(resetDb);
+
+describe("a ZIP that found no crews", () => {
+  it("gives way to the next ZIP asked for, and a job holding crews keeps its ZIP", async () => {
+    await seedWalk({ synthetic: false, findings: [{}] });
+    const none = agentDeps({ answers: [], crews: [] });
+    const [job] = (await planJobs(none.deps, WALK, "96161")).jobs;
+    expect(await pickCrews(none.deps, job!.id)).toEqual([]);
+    const some = agentDeps({ answers: [], crews: [crew(1, { sample: false })] });
+    const [moved] = (await planJobs(some.deps, WALK, "95969")).jobs;
+    expect(moved!.zip).toBe("95969");
+    expect((await pickCrews(some.deps, moved!.id)).map((c) => c.id)).toEqual([crewId(1)]);
+    const [kept] = (await planJobs(some.deps, WALK, "90210")).jobs;
+    expect(kept!.zip).toBe("95969");
+  });
+});
 
 describe("pickCrews", () => {
   it("keeps the nearest three crews for the job once and logs it", async () => {
@@ -109,12 +125,13 @@ describe("readReplies", () => {
     expect((await repliesForJob(env.DB, JOB))[0]?.reading).toBeNull();
   });
 
-  it("never sends a real reply on free credits", async () => {
+  it("sends a real reply on free credits and keeps what Muse Spark read", async () => {
     await setup({ synthetic: false });
     await sentWithReply("We can do it.");
     const { deps, requests } = agentDeps({ answers: [finalAnswer(JSON.stringify(reading))], crews: CREWS });
-    await expect(readReplies(deps, JOB)).rejects.toSatisfy((e) => reason(e) === "real_content_on_free_credits");
-    expect(requests).toEqual([]);
+    expect(await readReplies(deps, JOB)).toEqual({ read: 1 });
+    expect(requests).toHaveLength(1);
+    expect((await repliesForJob(env.DB, JOB))[0]).toMatchObject({ reading });
   });
 
   it("refuses when off", async () => {

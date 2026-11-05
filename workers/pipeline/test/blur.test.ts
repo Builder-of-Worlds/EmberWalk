@@ -61,6 +61,18 @@ describe("blurredStills", () => {
     expect(await env.MEDIA.head(`proofs/${walkId}/4.jpg`)).not.toBeNull();
   });
 
+  it("asks for a small report copy of each still beside it", async () => {
+    const { walkId, clip } = await setup();
+    await checked(walkId, clip);
+
+    await blurredStills(deps(), walkId, clip, 0, wanted(walkId, [3, 4]));
+
+    expect(harness.stilled[0]!.stills.map((s) => (s.small === undefined ? null : keyOf(s.small)))).toEqual([
+      `proofs/${walkId}/3.small.jpg`,
+      `proofs/${walkId}/4.small.jpg`,
+    ]);
+  });
+
   it("sends an empty region list for a frame with nothing found on it", async () => {
     const { walkId, clip } = await setup();
     await checked(walkId, clip);

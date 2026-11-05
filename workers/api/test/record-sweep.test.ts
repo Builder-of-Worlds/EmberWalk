@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { DELETE_EVERYTHING_PATH, limitsWith, VISITOR_HEADER } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleDeleteEverything } from "../src/delete-everything.ts";
-import { sweepRecords } from "../src/record-sweep.ts";
+import { sweepAccounts, sweepRecords } from "../src/record-sweep.ts";
 import { allKeys, gid, keysHolding, OTHER, rowsHolding, run, seedBoth, tables, W1, W2, W5, WB } from "./erase-seed.ts";
 import { emptyBucket } from "./route.ts";
 import { OWNER, seedWalk } from "./seed.ts";
@@ -19,7 +19,7 @@ const plan = (customer: string, visitor: string, status: string, renewsAt: strin
 
 const reset = async (): Promise<void> => {
   await run("DELETE FROM walks");
-  for (const table of ["get_it_fixed_uses", "fault_reports", "cost_records", "cache_entries", "plans"]) await run(`DELETE FROM ${table}`);
+  for (const table of ["get_it_fixed_uses", "fault_reports", "cost_records", "cache_entries", "plans", "sign_in_links", "accounts"]) await run(`DELETE FROM ${table}`);
   await emptyBucket();
 };
 
@@ -44,6 +44,121 @@ const deleteEverything = async (visitor: string): Promise<number> =>
   ).status;
 
 const sweep = () => sweepRecords({ DB: env.DB, MEDIA: env.MEDIA }, NOW);
+
+describe("account sweep", () => {
+  const ACCOUNT = "a1000000-0000-4000-8000-000000000001";
+  const OWNER_ID = "9".repeat(64);
+  const EMAIL = "owner@example.com";
+  const HASH = "7".repeat(64);
+  const seedAccount = async (at = TWO_YEARS_BACK) => {
+    await run("INSERT INTO accounts (id, email, created_at, owner_id) VALUES (?, ?, ?, ?)", ACCOUNT, EMAIL, at, OWNER_ID);
+    await run(
+      "INSERT INTO sign_in_links (token_hash, email, visitor_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      HASH,
+      EMAIL,
+      OWNER,
+      at,
+      new Date(Date.parse(at) + 900_000).toISOString(),
+    );
+  };
+  const seedSession = (visitor: string, at: string) =>
+    run("INSERT INTO sessions (token_hash, account_id, visitor_id, created_at, expires_at, same_phone) VALUES (?, ?, ?, ?, ?, 1)", "8".repeat(64), ACCOUNT, visitor, at, new Date(Date.parse(at) + 86_400_000).toISOString());
+  const walkOf = (id: string, visitor: string, at: string) =>
+    run("INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height, created_at) VALUES (?, ?, 'done', 'en', 'us_ca', 'rear', 1920, 1080, ?)", id, visitor, at);
+  const left = async () => ({
+    accounts: (await env.DB.prepare("SELECT count(*) AS n FROM accounts").first<{ n: number }>())?.n,
+    links: (await env.DB.prepare("SELECT count(*) AS n FROM sign_in_links").first<{ n: number }>())?.n,
+  });
+  const sweepBoth = async () => {
+    await sweep();
+    return sweepAccounts({ DB: env.DB, MEDIA: env.MEDIA }, NOW);
+  };
+
+  beforeEach(reset);
+
+  it("removes an account and its links 12 months after its last walk, plan or session", async () => {
+    await seedAccount();
+    await seedSession(OWNER, TWO_YEARS_BACK);
+    expect(await sweepBoth()).toMatchObject({ accounts: 1 });
+    expect(await left()).toEqual({ accounts: 0, links: 0 });
+  });
+
+  it("erases an old walk under the owner id, then the account, in one run", async () => {
+    await seedAccount();
+    await walkOf(W1, OWNER_ID, TWO_YEARS_BACK);
+    await sweepBoth();
+    expect(await left()).toEqual({ accounts: 0, links: 0 });
+  });
+
+  it("keeps an account with a walk under the owner id inside 12 months", async () => {
+    await seedAccount();
+    await walkOf(W1, OWNER_ID, A_DAY_UNDER);
+    expect(await sweepBoth()).toMatchObject({ accounts: 0 });
+    expect((await left()).accounts).toBe(1);
+  });
+
+  it("keeps an account whose signed in phone walked inside 12 months", async () => {
+    await seedAccount();
+    await seedSession(OWNER, TWO_YEARS_BACK);
+    await walkOf(W1, OWNER, A_DAY_UNDER);
+    await sweepBoth();
+    expect((await left()).accounts).toBe(1);
+  });
+
+  it("keeps an account in use: a session inside 12 months counts, on the phone that asked or any other", async () => {
+    await seedAccount();
+    await seedSession(OWNER, A_DAY_UNDER);
+    await sweepBoth();
+    expect((await left()).accounts).toBe(1);
+    await run("UPDATE sessions SET same_phone = 0");
+    await sweepBoth();
+    expect((await left()).accounts).toBe(1);
+  });
+
+  it("removes the account once its last session is over 12 months old too", async () => {
+    await seedAccount();
+    await seedSession(OWNER, A_DAY_OVER);
+    await run("UPDATE sessions SET same_phone = 0");
+    await sweepBoth();
+    expect((await left()).accounts).toBe(0);
+  });
+
+  it("keeps an account made inside 12 months", async () => {
+    await seedAccount(A_DAY_UNDER);
+    await sweepBoth();
+    expect(await left()).toEqual({ accounts: 1, links: 1 });
+  });
+
+  it("keeps an account whose plan is running, and removes it once the plan ended over 12 months ago, unlinking the plan", async () => {
+    await seedAccount();
+    await plan("own", OWNER_ID, "active", null);
+    await sweepBoth();
+    expect((await left()).accounts).toBe(1);
+    await run("UPDATE plans SET status = 'canceled', renews_at = ?", A_DAY_OVER);
+    await sweepBoth();
+    expect((await left()).accounts).toBe(0);
+    expect((await env.DB.prepare("SELECT visitor_id FROM plans").first<{ visitor_id: string | null }>())?.visitor_id).toBeNull();
+  });
+
+  it("keeps a manager whose property had a walk inside 12 months", async () => {
+    await seedAccount();
+    const PORTFOLIO = "a2000000-0000-4000-8000-000000000001";
+    const PROPERTY = "a3000000-0000-4000-8000-000000000001";
+    await run("INSERT INTO portfolios (id, account_id, created_at) VALUES (?, ?, ?)", PORTFOLIO, ACCOUNT, TWO_YEARS_BACK);
+    await run("INSERT INTO properties (id, portfolio_id, label, created_at) VALUES (?, ?, 'Home', ?)", PROPERTY, PORTFOLIO, TWO_YEARS_BACK);
+    await walkOf(W1, OTHER, A_DAY_UNDER);
+    await run("INSERT INTO property_walks (walk_id, property_id, linked_at) VALUES (?, ?, ?)", W1, PROPERTY, A_DAY_UNDER);
+    await sweepBoth();
+    expect((await left()).accounts).toBe(1);
+  });
+
+  it("removes link rows over 12 months old even with no account, and leaves younger ones", async () => {
+    await seedAccount(A_DAY_UNDER);
+    await run("INSERT INTO sign_in_links (token_hash, email, visitor_id, created_at, expires_at) VALUES (?, 'never@example.com', ?, ?, ?)", "6".repeat(64), OTHER, A_DAY_OVER, "2026-11-04T12:15:00.000Z");
+    expect(await sweepBoth()).toMatchObject({ links: 1 });
+    expect((await left()).links).toBe(1);
+  });
+});
 
 describe("record sweep", () => {
   beforeEach(reset);
@@ -153,6 +268,7 @@ describe("record sweep", () => {
     expect(await rowsHolding([OWNER, OTHER])).toEqual([]);
   });
 
+  // Seeds and erases two visitors twice and reads every table twice: under 1 s alone, over 3 s under the gate's load.
   it("removes exactly what Delete Everything removes", async () => {
     await seedBoth();
     await age(OWNER, A_DAY_OVER);
@@ -168,7 +284,7 @@ describe("record sweep", () => {
 
     expect(await everything()).toEqual(byHand);
     expect(byHand.rows.length).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it("leaves a visitor with a walk still being checked for a later run", async () => {
     await seedBoth();

@@ -31,7 +31,7 @@ describe("pages and headers", () => {
     expect(csp.get("frame-src")).toEqual(["https://challenges.cloudflare.com"]);
     expect(csp.get("style-src")).toEqual(["'self'"]);
     expect(csp.get("font-src")).toEqual(["'self'"]);
-    expect(csp.get("connect-src")).toEqual(["'self'", "https://challenges.cloudflare.com"]);
+    expect(csp.get("connect-src")).toEqual(["'self'", "https://challenges.cloudflare.com", "https://judges.emberwalk.app"]);
     for (const values of csp.values()) {
       expect(values).not.toContain("'unsafe-inline'");
       expect(values).not.toContain("'unsafe-eval'");

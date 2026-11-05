@@ -1,9 +1,10 @@
 import { env, exports } from "cloudflare:workers";
-import { partOfWalk } from "@emberwalk/db";
+import { findOrCreateAccount, linkPhone, partOfWalk, startSession } from "@emberwalk/db";
 import { limitsWith, VISITOR_HEADER } from "@emberwalk/shared";
 import type { Limits } from "@emberwalk/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { startWalk, walkGate } from "../src/entitlements.ts";
+import { newSessionToken, SESSION_COOKIE, sessionExpiry } from "../src/session-cookie.ts";
 import { handleCreateWalk, keyedId } from "../src/walk-create.ts";
 import { clearWalks, seedDonePart, seedGap, seedWalk } from "./seed.ts";
 import { CUSTOMER, LANDLORD_PRICE, OTHER_VISITOR, PRICE, PRICES, refundPlanCharge, VISITOR } from "./stripe-shapes.ts";
@@ -49,6 +50,42 @@ const seedExtra = (session: string, walks: number, paidAt = "2026-06-01T00:00:00
 beforeEach(async () => {
   await clearWalks();
   await env.DB.batch(["plans", "extra_walks", "refunded_charges"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+});
+
+describe("a plan the account holds, walked from several phones", () => {
+  const THIRD = "d".repeat(64);
+  const startOn = async (phone: string, cookie: string) => {
+    const response = await startWalk(
+      new Request("https://go.emberwalk.app/api/walks", { method: "POST", body: walkBody({ visitorId: phone }), headers: { [VISITOR_HEADER]: phone, cookie } }),
+      START_DEPS,
+    );
+    return response.ok ? 200 : `${response.status} ${((await response.json()) as { error: { code: string } }).error.code}`;
+  };
+  const accountWithPlan = async (walksMoved: number): Promise<string> => {
+    const at = new Date().toISOString();
+    await env.DB.batch(["sessions", "accounts"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+    await seedPlan();
+    await seedWalks(walksMoved);
+    const account = await findOrCreateAccount(env.DB, { id: crypto.randomUUID(), email: "owner@example.com", at });
+    const first = await newSessionToken();
+    await startSession(env.DB, { tokenHash: first.hash, accountId: account.id, visitorId: VISITOR, createdAt: at, expiresAt: sessionExpiry(new Date()), samePhone: true });
+    expect(await linkPhone(env.DB, first.hash, VISITOR)).toEqual({ linked: true });
+    const second = await newSessionToken();
+    await startSession(env.DB, { tokenHash: second.hash, accountId: account.id, visitorId: OTHER_VISITOR, createdAt: at, expiresAt: sessionExpiry(new Date()) });
+    return `${SESSION_COOKIE}=${second.token}`;
+  };
+
+  it("counts a walk under the phone's own id as well as those under the account", async () => {
+    const cookie = await accountWithPlan(3);
+    await env.DB.prepare("INSERT INTO walks (id, visitor_id, state, language, jurisdiction, device_camera, device_width, device_height) VALUES (?, ?, 'done', 'en', 'us_ca', 'rear', 1920, 1080)").bind(walkId(9), OTHER_VISITOR).run();
+    expect(await startOn(OTHER_VISITOR, cookie)).toBe("402 walks_used");
+  });
+
+  it("counts a walk another phone took on the plan, so two phones cannot walk past it", async () => {
+    const cookie = await accountWithPlan(3);
+    expect(await startOn(OTHER_VISITOR, cookie)).toBe(200);
+    expect(await startOn(THIRD, cookie)).toBe("402 walks_used");
+  });
 });
 
 describe("the walk gate", () => {

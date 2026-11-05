@@ -117,6 +117,9 @@ const blurGraph = (regions: Region[]): { graph: string; last: string } => {
   return { graph: parts.join(";"), last: `[${source}]` };
 };
 
+const SMALL_SIDE = 1000;
+const SMALL_SCALE = `scale='if(gte(iw,ih),min(${SMALL_SIDE},iw),-2)':'if(gte(iw,ih),-2,min(${SMALL_SIDE},ih))'`;
+
 const stillArgs = (time: number, input: string, regions: Region[], out: string): string[] => {
   if (regions.length === 0) return ["-ss", String(time), "-i", input, "-frames:v", "1", "-q:v", "2", out];
   const { graph, last } = blurGraph(regions);
@@ -138,6 +141,11 @@ export const stillsOp = (req: StillsRequest) =>
       await ffmpeg(stillArgs(still.time, path, still.regions, out));
       const made = await probe(out);
       const bytes = await upload(still.output, out, "image/jpeg");
+      if (still.small !== undefined) {
+        const small = join(dir, `still-${i}.small.jpg`);
+        await ffmpeg(["-i", out, "-vf", SMALL_SCALE, "-q:v", "5", small]);
+        await upload(still.small, small, "image/jpeg");
+      }
       results.push({ time: still.time, bytes, width: made.video?.width ?? 0, height: made.video?.height ?? 0 });
     }
     return { stills: results };

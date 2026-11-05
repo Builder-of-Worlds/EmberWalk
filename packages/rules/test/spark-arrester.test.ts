@@ -27,13 +27,15 @@ describe("a walk that sees a chimney", () => {
     expect(found[0]!.instruction).toBe(row.plain.en);
   });
 
-  it("tells the homeowner the settled sentence, unchanged, in English and in Spanish", () => {
+  it("tells the homeowner the settled English sentence unchanged, and its Spanish twin", () => {
     const sentence = "Make sure the chimney has a spark arrester: a metal screen cap with openings 3/8 to 1/2 inch wide.";
     const [found] = chimneyFindings([...yardTracks(), chimney(50)]);
     expect(found!.instruction).toBe(sentence);
     expect(draft.sparkArrester).toBe(sentence);
     const rows = RULES.filter((r) => r.key === "chimney-spark-arrester");
-    expect(rows.map((r) => [r.plain.en, r.plain.es])).toEqual(rows.map(() => [sentence, sentence]));
+    expect(rows.map((r) => r.plain.en)).toEqual(rows.map(() => sentence));
+    expect(new Set(rows.map((r) => r.plain.es)).size).toBe(1);
+    expect(rows[0]!.plain.es).not.toBe(sentence);
   });
 
   it("gives the same finding in every jurisdiction, since it is not defensible space law", () => {

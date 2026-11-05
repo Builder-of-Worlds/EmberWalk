@@ -5,7 +5,7 @@ import type { Region } from "./privacy.ts";
 export type MediaProbe = { bytes: number; durationSeconds: number; isMp4: boolean };
 export type MediaClip = { bytes: number; frames: number; fps: number; codec: "h264"; durationSeconds: number; width: number; height: number };
 export type ClipRequest = { input: string; output: string; start: number; end: number; fps: number; maxHeight: number };
-export type StillsRequest = { input: string; stills: { time: number; output: string; regions: Region[] }[] };
+export type StillsRequest = { input: string; stills: { time: number; output: string; small?: string; regions: Region[] }[] };
 export type MediaStills = { stills: { time: number; bytes: number; width: number; height: number }[] };
 export type AudioRequest = { input: string; output: string; start: number; end: number };
 export type MediaAudio = { bytes: number; sampleRate: number; channels: number; durationSeconds: number };

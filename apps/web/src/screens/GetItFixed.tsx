@@ -2,10 +2,15 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { copy, draft, shortDay } from "../copy.ts";
 import { useDeps } from "../deps.ts";
+import { DEMO_ADDRESS } from "../demo-fixed.ts";
+import { crewWords, demoWords, phoneOf, signInAgainNoted } from "../draft-words.ts";
+import { SignInAgain } from "./SignInAgain.tsx";
 import type { CrewCard, FollowUp, Job, JobsView, Message, Reply } from "../fixed-api.ts";
 import { localDay } from "../mark-sync.ts";
+import { instructionOf } from "../results.ts";
 import type { WalkResults } from "../results.ts";
 import { approveFor, inspectionFor, resultsFor, ROUTES } from "../router.ts";
+import { JUDGE, judgeWords } from "../judge.ts";
 import { isSample } from "../samples.ts";
 import { useAction, useLoad } from "../use-load.ts";
 import { Failed, Loading, Problem } from "./Failed.tsx";
@@ -16,24 +21,41 @@ type Change = (view: JobsView) => void;
 
 const ZIP = /^\d{5}$/;
 
-const ZipForm = ({ walkId, onView }: { walkId: string; onView: Change }) => {
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// USPS DMM L002 (rev. Apr. 6, 2009, read Nov. 1, 2026) lists 900 to 960 as CA; 961 is listed under Reno, NV, but holds Truckee, CA.
+const inCalifornia = (zip: string): boolean => {
+  const prefix = Number(zip.slice(0, 3));
+  return prefix >= 900 && prefix <= 961;
+};
+
+const ZipForm = ({ walkId, onView, again = false }: { walkId: string; onView: Change; again?: boolean }) => {
   const { fixed } = useDeps();
   const [zip, setZip] = useState("");
   const [invalid, setInvalid] = useState(false);
+  const [outside, setOutside] = useState<string | null>(null);
   const action = useAction();
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const entered = zip.trim();
     setInvalid(!ZIP.test(entered));
-    if (!ZIP.test(entered)) return;
+    setOutside(ZIP.test(entered) && !inCalifornia(entered) ? entered : null);
+    if (!ZIP.test(entered) || !inCalifornia(entered)) return;
     const view = await action.run(() => fixed.plan(walkId, entered));
     if (view !== null) onView(view);
   };
   return (
     <form className="form" onSubmit={(event) => void submit(event)}>
+      {again ? <p>{draft.fixed.zipRetry}</p> : null}
       <label htmlFor="zip">{draft.fixed.zipLabel}</label>
       <input id="zip" type="text" inputMode="numeric" autoComplete="postal-code" maxLength={5} value={zip} onChange={(e) => setZip(e.target.value)} />
       {invalid ? <p role="status">{draft.fixed.zipInvalid}</p> : null}
+      {outside === null ? null : (
+        <div role="status">
+          <p>{draft.fixed.zipOutside(outside)}</p>
+          <p>{copy.record.location.outside}</p>
+        </div>
+      )}
       {action.code === null ? null : <Problem code={action.code} />}
       {action.busy ? <p role="status">{draft.fixed.finding}</p> : null}
       <button className="button primary" type="submit" disabled={action.busy}>
@@ -66,7 +88,73 @@ const AddEmail = ({ job, crew, onView }: { job: Job; crew: CrewCard; onView: Cha
   );
 };
 
-const Crew = ({ job, crew, canAddEmail, onView }: { job: Job; crew: CrewCard; canAddEmail: boolean; onView: Change }) => (
+const NameCrew = ({ job, onView }: { job: Job; onView: Change }) => {
+  const { fixed } = useDeps();
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [unread, setUnread] = useState(false);
+  const action = useAction();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const typed = contact.trim();
+    const email = EMAIL.test(typed) ? typed : null;
+    const phone = email === null ? phoneOf(typed) : null;
+    setUnread(email === null && phone === null);
+    if ((email === null && phone === null) || name.trim() === "") return;
+    const view = await action.run(() => fixed.addCrew(job.id, { name: name.trim(), email, phone }));
+    if (view === null) return;
+    setName("");
+    setContact("");
+    onView(view);
+  };
+  return (
+    <form className="form" data-part="name-crew" onSubmit={(event) => void submit(event)} noValidate>
+      <h3>{crewWords.nameYours}</h3>
+      <label htmlFor={`crew-name-${job.id}`}>{crewWords.crewName}</label>
+      <input id={`crew-name-${job.id}`} name="name" type="text" autoComplete="off" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+      <label htmlFor={`crew-contact-${job.id}`}>{crewWords.crewContact}</label>
+      <input id={`crew-contact-${job.id}`} name="contact" type="text" autoComplete="off" maxLength={254} value={contact} onChange={(e) => setContact(e.target.value)} />
+      {unread ? <p role="status">{crewWords.needContact}</p> : null}
+      {action.code === "conflict" ? <p role="status">{crewWords.crewRefused}</p> : null}
+      {action.code === null || action.code === "conflict" ? null : <Problem code={action.code} />}
+      <button className="button" type="submit" disabled={action.busy}>
+        {crewWords.addCrew}
+      </button>
+    </form>
+  );
+};
+
+const textWaiting = (job: Job, crewId: string) => job.messages.find((m) => m.crewId === crewId && m.channel === "text" && (m.status === "draft" || m.status === "approved"));
+
+const TextCrew = ({ walkId, job, crew, onView }: { walkId: string; job: Job; crew: CrewCard; onView: Change }) => {
+  const { fixed } = useDeps();
+  const action = useAction();
+  const waiting = textWaiting(job, crew.id);
+  if (waiting !== undefined) {
+    return (
+      <a className="button" href={approveFor(walkId, waiting.id)}>
+        {draft.fixed.text}
+      </a>
+    );
+  }
+  const ask = async () => {
+    const view = await action.run(() => fixed.textDraft(job.id, crew.id));
+    if (view === null) return;
+    onView(view);
+    const made = textWaiting(view.jobs.find((j) => j.id === job.id) ?? job, crew.id);
+    if (made !== undefined) window.location.hash = approveFor(walkId, made.id);
+  };
+  return (
+    <>
+      <button className="button" type="button" disabled={action.busy} onClick={() => void ask()}>
+        {draft.fixed.text}
+      </button>
+      {action.code === null ? null : <Problem code={action.code} />}
+    </>
+  );
+};
+
+const Crew = ({ walkId, job, crew, canAddEmail, onView }: { walkId: string; job: Job; crew: CrewCard; canAddEmail: boolean; onView: Change }) => (
   <li className="crew" data-crew={crew.id}>
     <h3>{crew.name}</h3>
     {crew.sample ? <p data-part="sample">{draft.fixed.sample}</p> : null}
@@ -80,9 +168,7 @@ const Crew = ({ job, crew, canAddEmail, onView }: { job: Job; crew: CrewCard; ca
           <a className="button" href={`tel:${crew.phone}`}>
             {copy.fixed.call}
           </a>
-          <a className="button" href={`sms:${crew.phone}`}>
-            {draft.fixed.text}
-          </a>
+          <TextCrew walkId={walkId} job={job} crew={crew} onView={onView} />
         </>
       )}
       {crew.checkLicenseUrl === null ? null : (
@@ -163,6 +249,7 @@ const Request = ({ walkId, job, message, onView }: { walkId: string; job: Job; m
           <h3>{draft.fixed.replies}</h3>
           {message.replies.map((reply) => (
             <div key={reply.id} className="reply" data-reply={reply.id}>
+              {JUDGE && reply.via === "email" ? <p data-part="demo-inbox">{judgeWords.inbox}</p> : null}
               <p className="who">{`${draft.fixed.replyVia[reply.via]}, ${shortDay(localDay(Date.parse(reply.receivedAt)))}`}</p>
               <p className="said">{reply.text}</p>
               <Reading reply={reply} />
@@ -203,10 +290,14 @@ const JobCard = ({ walkId, job, say, onView }: { walkId: string; job: Job; say: 
   const action = useAction();
   const open = job.followUps.filter((f) => !f.done);
   const asked = new Set(job.messages.map((m) => m.crewId));
-  const sentences = job.findingIds.flatMap((id) => {
-    const said = say(id);
-    return said === null ? [] : [said];
-  });
+  const sentences = [
+    ...new Set(
+      job.findingIds.flatMap((id) => {
+        const said = say(id);
+        return said === null ? [] : [said];
+      }),
+    ),
+  ];
   const write = async () => {
     const view = await action.run(() => fixed.draft(job.id));
     if (view !== null) onView(view);
@@ -226,9 +317,10 @@ const JobCard = ({ walkId, job, say, onView }: { walkId: string; job: Job; say: 
       {job.crews.length === 0 ? <p>{draft.fixed.noCrews}</p> : null}
       <ul className="crews">
         {job.crews.map((crew) => (
-          <Crew key={crew.id} job={job} crew={crew} canAddEmail={!asked.has(crew.id)} onView={onView} />
+          <Crew key={crew.id} walkId={walkId} job={job} crew={crew} canAddEmail={!asked.has(crew.id)} onView={onView} />
         ))}
       </ul>
+      {job.messages.length === 0 ? <NameCrew job={job} onView={onView} /> : null}
       {job.crews.length > 0 && job.messages.length === 0 ? (
         <>
           {action.code === null ? null : <Problem code={action.code} />}
@@ -266,7 +358,7 @@ const Jobs = ({ walkId, view, say, onView }: { walkId: string; view: JobsView; s
   };
   return (
     <>
-      {view.jobs.some((job) => job.crews.length > 0) ? <p className="lead">{copy.fixed.honest}</p> : null}
+      {view.jobs.some((job) => job.crews.length > 0) ? <p className="lead">{JUDGE ? judgeWords.crews : copy.fixed.honest}</p> : null}
       {view.jobs.map((job) => (
         <JobCard key={job.id} walkId={walkId} job={job} say={say} onView={onView} />
       ))}
@@ -295,6 +387,24 @@ const Jobs = ({ walkId, view, say, onView }: { walkId: string; view: JobsView; s
   );
 };
 
+const DemoInbox = ({ view }: { view: JobsView }) => {
+  const arrived = view.jobs.flatMap((job) => job.messages.filter((m) => m.sentAt !== null));
+  if (arrived.length === 0) return null;
+  return (
+    <section className="job" data-part="demo-inbox">
+      <h2>{demoWords.inboxTitle}</h2>
+      <p>{demoWords.inboxLead}</p>
+      {arrived.map((message) => (
+        <div key={message.id} className="reply" data-part="inbox-message">
+          <p className="who">{demoWords.to(DEMO_ADDRESS)}</p>
+          <p className="who">{message.subject}</p>
+          <p className="said">{message.body}</p>
+        </div>
+      ))}
+    </section>
+  );
+};
+
 const useResults = (walkId: string | null): WalkResults | null | undefined => {
   const deps = useDeps();
   const [results, setResults] = useState<WalkResults | null | undefined>(undefined);
@@ -318,31 +428,32 @@ export const GetItFixed = ({ fixId }: { fixId: string | null }) => {
   const deps = useDeps();
   const results = useResults(fixId);
   const sample = fixId !== null && isSample(fixId);
-  const held = sample || results?.synthetic === true;
-  const { loaded, retry, set } = useLoad(async () => {
-    if (fixId === null || sample) return { code: "not_found" as const, message: "" };
-    const found = await deps.results(fixId).catch(() => null);
-    return found?.synthetic === true ? { code: "not_found" as const, message: "" } : deps.fixed.jobs(fixId);
-  }, fixId ?? "");
+  const demo = sample || results?.synthetic === true;
+  const { loaded, retry, set } = useLoad(async () => (fixId === null ? { code: "not_found" as const, message: "" } : deps.fixed.jobs(fixId)), fixId ?? "");
 
   useEffect(() => {
     if (fixId === null) window.location.replace(ROUTES.home);
-    else if (held) window.location.replace(resultsFor(fixId));
-  }, [fixId, held]);
+  }, [fixId]);
 
-  if (fixId === null || held) return null;
-  const say: Say = (id) => results?.findings.find((f) => f.id === id)?.instruction ?? null;
+  if (fixId === null) return null;
+  const say: Say = (id) => {
+    const finding = results?.findings.find((f) => f.id === id);
+    return finding === undefined ? null : instructionOf(finding);
+  };
   const planned = loaded.state === "ready" && (loaded.value.jobs.length > 0 || loaded.value.yourself.length > 0);
-  const unplanned = loaded.state === "ready" ? !planned : loaded.state === "failed" && NOT_PLANNED.has(loaded.code);
+  const unplanned = loaded.state === "ready" ? !planned : loaded.state === "failed" && NOT_PLANNED.has(loaded.code) && !signInAgainNoted();
 
   return (
     <main className="screen fix" data-walk={fixId}>
       <h1>{draft.fixed.title}</h1>
       <p>{draft.fixed.nothingGoesOut}</p>
+      <SignInAgain />
       {loaded.state === "loading" ? <Loading /> : null}
       {loaded.state === "failed" && !unplanned ? <Failed code={loaded.code} retry={retry} /> : null}
       {unplanned && results !== undefined ? <ZipForm walkId={fixId} onView={set} /> : null}
       {loaded.state === "ready" && planned ? <Jobs walkId={fixId} view={loaded.value} say={say} onView={set} /> : null}
+      {loaded.state === "ready" && loaded.value.jobs.length > 0 && loaded.value.jobs.every((job) => job.crews.length === 0) ? <ZipForm walkId={fixId} onView={set} again /> : null}
+      {demo && loaded.state === "ready" ? <DemoInbox view={loaded.value} /> : null}
       {planned ? (
         <section className="inspection-ask">
           <p>{draft.fixed.inspectionLine}</p>

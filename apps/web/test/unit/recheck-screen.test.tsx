@@ -3,7 +3,7 @@ import type { Recheck } from "@emberwalk/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../../src/App.tsx";
 import { copy } from "../../src/copy.ts";
-import { DRAFT_WORDS_KEY, recheckWords } from "../../src/draft-words.ts";
+import { recheckWords } from "../../src/draft-words.ts";
 import { isRechecked } from "../../src/finding-marks.ts";
 import type { RecheckApi, RecheckCode } from "../../src/recheck-api.ts";
 import type { WalkResults } from "../../src/results.ts";
@@ -71,7 +71,6 @@ const takePhoto = async (host: HTMLElement) => {
 const LIVE = walk([finding(ITEM)]);
 
 beforeEach(() => {
-  window.localStorage.setItem(DRAFT_WORDS_KEY, "on");
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: () => undefined } as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (done: BlobCallback, type?: string) {
     done(type === "image/jpeg" ? SHOT : null);
@@ -80,21 +79,13 @@ beforeEach(() => {
 
 afterEach(async () => {
   for (const unmount of mounted.splice(0)) await unmount();
-  window.localStorage.removeItem(DRAFT_WORDS_KEY);
   window.location.hash = "";
   vi.restoreAllMocks();
 });
 
 describe("the recheck screen", () => {
   it("shows nothing and opens no camera while the recheck flag is off", async () => {
-    const view = await open(LIVE, { limits: DEFAULT_LIMITS });
-    expect(view.host.querySelector("main")).toBeNull();
-    expect(view.media.getUserMedia).not.toHaveBeenCalled();
-  });
-
-  it("shows nothing and opens no camera while draft words are off", async () => {
-    window.localStorage.removeItem(DRAFT_WORDS_KEY);
-    const view = await open(LIVE);
+    const view = await open(LIVE, { limits: { ...DEFAULT_LIMITS, recheckOn: false } });
     expect(view.host.querySelector("main")).toBeNull();
     expect(view.media.getUserMedia).not.toHaveBeenCalled();
   });
@@ -109,6 +100,29 @@ describe("the recheck screen", () => {
     expect(Number(old?.style.opacity)).toBeGreaterThan(0.2);
     expect(Number(old?.style.opacity)).toBeLessThan(0.5);
     expect(view.host.querySelector("a[data-part=back]")?.getAttribute("href")).toBe(resultsFor(LIVE.id));
+  });
+
+  it("shows a recorded sample recheck: the after photo over the old one, no camera, no server, and the answer the real check gave", async () => {
+    const sample = walk([finding(ITEM)], [], { id: SAMPLES[0]!.id });
+    const { sent, rechecks } = sentBy({ code: "offline" });
+    const sampleRechecks = { [sample.id]: { [ITEM]: { photo: "after.jpg", result: "cleared" as const, checkedOn: "2026-11-01" } } };
+    const view = await open(sample, { rechecks, sampleRechecks });
+    await until(() => view.host.querySelector("[data-part=sample-after]") !== null);
+    expect(view.host.querySelector("[data-part=sample-after]")?.getAttribute("src")).toBe("after.jpg");
+    expect(view.media.getUserMedia).not.toHaveBeenCalled();
+    await settle(() => button(view.host, recheckWords.useSample)!.click());
+    expect(view.text()).toContain(recheckWords.answer.cleared);
+    expect(view.text()).toContain(recheckWords.sampleNote);
+    expect(view.marks.statusOf(sample.id, ITEM).recheck?.result).toBe("cleared");
+    expect(sent).toEqual([]);
+  });
+
+  it("still asks for Done first on a recorded sample", async () => {
+    const sample = walk([finding(ITEM)], [], { id: SAMPLES[0]!.id });
+    const sampleRechecks = { [sample.id]: { [ITEM]: { photo: "after.jpg", result: "cleared" as const, checkedOn: "2026-11-01" } } };
+    const view = await open(sample, { sampleRechecks }, false);
+    await until(() => view.text().includes(recheckWords.notDone));
+    expect(view.host.querySelector("[data-part=sample-after]")).toBeNull();
   });
 
   it("refuses a sample walk and opens no camera", async () => {

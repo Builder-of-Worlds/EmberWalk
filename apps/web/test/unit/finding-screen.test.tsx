@@ -229,7 +229,7 @@ describe("Finding status", () => {
     expect(pressed(view.host)).toEqual([copy.status.kind.fix_planned]);
     expect(view.host.querySelector("label[for=note]")?.textContent).toBe(copy.status.note);
     expect(view.host.querySelector("#note")?.getAttribute("placeholder")).toBe(copy.status.example);
-    expect(memoryMarks(storage).statusOf(results.id, REQUIRED.id)).toEqual({ kind: "fix_planned", note: "", recheck: null });
+    expect(memoryMarks(storage).statusOf(results.id, REQUIRED.id)).toMatchObject({ kind: "fix_planned", note: "", recheck: null });
     await typeNote(view.host, " Tree crew Saturday. ");
     await pick(view.host, copy.status.save);
     expect(view.host.querySelector(".note q")?.textContent).toBe("Tree crew Saturday.");

@@ -21,7 +21,7 @@ export type Region = [number, number, number, number];
 
 export type StillsRequest = {
   input: string;
-  stills: { time: number; output: string; regions: Region[] }[];
+  stills: { time: number; output: string; small?: string; regions: Region[] }[];
 };
 
 export type ProbeRequest = { input: string };
@@ -147,10 +147,11 @@ export const parseStills = (raw: unknown): StillsRequest => {
   }
   const stills = list.map((entry, i) => {
     const item = asBody(entry);
-    allowKeys(item, ["time", "output", "regions"]);
+    allowKeys(item, ["time", "output", "small", "regions"]);
     return {
       time: seconds(item.time, `stills[${i}].time`),
       output: url(item.output, `stills[${i}].output`),
+      ...(item.small === undefined ? {} : { small: url(item.small, `stills[${i}].small`) }),
       regions: regionsOf(item.regions, `stills[${i}].regions`),
     };
   });

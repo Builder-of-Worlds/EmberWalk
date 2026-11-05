@@ -8,8 +8,10 @@ describe("limits", () => {
   it("holds the decided defaults", () => {
     expect(DEFAULT_LIMITS).toEqual({
       dailySpendUsd: 20,
-      deleteEverythingOn: false,
+      deleteEverythingOn: true,
       liveWalksPerVisitorPerDay: 3,
+      signInLinksPerHour: 200,
+      signInLinksPerIpPerHour: 20,
       maxFps: 4,
       defaultFps: 2,
       maxWalkSeconds: 360,
@@ -23,16 +25,18 @@ describe("limits", () => {
       faultCountMost: 1000,
       faultKeepDays: 30,
       faultRowsADay: 500,
-      recheckOn: false,
+      recheckOn: true,
       recheckPhotoBytes: 20 * MiB,
       rechecksPerFinding: 5,
       paymentsOn: false,
+      rarePointLooks: 0,
     });
     roundTrips(Limits, DEFAULT_LIMITS);
   });
 
   it("keeps the recheck flag a true or false switch and its counts whole and above zero", () => {
-    expect(limitsWith({ recheckOn: true }).recheckOn).toBe(true);
+    expect(DEFAULT_LIMITS.recheckOn).toBe(true);
+    expect(limitsWith({ recheckOn: false }).recheckOn).toBe(false);
     refusesEach(Limits, DEFAULT_LIMITS, [{ recheckOn: "true" }, { recheckOn: 1 }, { recheckOn: null }]);
     for (const key of ["recheckPhotoBytes", "rechecksPerFinding"]) {
       refusesEach(Limits, DEFAULT_LIMITS, [{ [key]: 0 }, { [key]: -1 }, { [key]: 1.5 }, { [key]: "5" }]);
@@ -77,9 +81,9 @@ describe("limits", () => {
     refuses(Limits, { ...DEFAULT_LIMITS, maxObjectsPerFrame: 0 });
   });
 
-  it("keeps Delete Everything off by default behind a true or false switch", () => {
-    expect(DEFAULT_LIMITS.deleteEverythingOn).toBe(false);
-    expect(limitsWith({ deleteEverythingOn: true }).deleteEverythingOn).toBe(true);
+  it("keeps Delete Everything on by default behind a true or false switch", () => {
+    expect(DEFAULT_LIMITS.deleteEverythingOn).toBe(true);
+    expect(limitsWith({ deleteEverythingOn: false }).deleteEverythingOn).toBe(false);
     refusesEach(Limits, DEFAULT_LIMITS, [{ deleteEverythingOn: "true" }, { deleteEverythingOn: 1 }, { deleteEverythingOn: null }]);
   });
 
@@ -91,8 +95,8 @@ describe("limits", () => {
     refusesEach(Limits, DEFAULT_LIMITS, [{ paymentsOn: "true" }, { paymentsOn: 1 }, { paymentsOn: null }]);
   });
   it("reads the limits from a configured JSON text, and falls back to the defaults when it is missing or not valid", () => {
-    expect(limitsFromConfig('{"deleteEverythingOn":true}')).toEqual(limitsWith({ deleteEverythingOn: true }));
-    expect(limitsFromConfig('{"recheckOn":true,"deleteEverythingOn":true}').recheckOn).toBe(true);
+    expect(limitsFromConfig('{"deleteEverythingOn":false}')).toEqual(limitsWith({ deleteEverythingOn: false }));
+    expect(limitsFromConfig('{"recheckOn":false,"deleteEverythingOn":false}').recheckOn).toBe(false);
     for (const raw of [undefined, "", "not json", "[]", "null", "7", '{"deleteEverythingOn":"yes"}', '{"nope":true}']) {
       expect(limitsFromConfig(raw)).toEqual(DEFAULT_LIMITS);
     }

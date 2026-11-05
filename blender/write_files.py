@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ewscene import assets, house, motion, route, truth
+from ewscene import assets, house, motion, route, truth, walled
 from ewscene import spec as scene_spec
 
 
@@ -46,6 +46,29 @@ def write_house(spec_path, out, changes_path=None, mask_pass=None):
     return files
 
 
+def write_walled(hero_dir, out, mask_pass=None):
+    hero = house.load_json(os.path.join(hero_dir, "motion.json"))
+    walk, parts = walled.build(hero, house.load_json(os.path.join(hero_dir, "parts.json")))
+    files = {"motion.json": walk, "parts.json": parts}
+    if mask_pass is not None:
+        spec_sides = {h["id"]: h["side"] for h in house.load_json(os.path.join(hero_dir, "spec.json"))["hazards"]}
+        doc = walled.mark_truth(house.load_json(os.path.join(hero_dir, "truth.json")), spec_sides)
+        masked = set(mask_pass["indices"])
+        boxed = truth.attach_boxes(dict(doc, hazards=[h for h in doc["hazards"] if h["id"] in masked]), mask_pass, walk)
+        redrawn = {h["id"]: h for h in boxed["hazards"]}
+        source = walled.sources(walk, hero)
+        carried = [h["id"] for h in doc["hazards"] if h["id"] not in masked]
+        boxed["hazards"] = [redrawn[h["id"]] if h["id"] in masked else walled.carry_boxes(h, source, walk["samples"]) for h in doc["hazards"]]
+        if carried:
+            boxed["box_source"] += "; %s have no mask in the scene and keep the hero walk's boxes at the same poses, without the wall or fences in front of them" % ", ".join(carried)
+        files["truth.json"] = boxed
+    os.makedirs(out, exist_ok=True)
+    for name, body in files.items():
+        with open(os.path.join(out, name), "w", encoding="utf-8") as f:
+            f.write(truth.dumps(body))
+    return files
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="write_files.py", description="Write truth.json and motion.json for a scene spec.")
     parser.add_argument("spec")
@@ -53,6 +76,7 @@ def main(argv):
     parser.add_argument("--mask-pass", help="boxes.json from render_masks.py: writes per frame tight boxes into truth.json")
     parser.add_argument("--house", action="store_true", help="the spec is a hero house spec: also writes parts.json and the house truth")
     parser.add_argument("--changes", help="with --house: changes.json, writes the after scene's files")
+    parser.add_argument("--walled", action="store_true", help="the spec argument is the hero's steady folder: writes the walled house's files")
     args = parser.parse_args(argv)
     if args.changes and not args.house:
         print("EW_ERROR --changes needs --house", file=sys.stderr)
@@ -62,11 +86,14 @@ def main(argv):
         with open(args.mask_pass, encoding="utf-8") as f:
             mask_pass = json.load(f)
     try:
+        if args.walled:
+            write_walled(args.spec, args.out, mask_pass)
+            return 0
         if args.house:
             write_house(args.spec, args.out, args.changes, mask_pass)
             return 0
         doc = scene_spec.load(args.spec, assets.load_catalog())
-    except (scene_spec.SpecError, house.HouseError) as e:
+    except (scene_spec.SpecError, house.HouseError, ValueError) as e:
         print("EW_ERROR %s" % e, file=sys.stderr)
         return 2
     except truth.MaskPassError as e:

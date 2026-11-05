@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { App } from "../../src/App.tsx";
-import { DRAFT_WORDS_KEY, reportWords } from "../../src/draft-words.ts";
+import { shortDay } from "../../src/copy.ts";
+import { reportWords } from "../../src/draft-words.ts";
+import { setLanguage } from "../../src/language.ts";
 import type { ReportApi, ReportApproval, ReportPage, ReportPdf, ReportShare } from "../../src/report-api.ts";
 import type { WalkResults } from "../../src/results.ts";
 import { reportFor, resultsFor } from "../../src/router.ts";
@@ -113,39 +115,31 @@ const entry = (host: HTMLElement) => host.querySelector<HTMLAnchorElement>("a[da
 const download = (host: HTMLElement) => host.querySelector<HTMLButtonElement>("button[data-part=download]");
 const approveButton = (host: HTMLElement) => host.querySelector<HTMLButtonElement>("button[data-part=approve]");
 
-beforeEach(() => window.localStorage.setItem(DRAFT_WORDS_KEY, "on"));
-
 afterEach(async () => {
   for (const unmount of mounted.splice(0)) await unmount();
-  window.localStorage.removeItem(DRAFT_WORDS_KEY);
   window.location.hash = "";
 });
 
 describe("the report entry on the results screen", () => {
-  it("leads to this walk's report when the report and draft words are on", async () => {
+  it("leads to this walk's report when the report is on", async () => {
     const view = await open(resultsFor(LIVE.id), LIVE, fakeReport(READY).api);
     expect(entry(view.host)?.getAttribute("href")).toBe(reportFor(LIVE.id));
     expect(entry(view.host)?.textContent).toBe(reportWords.entry);
   });
 
-  it("is not there while the report flag is off, draft words are off, or the walk is a sample", async () => {
+  it("is not there while the report is not offered or the walk is a sample", async () => {
     const onResults = (host: HTMLElement) => [host.querySelector("main.results") !== null, entry(host)];
     expect(onResults((await open(resultsFor(LIVE.id), LIVE, undefined)).host)).toEqual([true, null]);
     expect(onResults((await open(resultsFor(SAMPLE.id), SAMPLE, fakeReport(READY).api)).host)).toEqual([true, null]);
-    window.localStorage.removeItem(DRAFT_WORDS_KEY);
-    expect(onResults((await open(resultsFor(LIVE.id), LIVE, fakeReport(READY).api)).host)).toEqual([true, null]);
   });
 });
 
 describe("the report screen", () => {
-  it("shows nothing and asks for nothing while the report flag is off, draft words are off, or the walk is a sample", async () => {
+  it("shows nothing and asks for nothing while the report is not offered or the walk is a sample", async () => {
     expect((await open(reportFor(LIVE.id), LIVE, undefined)).host.querySelector("main")).toBeNull();
     const sample = fakeReport(READY);
     expect((await open(reportFor(SAMPLE.id), SAMPLE, sample.api)).host.querySelector("main")).toBeNull();
-    window.localStorage.removeItem(DRAFT_WORDS_KEY);
-    const off = fakeReport(READY);
-    expect((await open(reportFor(LIVE.id), LIVE, off.api)).host.querySelector("main")).toBeNull();
-    expect([...sample.asked, ...off.asked]).toEqual([]);
+    expect(sample.asked).toEqual([]);
   });
 
   it("previews the server's own page in a sandboxed frame, with the way back", async () => {
@@ -454,6 +448,18 @@ describe("the share link on the report screen", () => {
     expect(report.asked.filter((a) => a.includes("share"))).toEqual([`share ${LIVE.id}`, `make share ${LIVE.id} without item-2`]);
   });
 
+  it("lets Download PDF be tapped again, saying so, when saving the PDF on the phone throws", async () => {
+    const report = fakeReport(READY);
+    report.api.save = () => {
+      throw new Error("the phone refused the file");
+    };
+    const view = await open(reportFor(LIVE.id), LIVE, report.api);
+    await until(() => download(view.host) !== null);
+    await settle(() => download(view.host)!.click());
+    await until(() => view.text().includes(reportWords.pdfFailed.server_error));
+    expect([view.text().includes(reportWords.making), download(view.host)!.disabled]).toEqual([false, false]);
+  });
+
   it("does not make the link again when the screen opens on an approval already made", async () => {
     const report = fakeReport(READY, { link: LINK });
     const view = await open(reportFor(LIVE.id), LIVE, report.api);
@@ -461,4 +467,26 @@ describe("the share link on the report screen", () => {
     await settle(() => new Promise((r) => setTimeout(r, 20)));
     expect(report.asked.filter((a) => a.includes("share"))).toEqual([`share ${LIVE.id}`]);
   });
+});
+
+describe("the day the report says it was approved", () => {
+  const zone = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = "America/Los_Angeles";
+  });
+  afterAll(() => {
+    setLanguage("en");
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  });
+
+  for (const chosen of ["en", "es"] as const) {
+    it(`is the phone's own day, not the UTC day, when the two differ (${chosen})`, async () => {
+      setLanguage(chosen);
+      const report = fakeReport(READY, { approvedAt: "2026-11-04T01:38:00.000Z" });
+      const view = await open(reportFor(LIVE.id), LIVE, report.api);
+      await until(() => view.host.querySelector("[data-part=approved]") !== null);
+      expect(view.host.querySelector("[data-part=approved]")!.textContent).toBe(reportWords.approved(shortDay("2026-11-03")));
+    });
+  }
 });

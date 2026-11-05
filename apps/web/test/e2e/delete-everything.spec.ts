@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { DELETE_EVERYTHING_PATH, VISITOR_HEADER } from "@emberwalk/shared";
-import { DRAFT_WORDS_KEY, deleteEverythingWords as words } from "../../src/draft-words.ts";
+import { deleteEverythingWords as words } from "../../src/draft-words.ts";
 import { ROUTES } from "../../src/router.ts";
 import { offCentre, sideways } from "./geometry.ts";
 
-test("About and Privacy opens from Home, confirms, then deletes everything once, with nothing sideways or off centre at 390 px", async ({ page }) => {
+test("About and Privacy opens from Settings, confirms, then deletes everything once, with nothing sideways or off centre at 390 px", async ({ page }) => {
   const asked: { visitor: string | null; body: unknown }[] = [];
   await page.route(`**${DELETE_EVERYTHING_PATH}`, async (route) => {
     asked.push({ visitor: route.request().headers()[VISITOR_HEADER] ?? null, body: route.request().postDataJSON() });
@@ -15,8 +15,7 @@ test("About and Privacy opens from Home, confirms, then deletes everything once,
       ? route.fallback()
       : route.fulfill({ status: 404, json: { error: { code: "not_found", message: "Not found." } } }),
   );
-  await page.addInitScript((key) => window.localStorage.setItem(key, "on"), DRAFT_WORDS_KEY);
-  await page.goto("/");
+  await page.goto(`/${ROUTES.settings}`);
   await page.getByRole("link", { name: words.entry }).click();
   await expect(page).toHaveURL(new RegExp(`${ROUTES.about}$`));
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(words.title);

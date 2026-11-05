@@ -185,12 +185,13 @@ describe("segmentClip over the whole catalog", () => {
     expect(await spentNano()).toBeLessThanOrEqual(estimate);
   });
 
-  it("refuses real footage on free credits as it does today", async () => {
+  it("sends real footage on free credits", async () => {
     const { walkId, clip } = await setup({ synthetic: false });
+    stageCatalogYard(harness);
 
     const result = await segmentClip(deps(), walkId, clip, "file-1");
 
-    expect(result).toMatchObject({ ok: false, failure: { code: "real_footage_not_allowed" } });
-    expect(requestsTo("/responses")).toHaveLength(0);
+    expect(result).toMatchObject({ ok: true });
+    expect(requestsTo("/responses").length).toBeGreaterThan(0);
   });
 });

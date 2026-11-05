@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cacheNameFor, handles, install, removeOldCaches, respond, shellUrls } from "../../src/offline.ts";
+import { SIGN_IN_PATH } from "../../src/router.ts";
 import { FakeCaches } from "./fake-caches.ts";
 
 const SCOPE = "https://app.emberwalk.test/";
@@ -56,6 +57,11 @@ describe("handles", () => {
     expect(handles(new Request(`${SCOPE}api/uploads`), SCOPE)).toBe(false);
     expect(handles(new Request(`${SCOPE}assets/x.js`, { method: "POST" }), SCOPE)).toBe(false);
     expect(handles(new Request("https://bucket.r2.test/emberwalk-media/a"), SCOPE)).toBe(false);
+  });
+
+  it("leaves the Sign In link to the network, so a sign-in page in front of the app can show", () => {
+    expect(handles(navigate(new URL(SIGN_IN_PATH, SCOPE).href), SCOPE)).toBe(false);
+    expect(handles(navigate(`${SCOPE}?other=1`), SCOPE)).toBe(true);
   });
 });
 

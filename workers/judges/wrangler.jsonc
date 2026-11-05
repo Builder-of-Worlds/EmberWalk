@@ -1,0 +1,14 @@
+{
+  "name": "emberwalk-judges",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "account_id": "755646338ba02dbe2d3409c5a557fa15",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "judges.emberwalk.app", "custom_domain": true }],
+  "assets": {
+    "directory": "../../apps/web/dist/judge",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*.mp4", "/*.m4s", "/*.m3u8", "/*.vtt"]
+  }
+}

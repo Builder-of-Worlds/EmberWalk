@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { MetaRefused } from "../src/errors.ts";
-import { type PhraseConcept, SAM_PHRASES, samPhrase } from "../src/phrases.ts";
+import { choosePhrases, type PhraseConcept, SAM_PHRASES, samPhrase } from "../src/phrases.ts";
 import { SamConcept } from "../src/sam.ts";
 import type { HttpRequest } from "../src/transport.ts";
 import { conceptOf, isFound, ProbeStopLine, runProbe, scoreRecorded } from "./live/probe.ts";
@@ -124,7 +124,7 @@ describe("the phrase probe", () => {
   });
 
   it("skips hazards that have no phrase row", () => {
-    expect(conceptOf({ ...hazard("dry-brush-1"), concept: "roof debris" })).toBeNull();
+    expect(conceptOf({ ...hazard("dry-brush-1"), concept: "chimney" })).toBeNull();
     expect(conceptOf(hazard("fence-joint-1"))).toBe("wooden_fence");
   });
 });
@@ -148,6 +148,33 @@ describe("the phrase table", () => {
       const row = SAM_PHRASES[c];
       if (row.winner !== null) expect([row.baseline, ...row.candidates], c).toContain(row.winner);
     }
+  });
+
+  describe("choosing words for one run", () => {
+    const winners = Object.fromEntries(concepts.map((c) => [c, SAM_PHRASES[c].winner]));
+    afterEach(() => {
+      for (const c of concepts) SAM_PHRASES[c].winner = winners[c]!;
+    });
+
+    it("asks the vent, the branch over the roof and roof debris in the words they were always asked in: the held-out hero kept neither new winner", () => {
+      expect([samPhrase("foundation_vent"), samPhrase("tree_branch_over_roof"), samPhrase("roof_debris")]).toEqual(["foundation vent", "tree branch over roof", "roof debris"]);
+    });
+
+    it("lets one run ask other listed words instead", () => {
+      choosePhrases(["foundation_vent=crawl space vent", "tree_branch_over_roof=overhanging branch", "roof_debris=gutter leaves"]);
+      expect([samPhrase("foundation_vent"), samPhrase("tree_branch_over_roof"), samPhrase("roof_debris")]).toEqual(["crawl space vent", "overhanging branch", "gutter leaves"]);
+    });
+
+    it("refuses a phrase not in its row, a concept with no row, an empty side or no equals sign, and changes no row", () => {
+      for (const bad of ["foundation_vent=pile of leaves", "chimney=gutter leaves", "foundation_vent=", "=vent", "foundation_vent"])
+        expect(() => choosePhrases(["tree_branch_over_roof=overhanging branch", bad]), bad).toThrow(/foundation_vent|chimney|concept=words/);
+      expect(concepts.map((c) => SAM_PHRASES[c].winner)).toEqual(concepts.map((c) => winners[c]));
+    });
+
+    it("leaves every row as it was when no words are chosen", () => {
+      choosePhrases([]);
+      expect(concepts.map((c) => SAM_PHRASES[c].winner)).toEqual(concepts.map((c) => winners[c]));
+    });
   });
 
   it("gives the winner, else the baseline", () => {

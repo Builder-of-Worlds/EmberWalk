@@ -37,6 +37,7 @@ export const r2Signer = (env: Env, now: () => Date = () => new Date()): Signer =
       service: "s3",
       now: now(),
       expiresSeconds: LINK_SECONDS,
+      devHttp: env.R2_DEV_HTTP === "on",
     });
   };
   return { get: async (key) => sign("GET", key), put: async (key) => sign("PUT", key) };

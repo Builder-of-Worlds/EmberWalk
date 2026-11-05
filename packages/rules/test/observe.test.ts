@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Clip, Tag, Track } from "@emberwalk/shared";
-import { bandFor, CONTACT_MARGIN, contactOf, EDGE_MARGIN, MAX_TRACKS, MIN_CONFIDENCE, observe, type ObserveInput } from "../src/index.ts";
+import { bandFor, CAMERA_HEIGHT_FEET, NOT_MEASURED, CONTACT_MARGIN, contactOf, EDGE_MARGIN, groundFeet, HOUSE_AS_SHED, LONG_SIDE_FOV_DEGREES, MAX_TRACKS, verticalFov, MIN_CONFIDENCE, observe, type ObserveInput, picksUp } from "../src/index.ts";
 import { HAZARDS, hazardTrack, inside, LOOP_CLIP, LOOP_TAG, trackId, wallTrack, yardTracks } from "./yard.ts";
 
 const yard = (tracks: Track[], extra: { clips?: Clip[]; tags?: Tag[]; startByClip?: Record<string, number> } = {}) =>
@@ -169,6 +169,56 @@ describe("observe drops what it cannot use", () => {
     }
   });
 
+  describe("a roof line thing seen wholly above the horizon", () => {
+    const ROOF: Box = [0.4, 0, 0.7, 0.08];
+    const atHouse = (o: Flat) => flat(o).kept.map((k) => [k.trackIds, k.observation.concept, k.observation.distanceFeet, bandFor(k.observation.distanceFeet)]);
+
+    it("is placed at the house in Zone 0 when it lies over the house's wall: gutter leaves at the wall's top, a branch reaching down into the wall's box", () => {
+      expect(atHouse({ tracks: [flatTrack(1, "loop", "roof_debris", ROOF), wall()] })).toEqual([[[trackId(1)], "roof_debris", { low: 0, high: 0 }, "zone_0"]]);
+      expect(atHouse({ tracks: [flatTrack(1, "loop", "tree_branch_over_roof", [0.4, 0, 0.7, 0.2]), wall()] })).toEqual([
+        [[trackId(1)], "tree_branch_over_roof", { low: 0, high: 0 }, "zone_0"],
+      ]);
+    });
+
+    it("is placed at the house when a branch reaches down past a chimney's top with no wall in the picture", () => {
+      const chimney = flatTrack(5, "loop", "chimney", [0.6, 0.02, 0.65, 0.12]);
+      expect(atHouse({ tracks: [flatTrack(1, "loop", "tree_branch_over_roof", [0.4, 0, 0.7, 0.1]), chimney] }).filter(([, concept]) => concept !== "chimney")).toEqual([
+        [[trackId(1)], "tree_branch_over_roof", { low: 0, high: 0 }, "zone_0"],
+      ]);
+    });
+
+    it("never pins a tree behind the house to it: a branch box that stops at the house's top edge is not measured", () => {
+      for (const box of [[0.4, 0, 0.7, 0.1], [0.4, 0, 0.7, 0.08], [0.4, 0, 0.7, 0.15]] as Box[]) {
+        const { kept, dropped } = flat({ tracks: [flatTrack(1, "loop", "tree_branch_over_roof", box), wall()] });
+        expect(kept.filter((k) => k.observation.concept === "tree_branch_over_roof"), String(box)).toEqual([]);
+        expect(dropped.filter((d) => d.trackIds[0] === trackId(1)).map((d) => d.reason)).toEqual([NOT_MEASURED]);
+      }
+    });
+
+    it("is dropped as unmeasured when nothing of the house lies under it, as a far canopy", () => {
+      for (const concept of ["roof_debris", "tree_branch_over_roof"] as const) {
+        expect(flat({ tracks: [flatTrack(1, "loop", concept, ROOF)] }).dropped).toEqual([{ trackIds: [trackId(1)], reason: UNMEASURED }]);
+        const { kept, dropped } = flat({ tracks: [flatTrack(1, "loop", concept, [0.6, 0, 0.9, 0.08]), wall([0, 0.1, 0.3, 0.35])] });
+        expect(kept).toEqual([]);
+        expect(dropped.filter((d) => d.trackIds[0] === trackId(1)).map((d) => d.reason)).toEqual([UNMEASURED]);
+      }
+    });
+
+    it("is dropped in a pan, with or without a wall in the loop", () => {
+      for (const tracks of [[flatTrack(1, "pan", "tree_branch_over_roof", ROOF)], [flatTrack(1, "pan", "tree_branch_over_roof", ROOF), wall()]])
+        expect(flat({ tracks }).kept).toEqual([]);
+    });
+
+    it("keeps measuring roof debris and a branch seen at yard level, or partly so, never forcing them to 0 feet", () => {
+      for (const concept of ["roof_debris", "tree_branch_over_roof"] as const) {
+        const low = flat({ tracks: [flatTrack(1, "loop", concept, [0.4, 0.3, 0.7, 0.45]), wall()] }).kept[0]!.observation.distanceFeet;
+        const mixed = flat({ tracks: [framed(1, concept, [[0, ROOF], [1, ROOF], [2, [0.4, 0.3, 0.7, 0.45]], [3, [0.4, 0.3, 0.7, 0.45]]]), wall()] }).kept[0]!.observation.distanceFeet;
+        expect(low.high).toBeGreaterThan(0);
+        expect(mixed).toEqual(low);
+      }
+    });
+  });
+
   it("drops a chimney seen on one frame or below the confidence floor, like any other object", () => {
     const one: Track = { ...wallTrack(3), concept: "chimney" };
     one.frames = one.frames.slice(100, 101);
@@ -271,6 +321,294 @@ describe("observe merges a loop and a pan sighting", () => {
     const { kept } = flat({ tracks: [flatTrack(1, "loop", "shed", OUT), flatTrack(3, "loop", "shed", OUT), wall(), flatTrack(2, "pan", "shed", OUT)], panTilt: 60 });
     expect(kept).toHaveLength(1);
     expect([...kept[0]!.trackIds].sort()).toEqual([trackId(1), trackId(2), trackId(3)]);
+  });
+});
+
+describe("observe joins an object seen again later from the same side", () => {
+  const EARLY = [0, 1, 2, 3];
+  const LATE = [20, 21, 22, 23].map((s) => s * loop.fps);
+  const SECOND_SIDE = [50, 51, 52, 53].map((s) => s * loop.fps);
+  const steady = (from: number, to: number) => Array.from({ length: (to - from) * 2 + 1 }, (_, i) => ({ t: from + i / 2, tiltDegrees: 30, headingDegrees: 90 }));
+  const sideTag = (n: number, label: string, from: number, to: number): Tag => ({ ...LOOP_TAG, id: trackId(800 + n), label, startSeconds: from, endSeconds: to, samples: steady(from, to) });
+  const WALL_FRAMES = [...EARLY, ...LATE, ...SECOND_SIDE];
+  const lap = (...tracks: Track[]) =>
+    observe({
+      clips: [loop],
+      tracks: [flatTrack(99, "loop", "house_wall", FAR_WALL, WALL_FRAMES), ...tracks],
+      tags: [sideTag(1, "left", 0, 40), sideTag(2, "back", 40, 60)],
+      startByClip: { [loop.id]: 0 },
+    }).kept;
+
+  it("joins a concept that comes back long after, at the same distance, on the same side", () => {
+    expect(lap(flatTrack(1, "loop", "patio_furniture", OUT, EARLY), flatTrack(2, "loop", "patio_furniture", OUT, LATE))).toHaveLength(1);
+  });
+
+  it("keeps them apart when the sightings are on different sides of the house", () => {
+    expect(lap(flatTrack(1, "loop", "patio_furniture", OUT, EARLY), flatTrack(2, "loop", "patio_furniture", OUT, SECOND_SIDE))).toHaveLength(2);
+  });
+
+  it("keeps them apart when their distances do not overlap", () => {
+    expect(lap(flatTrack(1, "loop", "patio_furniture", [0.3, 0.35, 0.5, 0.45], EARLY), flatTrack(2, "loop", "patio_furniture", [0.3, 0.85, 0.5, 0.95], LATE))).toHaveLength(2);
+  });
+
+  it("joins the pieces of a set seen on one frame, and on one side only", () => {
+    const chair = flatTrack(1, "loop", "patio_furniture", OUT, EARLY);
+    const table = flatTrack(2, "loop", "patio_furniture", [0.6, 0.4, 0.8, 0.5], EARLY);
+    expect(lap(chair, table)).toHaveLength(1);
+    expect(lap(chair, flatTrack(2, "loop", "patio_furniture", [0.6, 0.4, 0.8, 0.5], SECOND_SIDE))).toHaveLength(2);
+  });
+
+  it("keeps a near piece and a far piece of a set apart, even when their ranges meet", () => {
+    const near = flatTrack(1, "loop", "patio_furniture", [0.3, 0.6, 0.5, 1], EARLY);
+    const far = flatTrack(2, "loop", "patio_furniture", [0.3, 0.45, 0.5, 0.55], LATE);
+    const both = (lap(near, far) as { observation: { distanceFeet: { low: number; high: number } } }[]).map((k) => k.observation.distanceFeet);
+    expect(new Set(both.map((d) => bandFor(d))).size).toBe(both.length);
+  });
+
+  it("makes dry grass one finding per band around the whole house, since one mowing fixes it, and never joins two bands", () => {
+    const left = flatTrack(1, "loop", "dry_grass", OUT, EARLY);
+    const back = flatTrack(2, "loop", "dry_grass", OUT, SECOND_SIDE);
+    const near = flatTrack(3, "loop", "dry_grass", [0.3, 0.6, 0.5, 1], LATE);
+    const far = flatTrack(4, "loop", "dry_grass", [0.3, 0.45, 0.5, 0.55], LATE);
+    const kept = lap(left, back, near, far);
+    const bands = kept.map((k) => bandFor(k.observation.distanceFeet));
+    expect(new Set(bands).size).toBe(bands.length);
+    const sameBand = kept.find((k) => k.trackIds.includes(trackId(1)))!;
+    expect(sameBand.trackIds).toContain(trackId(2));
+  });
+
+  it("keeps two sheds on one frame apart, since they are not a set", () => {
+    expect(lap(flatTrack(1, "loop", "shed", OUT, EARLY), flatTrack(2, "loop", "shed", [0.6, 0.4, 0.8, 0.5], EARLY))).toHaveLength(2);
+  });
+
+  it("keeps trees and shrubs apart, since a side of a yard often holds several", () => {
+    expect(lap(flatTrack(1, "loop", "tree", OUT, EARLY), flatTrack(2, "loop", "tree", OUT, LATE))).toHaveLength(2);
+    expect(lap(flatTrack(1, "loop", "shrub", OUT, EARLY), flatTrack(2, "loop", "shrub", OUT, LATE))).toHaveLength(2);
+  });
+});
+
+describe("observe places an object against the wall behind it", () => {
+  const nearWall = flatTrack(98, "loop", "house_wall", [0, 0.1, 0.3, 0.8]);
+  const farWall = flatTrack(99, "loop", "house_wall", [0.5, 0.1, 1, 0.5]);
+  const place = (...tracks: Track[]) => flat({ tracks, loopTilt: 30 });
+
+  it("measures from the wall in its own column, not a nearer wall elsewhere in the picture", () => {
+    const { kept } = place(nearWall, farWall, flatTrack(1, "loop", "patio_furniture", [0.6, 0.5, 0.8, 0.7]));
+    expect(kept[0]!.observation.distanceFeet.low).toBeGreaterThan(0);
+  });
+
+  it("does not call a thing touching the wall for two frames of many", () => {
+    const frames = [0, 1, 2, 3, 4, 5, 6, 7];
+    const clear: Box = [0.6, 0.6, 0.8, 0.9];
+    const track = { ...flatTrack(1, "loop", "patio_furniture", clear, frames), frames: frames.map((frame, i) => ({ frame, box: (i < 2 ? [0.6, 0.2, 0.8, 0.5] : clear) as Box, mask: null, confidence: 0.8 })) };
+    const { kept } = place(flatTrack(99, "loop", "house_wall", [0, 0.1, 1, 0.5], frames), track);
+    expect(kept[0]!.observation.contact).toBe("no");
+  });
+
+  it("says only how far at least, up to the wall, when the object's foot is below the picture", () => {
+    const cut = flat({ tracks: [wall([0, 0.1, 1, 0.5]), flatTrack(1, "loop", "patio_furniture", [0.3, 0.6, 0.5, 1])], loopTilt: 30 }).kept[0]!.observation.distanceFeet;
+    const view = { tiltBelowHorizonDegrees: 30, verticalFovDegrees: verticalFov(loop), cameraHeightFeet: CAMERA_HEIGHT_FEET };
+    expect(cut.high).toBeCloseTo(groundFeet({ y: 0.5, ...view })!.high, 5);
+    expect(cut.low).toBeLessThan(cut.high);
+  });
+
+  it("refuses a shed lying inside the house wall, and keeps one standing clear of it", () => {
+    const refused = place(wall([0, 0.1, 1, 0.8]), flatTrack(1, "loop", "shed", [0.2, 0.2, 0.6, 0.7]));
+    expect(refused.kept).toEqual([]);
+    expect(refused.dropped.map((d) => d.reason)).toContain(HOUSE_AS_SHED);
+    expect(place(wall([0, 0.1, 1, 0.5]), flatTrack(1, "loop", "shed", [0.2, 0.2, 0.6, 0.7])).kept).toHaveLength(1);
+  });
+
+  it("never guesses a distance for a thing seen past the wall's base: it is left unplaced, so not checked", () => {
+    const seen = place(wall([0, 0.1, 1, 0.8]), flatTrack(1, "loop", "patio_furniture", [0.3, 0.3, 0.5, 0.5]));
+    expect(seen.kept).toEqual([]);
+    expect(seen.dropped.map((d) => d.reason)).toContain(NOT_MEASURED);
+  });
+
+  it("never guesses a distance for a thing with no wall in its own column: it is left unplaced, so not checked", () => {
+    const seen = place(nearWall, flatTrack(1, "loop", "patio_furniture", [0.6, 0.5, 0.8, 0.7]));
+    expect(seen.kept).toEqual([]);
+    expect(seen.dropped.map((d) => d.reason)).toContain(NOT_MEASURED);
+  });
+
+  it("says between the wall and the camera, never exactly 0 feet, for a thing whose foot sits on the wall's base", () => {
+    const seen = place(wall([0, 0.1, 1, 0.5]), flatTrack(1, "loop", "patio_furniture", [0.3, 0.3, 0.5, 0.5])).kept[0]!.observation.distanceFeet;
+    expect(seen.low).toBe(0);
+    expect(seen.high).toBeGreaterThan(0);
+  });
+
+  it("does not keep a tree or a shed with no wall in its own column, since either can stand past the house", () => {
+    for (const concept of ["tree", "shed"] as const) expect(place(nearWall, flatTrack(1, "loop", concept, [0.6, 0.5, 0.8, 0.7])).kept, concept).toEqual([]);
+  });
+
+  it("gives a pan object whose foot is below the picture no floor, so it stays in the first band", () => {
+    const { kept } = flat({ tracks: [wall(), flatTrack(1, "pan", "patio_furniture", [0.3, 0.6, 0.5, 1])], panTilt: 30, loopTilt: 30 });
+    expect(kept[0]!.observation.distanceFeet.low).toBe(0);
+    expect(bandFor(kept[0]!.observation.distanceFeet)).toBe("zone_0");
+  });
+
+  it("calls a pile rising past the wall's base with its foot just in front of the wall a touch", () => {
+    const { kept } = place(wall([0, 0.1, 1, 0.74]), flatTrack(1, "loop", "wood_pile", [0.3, 0.3, 0.6, 0.83]));
+    expect(kept[0]!.observation.contact).toBe("yes");
+    expect(kept[0]!.observation.distanceFeet.low).toBe(0);
+  });
+
+  it("does not call a pile a touch when its foot stands well out from the wall", () => {
+    const { kept } = place(wall([0, 0.1, 1, 0.5]), flatTrack(1, "loop", "wood_pile", [0.3, 0.3, 0.6, 0.95]));
+    expect(kept[0]!.observation.contact).not.toBe("yes");
+  });
+
+  it("does not call a shrub rising past the wall's base a touch, since a shrub has no such depth", () => {
+    const { kept } = place(wall([0, 0.1, 1, 0.74]), flatTrack(1, "loop", "shrub", [0.3, 0.3, 0.6, 0.83]));
+    expect(kept[0]!.observation.contact).not.toBe("yes");
+  });
+
+  it("keeps a shed mostly but not wholly inside the wall's box", () => {
+    const { kept } = place(wall([0, 0.1, 1, 0.8]), flatTrack(1, "loop", "shed", [0.2, 0.2, 0.6, 0.86]));
+    expect(kept).toHaveLength(1);
+  });
+
+  it("drops a touch the distance says against, and keeps the distance", () => {
+    const panWall = flatTrack(98, "pan", "house_wall", [0, 0.1, 1, 0.9]);
+    const { kept } = flat({ tracks: [wall(), panWall, flatTrack(1, "pan", "patio_furniture", [0.3, 0.3, 0.5, 0.9])], panTilt: 30 });
+    expect(kept[0]!.observation.contact).not.toBe("yes");
+    expect(kept[0]!.observation.distanceFeet.low).toBeGreaterThan(5);
+  });
+
+  it("never calls anything else lying inside the wall part of the house", () => {
+    const { dropped } = place(wall([0, 0.1, 1, 0.8]), flatTrack(1, "loop", "patio_furniture", [0.2, 0.2, 0.6, 0.7]));
+    expect(dropped.map((d) => d.reason)).not.toContain(HOUSE_AS_SHED);
+    expect(dropped.map((d) => d.reason)).toContain(NOT_MEASURED);
+  });
+});
+
+describe("observe measures with the lens it is given", () => {
+  const seen = (lens?: number) =>
+    observe({ ...flatInput({ tracks: [wall([0, 0.1, 1, 0.75]), flatTrack(1, "loop", "shed", [0.3, 0.4, 0.5, 0.95])], loopTilt: 30 }), ...(lens === undefined ? {} : { longSideFovDegrees: lens }) }).kept[0]!.observation.distanceFeet;
+
+  it("uses the phone lens when none is given", () => {
+    expect(seen()).toEqual(seen(LONG_SIDE_FOV_DEGREES));
+  });
+
+  it("measures a different distance through a wider lens", () => {
+    expect(seen(84)).not.toEqual(seen());
+  });
+});
+
+describe("observe joins repeated sightings of one object", () => {
+  const LATER = [10, 11, 12, 13];
+  const walled = (...tracks: Track[]) => [wallAll(), ...tracks];
+  const wallAll = (): Track => flatTrack(99, "loop", "house_wall", FAR_WALL, [...FRAMES, ...LATER]);
+
+  it("joins one concept seen at different times in a clip, looking the same way at the same distance", () => {
+    const { kept } = flat({ tracks: walled(flatTrack(1, "loop", "shed", OUT), flatTrack(2, "loop", "shed", OUT, LATER)) });
+    expect(kept).toHaveLength(1);
+    expect([...kept[0]!.trackIds].sort()).toEqual([trackId(1), trackId(2)]);
+  });
+
+  it("keeps two of a concept seen on the same frame apart, since they are two objects", () => {
+    expect(flat({ tracks: walled(flatTrack(1, "loop", "shed", OUT), flatTrack(2, "loop", "shed", [0.6, 0.4, 0.8, 0.5])) }).kept).toHaveLength(2);
+  });
+
+  it("keeps them apart when their distances do not overlap", () => {
+    const tracks = walled(flatTrack(1, "loop", "shed", [0.3, 0.3, 0.5, 0.4]), flatTrack(2, "loop", "shed", [0.3, 0.85, 0.5, 0.95], LATER));
+    expect(flat({ tracks, loopTilt: 30 }).kept).toHaveLength(2);
+  });
+
+  it("keeps them apart when they are in different clips of the same heading", () => {
+    const { kept } = flat({ tracks: walled(flatTrack(1, "loop", "shed", OUT), flatTrack(2, "pan", "shed", OUT)), panTilt: 60, panHeading: 180 });
+    expect(kept).toHaveLength(2);
+  });
+
+  it("never joins past the limit on tracks, and never fails for it", () => {
+    const tracks = Array.from({ length: MAX_TRACKS + 2 }, (_, i) => flatTrack(i + 1, "loop", "shed", OUT, [i * 2, i * 2 + 1]));
+    const wallEvery = flatTrack(99, "loop", "house_wall", FAR_WALL, Array.from({ length: (MAX_TRACKS + 2) * 2 }, (_, i) => i));
+    const { kept } = flat({ tracks: [wallEvery, ...tracks] });
+    expect(kept.flatMap((k) => k.trackIds)).toHaveLength(MAX_TRACKS + 2);
+    for (const k of kept) expect(k.trackIds.length).toBeLessThanOrEqual(MAX_TRACKS);
+  });
+
+  it("counts a lumber pile on the same box as a wood pile as that wood pile", () => {
+    const { kept } = flat({ tracks: walled(flatTrack(1, "loop", "lumber_pile", OUT), flatTrack(2, "loop", "wood_pile", OUT)) });
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.observation.concept).toBe("wood_pile");
+    expect([...kept[0]!.trackIds].sort()).toEqual([trackId(1), trackId(2)]);
+  });
+
+  it("keeps a lumber pile's wall contact and its distance when it joins a wood pile", () => {
+    const lumber = flatTrack(1, "loop", "lumber_pile", [0.3, 0.2, 0.5, 0.35]);
+    const pile = flatTrack(2, "loop", "wood_pile", [0.3, 0.2, 0.5, 0.48]);
+    const alone = flat({ tracks: walled(pile), loopTilt: 10 }).kept[0]!.observation;
+    const { kept } = flat({ tracks: walled(lumber, pile), loopTilt: 10 });
+    expect(kept).toHaveLength(1);
+    expect(alone.contact).not.toBe("yes");
+    expect(kept[0]!.observation.contact).toBe("yes");
+    expect(kept[0]!.observation.distanceFeet.low).toBe(0);
+    expect(kept[0]!.observation.distanceFeet.high).toBeGreaterThanOrEqual(alone.distanceFeet.high);
+  });
+
+  it("never joins lumber piles to a wood pile past the limit on tracks", () => {
+    const lumber = Array.from({ length: MAX_TRACKS + 1 }, (_, i) => flatTrack(i + 1, "loop", "lumber_pile", OUT));
+    const { kept } = flat({ tracks: walled(flatTrack(50, "loop", "wood_pile", OUT), ...lumber) });
+    expect(kept.flatMap((k) => k.trackIds)).toHaveLength(MAX_TRACKS + 2);
+    for (const k of kept) expect(k.trackIds.length).toBeLessThanOrEqual(MAX_TRACKS);
+  });
+
+  it("keeps two wood piles apart when the second appears elsewhere in the picture, not where the first left", () => {
+    const { kept } = flat({ tracks: walled(flatTrack(1, "loop", "wood_pile", [0.05, 0.4, 0.2, 0.5]), flatTrack(2, "loop", "wood_pile", [0.75, 0.4, 0.9, 0.5], LATER)) });
+    expect(kept).toHaveLength(2);
+  });
+
+  it("joins a sighting that picks up where the last left off, in time and in the picture", () => {
+    const box: Box = [0.3, 0.4, 0.5, 0.5];
+    const near: Box = [0.35, 0.4, 0.55, 0.5];
+    const far: Box = [0.75, 0.4, 0.95, 0.5];
+    expect(picksUp({ frame: 3, box }, { frame: 5, box: near }, 2)).toBe(true);
+    expect(picksUp({ frame: 3, box }, { frame: 5, box: far }, 2)).toBe(false);
+    expect(picksUp({ frame: 3, box }, { frame: 3 + 2 * 60, box: near }, 2)).toBe(false);
+  });
+
+  it("keeps a lumber pile apart from a wood pile elsewhere in the picture", () => {
+    const { kept } = flat({ tracks: walled(flatTrack(1, "loop", "lumber_pile", OUT), flatTrack(2, "loop", "wood_pile", [0.6, 0.4, 0.8, 0.5])) });
+    expect(kept.map((k) => k.observation.concept).sort()).toEqual(["lumber_pile", "wood_pile"]);
+  });
+});
+
+describe("observe does not place an object from beyond the wall's base", () => {
+  const BEYOND: Box = [0.3, 0.05, 0.5, 0.2];
+
+  it("drops a tree whose base sits above the wall's base, never calling it 0 feet away", () => {
+    const { kept, dropped } = flat({ tracks: [wall(), flatTrack(1, "loop", "tree", BEYOND)] });
+    expect(kept).toEqual([]);
+    expect(dropped.find((d) => d.trackIds[0] === trackId(1))!.reason).toBe("seen only beyond the wall's base, so its distance is unknown");
+  });
+
+  it("keeps a tree whose mask touches the wall, whatever its box says", () => {
+    const rows = (row: number) => Array.from({ length: 32 }, () => row);
+    const every = (row: number) => Object.fromEntries(FRAMES.map((frame) => [frame, rows(row)]));
+    const input = flatInput({ tracks: [wall(), flatTrack(1, "loop", "tree", BEYOND)], loopTilt: 30 });
+    const { kept } = observe({ ...input, masks: { [trackId(99)]: every(0.2), [trackId(1)]: every(0.2) } });
+    expect(kept.map((k) => k.observation.contact)).toEqual(["yes"]);
+  });
+
+  it("measures an object from its frames in front of the wall, leaving out those beyond it", () => {
+    const track = framed(1, "shed", [[0, BEYOND], [1, BEYOND], [2, OUT], [3, OUT]]);
+    const { kept } = flat({ tracks: [wall(), track] });
+    expect(kept[0]!.observation.distanceFeet).toEqual(distanceAt(0.5));
+  });
+
+  it("keeps an object at the wall's base within the contact margin", () => {
+    const { kept } = flat({ tracks: [wall(), flatTrack(1, "loop", "tree", [0.3, 0.2, 0.5, 0.35 - CONTACT_MARGIN])], loopTilt: 30 });
+    expect(kept).toHaveLength(1);
+  });
+
+  it("keeps what sits on the house line there, and leaves anything else on the ground unplaced", () => {
+    for (const concept of ["tree_branch_over_roof", "roof_debris", "foundation_vent"] as const) {
+      expect(flat({ tracks: [wall(), flatTrack(1, "loop", concept, BEYOND)], loopTilt: 30 }).kept, concept).toHaveLength(1);
+    }
+    const pile = flat({ tracks: [wall(), flatTrack(1, "loop", "wood_pile", BEYOND)], loopTilt: 30 });
+    expect(pile.kept).toEqual([]);
+    expect(pile.dropped.map((d) => d.reason)).toEqual([expect.any(String), NOT_MEASURED]);
   });
 });
 

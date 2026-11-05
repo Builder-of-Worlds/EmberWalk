@@ -171,9 +171,11 @@ describe("every identifiable object around a house that matters in a fire gets i
     }
   });
 
-  it.each(OBJECTS)("gives %s the English line in both languages until Spanish is approved", (concept) => {
+  it.each(OBJECTS)("gives %s its own Spanish line with the same figures as the English", (concept) => {
     const [row] = lookup(query({ concept }, 0), "ca");
-    expect(row!.plain.es, concept).toBe(row!.plain.en);
+    expect(row!.plain.es, concept).not.toBe(row!.plain.en);
+    const figures = (text: string) => text.match(/\d+(?:\/\d+)?/g) ?? [];
+    expect(figures(row!.plain.es), concept).toEqual(figures(row!.plain.en));
   });
 
   it("asks for the wood deck only inside 5 feet", () => {
@@ -301,10 +303,11 @@ describe("the chimney spark arrester", () => {
     ]);
   });
 
-  it("tells the homeowner to make sure the arrester is on, with the English line in both languages until Spanish is approved", () => {
+  it("tells the homeowner to make sure the arrester is on, in English and in Spanish with the same mesh sizes", () => {
     const [row] = arrester("ca");
     expect(row!.plain.en).toMatch(/^Make sure the chimney has a spark arrester/);
-    expect(row!.plain.es).toBe(row!.plain.en);
+    expect(row!.plain.es).not.toBe(row!.plain.en);
+    expect(row!.plain.es).toMatch(/3\/8 a 1\/2 pulgada/);
   });
 });
 
@@ -344,12 +347,13 @@ describe("the plain wording a homeowner reads", () => {
     expect(plainOf("wood-pile-uncovered").en).toMatch(/30 feet.*sheet metal/);
     expect(plainOf("wood-pile-uncovered").es).toMatch(/30 pies.*lámina de metal/);
     expect(plainOf("wood-pile-zone-0").en).toMatch(/far side of the yard/);
-    expect(plainOf("wood-pile-zone-0").es).toMatch(/otro lado del patio/);
+    expect(plainOf("wood-pile-zone-0").es).toMatch(/parte más alejada del patio/);
   });
 
   const texts = (language: "en" | "es") =>
     [...new Set(RULES.flatMap((r) => [r.plain[language], ...(r.unsure !== null ? [r.unsure[language]] : [])]))];
-  const words = (text: string) => text.toLowerCase().replace(/[.,;:]/g, "").split(/\s+/);
+  const TRADE_TERMS = /servicio de poda y retiro de árboles|sierra de podar con mango largo|tijeras de podar de mango largo/g;
+  const words = (text: string) => text.toLowerCase().replace(TRADE_TERMS, "term").replace(/[.,;:]/g, "").split(/\s+/);
 
   it("opens every distinct plain and may be dead text with its own first two words, so a walk never reads as a refrain", () => {
     for (const language of ["en", "es"] as const) {
@@ -417,6 +421,25 @@ describe.each(keys)("rule %s", (key) => {
     const good = query({ concept, ...CASES[key] }, MIDDLE[rows[0]!.zone]);
     expect(() => lookup({ ...good, concept: concept.toUpperCase() as typeof concept }, "ca")).toThrow();
     expect(() => lookup({ ...good, distanceFeet: { low: -1, high: 2 } }, "ca")).toThrow();
+  });
+});
+
+describe("our advice, not a rule", () => {
+  const ADVICE = ["boat_or_trailer", "lumber_pile", "propane_cylinder", "stored_fuel", "tarp", "trash_can", "vehicle", "wood_deck"];
+
+  it("marks exactly the rules whose line gives a detail the cited source does not", () => {
+    expect([...new Set(RULES.filter((r) => r.advice).map((r) => r.concept))].sort()).toEqual(ADVICE);
+    for (const concept of ADVICE) expect(RULES.filter((r) => r.concept === concept).every((r) => r.advice), concept).toBe(true);
+  });
+
+  it("keeps the flag out of the shared rule, carries it in California's file, and keeps the rule text as it was", () => {
+    for (const row of RULES) {
+      expect(Object.keys(toRule(row))).not.toContain("advice");
+      expect(Rule.safeParse(toRule(row)).success, row.id).toBe(true);
+    }
+    expect(CALIFORNIA.rules.filter((r) => r.advice).map((r) => r.concept).sort()).toEqual(RULES.filter((r) => r.advice).map((r) => r.concept).sort());
+    expect(RULES.find((r) => r.key === "wood-deck-zone-0")?.plain.en).toBe("Over time, rebuild the deck surface nearest the house, out to 10 feet, in metal or fire treated boards.");
+    expect(RULES.find((r) => r.key === "trash-can-zone-0")?.plain.en).toBe("Roll the trash and recycling bins at least 5 feet from the wall, beside the driveway for example.");
   });
 });
 

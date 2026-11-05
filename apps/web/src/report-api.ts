@@ -1,5 +1,6 @@
 import { ErrorBody, VISITOR_HEADER } from "@emberwalk/shared";
 import type { Fetch } from "./api.ts";
+import { localDay } from "./mark-sync.ts";
 
 export const REPORT_CODES = [
   "offline",
@@ -49,6 +50,8 @@ const NAME = /filename="(emberwalk-record-[0-9a-z-]{1,20}\.pdf)"/;
 const DAY_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 const SEEN_HEADER = "x-report-seen";
+
+const DAY_HEADER = "x-report-day";
 
 const SEEN_DIGEST = /^[0-9a-f]{64}$/;
 
@@ -113,7 +116,13 @@ export const reportApi = (base: string, send: Fetch, visitorId: () => string, sa
     return url;
   };
   const ask = (url: URL, method: "GET" | "POST" | "DELETE", signal: AbortSignal, seen?: string) =>
-    send(new Request(url, { method, headers: { [VISITOR_HEADER]: visitorId(), ...(seen === undefined ? {} : { [SEEN_HEADER]: seen }) }, signal }));
+    send(
+      new Request(url, {
+        method,
+        headers: { [VISITOR_HEADER]: visitorId(), ...(seen === undefined ? {} : { [SEEN_HEADER]: seen, [DAY_HEADER]: localDay(Date.now()) }) },
+        signal,
+      }),
+    );
   const answered = async <T extends object>(ms: number, run: (signal: AbortSignal) => Promise<T | ReportCode>): Promise<T | { code: ReportCode }> => {
     const answer = await within(ms, run);
     return typeof answer === "string" ? { code: answer } : answer;

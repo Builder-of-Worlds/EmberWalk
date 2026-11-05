@@ -25,7 +25,7 @@ def main():
     except scene_spec.SpecError as e:
         print("EW_ERROR %s" % e, file=sys.stderr)
         sys.exit(2)
-    out = args.out or os.path.join(paths.renders_dir(), doc["id"])
+    out = args.out or os.path.join(paths.session_dir(), doc["id"])
     os.makedirs(out, exist_ok=True)
     used = assets.used(doc, catalog)
     manifests = {
