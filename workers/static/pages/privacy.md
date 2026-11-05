@@ -70,7 +70,7 @@ For the app, these companies handle your information to do the jobs we give them
 - **Cloudflare** hosts the app's servers, the database, the file storage and the email routing.
 - **Resend** sends the crew emails you approve in Get It Fixed, with the crew's address, the text you approved, a link to opt out, EmberWalk's footer and the blurred pictures you approved as attachments.
 - **Meta** runs the models that check your walk. It receives each clip of the walk without a blur, and still pictures cut from the walk, some without a blur and some blurred. It also receives the walk's sound for transcription, the transcript and the findings to write your list, your recheck photos and, for Get It Fixed, the trade, ZIP code and findings and each crew reply. Pictures reach Meta before the blur is applied. Our requests for the picture and text models tell Meta not to store them; the sound request has no such setting, so Meta's own terms apply to it. The files we upload are set to expire after one hour and are deleted when the walk ends. What Meta does beyond that is set by Meta's own terms.
-- **Baseten** receives nothing today. EmberWalk has a second check on a finding built to run there, with the finding's blurred proof picture, and that check is switched off.
+- **Baseten** does not receive anything from real walks. EmberWalk's second check on a finding, with its blurred proof picture, is off for real walks and has run only on a made up test house.
 - **Stripe** takes your payments, as above.
 
 ## We never sell it

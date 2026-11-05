@@ -139,7 +139,7 @@ describe("brand render script", () => {
     expect(verdict(name, found, readFileSync(out + name)[25], process.arch)).toEqual([]);
   });
 
-  it("on x64 a see-through file passes on structure with The Foundry's edge figures, and on arm64 the same figures fail", () => {
+  it("on x64 a see-through file passes on structure with the build machine's edge figures, and on arm64 the same figures fail", () => {
     const foundry = { committed: [32, 32] as [number, number], rendered: [32, 32] as [number, number], meanChannel: 1.854248046875, farPixels: 0.00165, transparentMismatch: 0 };
     expect(verdict("icon-32.png", foundry, PNG_RGBA, "x64")).toEqual([]);
     expect(verdict("icon-32.png", foundry, PNG_RGBA, "arm64")).toHaveLength(2);
